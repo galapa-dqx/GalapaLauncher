@@ -36,15 +36,17 @@ internal sealed class SqpkAddData(BinaryReader reader, long offset, long size)
     {
         TargetFile.ResolvePath(config.Platform);
 
-        // AddData on an absent .dat is skipped, not fatal — DQXUpdater neither creates the file
-        // nor aborts the patch (unlike DeleteData/ExpandData, which abort). It does extend an
-        // existing .dat up to the write, so we don't clamp.
-        if (!TargetFile.Exists(config.GamePath))
-            return;
+        // A data command on a missing .dat: DQXUpdater's ResolveTargetFile only creates a NEW
+        // .dat when it extends an existing span (fileId > 0, i.e. dat0..dat{N-1} already exist).
+        // A missing dat0 (a whole span that doesn't exist) fails to resolve and ABORTS the patch
+        // — this is why the transient data00130000/data00150000 are never created. (It extends
+        // an existing .dat up to the write, so we don't clamp.)
+        if (!TargetFile.Exists(config.GamePath) && TargetFile.FileId == 0)
+            throw new ZiPatchApplyAbortedException(TargetFile.RelativePath);
 
         var file = config.Store == null
-            ? TargetFile.OpenStream(config.GamePath, FileMode.Open)
-            : TargetFile.OpenStream(config.Store, config.GamePath, FileMode.Open);
+            ? TargetFile.OpenStream(config.GamePath, FileMode.OpenOrCreate)
+            : TargetFile.OpenStream(config.Store, config.GamePath, FileMode.OpenOrCreate);
 
         file.WriteFromOffset(BlockData, BlockOffset);
         file.Wipe(BlockDeleteNumber);

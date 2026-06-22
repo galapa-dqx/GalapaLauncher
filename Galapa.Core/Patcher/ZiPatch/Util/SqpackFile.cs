@@ -19,7 +19,10 @@ public abstract class SqpackFile : SqexFile
 {
     protected ushort MainId { get; }
     protected ushort SubId { get; }
-    protected uint FileId { get; }
+
+    /// <summary>The .dat number within the span (data{main}{sub}.win32.dat{FileId}). dat0 is the
+    /// span's base; dat1.. are extensions created only once the base exists.</summary>
+    public uint FileId { get; }
 
     protected byte ExpansionId => (byte)(SubId >> 8);
 

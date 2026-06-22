@@ -29,15 +29,15 @@ internal sealed class SqpkDeleteData(BinaryReader reader, long offset, long size
     {
         TargetFile.ResolvePath(config.Platform);
 
-        // DQXUpdater never creates a missing .dat for a DeleteData op — the resolve fails and
-        // aborts the whole patch. (This is what stops the 1.6.97629.3->1.6.101161.1 patch at
-        // the data00130000 DeleteData, leaving data00150000 and later chunks unapplied.)
-        if (!TargetFile.Exists(config.GamePath))
+        // A missing dat0 (whole span absent) fails to resolve and ABORTS the patch (e.g. the
+        // data00130000 DeleteData in 1.6.97629.3->1.6.101161.1, which leaves data00150000 and
+        // every later chunk unapplied). A missing dat{N>0} is created as a span extension.
+        if (!TargetFile.Exists(config.GamePath) && TargetFile.FileId == 0)
             throw new ZiPatchApplyAbortedException(TargetFile.RelativePath);
 
         var file = config.Store == null
-            ? TargetFile.OpenStream(config.GamePath, FileMode.Open)
-            : TargetFile.OpenStream(config.Store, config.GamePath, FileMode.Open);
+            ? TargetFile.OpenStream(config.GamePath, FileMode.OpenOrCreate)
+            : TargetFile.OpenStream(config.Store, config.GamePath, FileMode.OpenOrCreate);
 
         SqpackDatFile.WriteEmptyFileBlockAt(file, BlockOffset, BlockNumber);
     }
