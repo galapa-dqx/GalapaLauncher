@@ -32,8 +32,9 @@ internal sealed class SqpkExpandData(BinaryReader reader, long offset, long size
     {
         TargetFile.ResolvePath(config.Platform);
 
+        // A SQPK data command on an absent .dat aborts the whole patch (see SqpkDeleteData).
         if (!TargetFile.Exists(config.GamePath))
-            return;
+            throw new ZiPatchApplyAbortedException(TargetFile.RelativePath);
 
         var file = config.Store == null
             ? TargetFile.OpenStream(config.GamePath, FileMode.Open)

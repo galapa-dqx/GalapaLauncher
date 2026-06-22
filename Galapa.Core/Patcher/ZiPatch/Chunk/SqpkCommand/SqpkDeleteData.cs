@@ -29,9 +29,11 @@ internal sealed class SqpkDeleteData(BinaryReader reader, long offset, long size
     {
         TargetFile.ResolvePath(config.Platform);
 
-        // Like AddData, DQXUpdater never creates a missing .dat for a DeleteData op.
+        // DQXUpdater never creates a missing .dat for a DeleteData op — the resolve fails and
+        // aborts the whole patch. (This is what stops the 1.6.97629.3->1.6.101161.1 patch at
+        // the data00130000 DeleteData, leaving data00150000 and later chunks unapplied.)
         if (!TargetFile.Exists(config.GamePath))
-            return;
+            throw new ZiPatchApplyAbortedException(TargetFile.RelativePath);
 
         var file = config.Store == null
             ? TargetFile.OpenStream(config.GamePath, FileMode.Open)

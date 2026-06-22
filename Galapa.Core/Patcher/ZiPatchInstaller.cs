@@ -25,7 +25,18 @@ public static class ZiPatchInstaller
 
         foreach (var chunk in patchFile.GetChunks())
         {
-            chunk.ApplyChunk(config);
+            try
+            {
+                chunk.ApplyChunk(config);
+            }
+            catch (ZiPatch.ZiPatchApplyAbortedException)
+            {
+                // DQXUpdater aborts the remainder of the patch when a chunk fails (e.g. a SQPK
+                // data command targeting a .dat that doesn't exist). Stop here, leaving the
+                // patch partially applied — this matches the oracle byte-for-byte.
+                break;
+            }
+
             progress?.Invoke(chunk);
         }
     }
