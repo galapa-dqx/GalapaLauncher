@@ -36,9 +36,15 @@ internal sealed class SqpkAddData(BinaryReader reader, long offset, long size)
     {
         TargetFile.ResolvePath(config.Platform);
 
+        // DQXUpdater never creates a missing .dat via AddData (only AddFile establishes a
+        // file). Verified by tracing a real apply: data00130000, which only this patch's
+        // AddData touches, is never created. (It does extend existing files, so we don't clamp.)
+        if (!TargetFile.Exists(config.GamePath))
+            return;
+
         var file = config.Store == null
-            ? TargetFile.OpenStream(config.GamePath, FileMode.OpenOrCreate)
-            : TargetFile.OpenStream(config.Store, config.GamePath, FileMode.OpenOrCreate);
+            ? TargetFile.OpenStream(config.GamePath, FileMode.Open)
+            : TargetFile.OpenStream(config.Store, config.GamePath, FileMode.Open);
 
         file.WriteFromOffset(BlockData, BlockOffset);
         file.Wipe(BlockDeleteNumber);

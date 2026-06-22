@@ -32,9 +32,12 @@ internal sealed class SqpkExpandData(BinaryReader reader, long offset, long size
     {
         TargetFile.ResolvePath(config.Platform);
 
+        if (!TargetFile.Exists(config.GamePath))
+            return;
+
         var file = config.Store == null
-            ? TargetFile.OpenStream(config.GamePath, FileMode.OpenOrCreate)
-            : TargetFile.OpenStream(config.Store, config.GamePath, FileMode.OpenOrCreate);
+            ? TargetFile.OpenStream(config.GamePath, FileMode.Open)
+            : TargetFile.OpenStream(config.Store, config.GamePath, FileMode.Open);
 
         SqpackDatFile.WriteEmptyFileBlockAt(file, BlockOffset, BlockNumber);
     }

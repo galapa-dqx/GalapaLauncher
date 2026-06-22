@@ -54,36 +54,15 @@ internal sealed class SqpkHeader(BinaryReader reader, long offset, long size)
         HeaderData = Reader.ReadBytes(HeaderSize);
     }
 
-    /// <summary>SqPackHeader offset of the buildDate field (buildTime follows at 0x1C).</summary>
-    private const int BuildStampOffset = 0x18;
-
-    /// <summary>SqPackHeader offset of the 20-byte SHA-1 self-hash, computed over bytes [0, 0x3C0).</summary>
-    private const int HeaderHashOffset = 0x3C0;
-
     public override void ApplyChunk(ZiPatchConfig config)
     {
-        // DQXUpdater only writes Dat headers; Index header commands do nothing.
-        if (FileKind != TargetFileKind.Dat)
-            return;
-
-        // The version header (the SqPackHeader at offset 0) carries the source build's
-        // buildDate/buildTime; the updater zeros them (8 bytes at 0x18) and then recomputes
-        // the header's SHA-1 self-hash (20 bytes at 0x3C0, over the preceding 0x3C0 bytes),
-        // since zeroing the stamp invalidates the patch's stored hash. Match both.
-        if (HeaderKind == TargetHeaderKind.Version)
-        {
-            Array.Clear(HeaderData, BuildStampOffset, 8);
-            var hash = System.Security.Cryptography.SHA1.HashData(HeaderData.AsSpan(0, HeaderHashOffset));
-            hash.CopyTo(HeaderData.AsSpan(HeaderHashOffset));
-        }
-
-        TargetFile.ResolvePath(config.Platform);
-
-        var file = config.Store == null
-            ? TargetFile.OpenStream(config.GamePath, FileMode.OpenOrCreate)
-            : TargetFile.OpenStream(config.Store, config.GamePath, FileMode.OpenOrCreate);
-
-        file.WriteFromOffset(HeaderData, HeaderKind == TargetHeaderKind.Version ? 0 : HeaderSize);
+        // No-op. Dynamic tracing of DQXUpdater (WriteFile/SetFilePointerEx hooks over a real
+        // patch apply) shows it never writes a .dat's SqPack header region (offset 0 or 0x400)
+        // for incremental patches — only AddFile whole-file writes touch offset 0. So the
+        // updater simply ignores SQPK 'H' commands against existing .dat files; the headers
+        // stay as the base (or the AddFile that created the file) left them. We do the same so
+        // our output matches: the patch's header bytes (with their stale buildDate/dataSize)
+        // are never written over the live headers.
     }
 
     public override string ToString() => $"{TypeName}:{CommandName}:{FileKind}:{HeaderKind}:{TargetFile}";

@@ -49,6 +49,8 @@ public class SqexFile
         }
     }
 
+    public bool Exists(string basePath) => File.Exists($@"{basePath}/{RelativePath}");
+
     public void CreateDirectoryTree(string basePath)
     {
         var dirName = System.IO.Path.GetDirectoryName($@"{basePath}/{RelativePath}");
