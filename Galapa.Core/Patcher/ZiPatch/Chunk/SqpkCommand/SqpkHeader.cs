@@ -2,7 +2,16 @@ using Galapa.Core.Patcher.ZiPatch.Util;
 
 namespace Galapa.Core.Patcher.ZiPatch.Chunk.SqpkCommand;
 
-/// <summary>SQPK 'H' — overwrite a 0x400-byte header region of a .dat or .idx.</summary>
+/// <summary>
+/// SQPK 'H' — overwrite a 0x400-byte header region of a .dat.
+///
+/// DQX semantics (from DQXUpdater's ZiPatch_WriteSqpackHeader): only <b>Dat</b> headers
+/// are written — Index-file header commands are a no-op. And when writing the version
+/// header (<see cref="TargetHeaderKind.Version"/>, the SqPackHeader at offset 0), the
+/// updater zeros the buildDate/buildTime fields (offsets 0x18/0x1C) rather than writing
+/// the source build's stamp the patch carries. We replicate both so our output is
+/// byte-identical to the updater.
+/// </summary>
 internal sealed class SqpkHeader(BinaryReader reader, long offset, long size)
     : SqpkChunk(reader, offset, size)
 {
@@ -45,8 +54,29 @@ internal sealed class SqpkHeader(BinaryReader reader, long offset, long size)
         HeaderData = Reader.ReadBytes(HeaderSize);
     }
 
+    /// <summary>SqPackHeader offset of the buildDate field (buildTime follows at 0x1C).</summary>
+    private const int BuildStampOffset = 0x18;
+
+    /// <summary>SqPackHeader offset of the 20-byte SHA-1 self-hash, computed over bytes [0, 0x3C0).</summary>
+    private const int HeaderHashOffset = 0x3C0;
+
     public override void ApplyChunk(ZiPatchConfig config)
     {
+        // DQXUpdater only writes Dat headers; Index header commands do nothing.
+        if (FileKind != TargetFileKind.Dat)
+            return;
+
+        // The version header (the SqPackHeader at offset 0) carries the source build's
+        // buildDate/buildTime; the updater zeros them (8 bytes at 0x18) and then recomputes
+        // the header's SHA-1 self-hash (20 bytes at 0x3C0, over the preceding 0x3C0 bytes),
+        // since zeroing the stamp invalidates the patch's stored hash. Match both.
+        if (HeaderKind == TargetHeaderKind.Version)
+        {
+            Array.Clear(HeaderData, BuildStampOffset, 8);
+            var hash = System.Security.Cryptography.SHA1.HashData(HeaderData.AsSpan(0, HeaderHashOffset));
+            hash.CopyTo(HeaderData.AsSpan(HeaderHashOffset));
+        }
+
         TargetFile.ResolvePath(config.Platform);
 
         var file = config.Store == null
