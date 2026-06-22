@@ -4,17 +4,18 @@ using Galapa.Core.Patcher.ZiPatch.Util;
 namespace Galapa.Core.Tests.Patcher;
 
 /// <summary>
-/// Locks in the DQX-specific SqPack filename mapping (decimal <c>data%04d%04d</c>, the
-/// <c>.idx</c> index extension, no <c>sqpack/exN/</c> nesting) — the part of the format
-/// that diverges from FFXIV and that the boot patch alone doesn't exercise.
+/// Locks in the DQX-specific SqPack filename mapping (decimal <c>data%04d%04d</c> under
+/// <c>Content/Data/</c>, the <c>.idx</c> index extension, no <c>sqpack/exN/</c> nesting) —
+/// the part of the format that diverges from FFXIV and that the boot patch alone doesn't
+/// exercise. Verified against real patches (see <c>SqpackFile</c> remarks).
 /// </summary>
 public class SqpackFileNamingTests
 {
     [Theory]
-    [InlineData(0, 0, 0, "data00000000.win32.dat0")]
-    [InlineData(1, 0, 0, "data00010000.win32.dat0")]
-    [InlineData(1, 0, 7, "data00010000.win32.dat7")]
-    [InlineData(13, 0, 2, "data00130000.win32.dat2")]
+    [InlineData(0, 0, 0, "Content/Data/data00000000.win32.dat0")]
+    [InlineData(1, 0, 0, "Content/Data/data00010000.win32.dat0")]
+    [InlineData(1, 0, 7, "Content/Data/data00010000.win32.dat7")]
+    [InlineData(13, 0, 2, "Content/Data/data00130000.win32.dat2")]
     public void DatFile_UsesDecimalNaming(ushort mainId, ushort subId, uint fileId, string expected)
     {
         var dat = new SqpackDatFile(Triple(mainId, subId, fileId));
@@ -23,8 +24,8 @@ public class SqpackFileNamingTests
     }
 
     [Theory]
-    [InlineData(1, 0, 0, "data00010000.win32.idx")]   // fileId 0 => no numeric suffix
-    [InlineData(2, 0, 1, "data00020000.win32.idx1")]
+    [InlineData(0, 0, 0, "Content/Data/data00000000.win32.idx")]   // fileId 0 => no numeric suffix
+    [InlineData(2, 0, 1, "Content/Data/data00020000.win32.idx1")]
     public void IndexFile_UsesIdxExtension(ushort mainId, ushort subId, uint fileId, string expected)
     {
         var idx = new SqpackIndexFile(Triple(mainId, subId, fileId));
@@ -37,7 +38,7 @@ public class SqpackFileNamingTests
     {
         var dat = new SqpackDatFile(Triple(1, 0, 0));
         dat.ResolvePath(ZiPatchConfig.PlatformId.Cafe);
-        Assert.Equal("data00010000.cafe.dat0", dat.RelativePath);
+        Assert.Equal("Content/Data/data00010000.cafe.dat0", dat.RelativePath);
     }
 
     private static BinaryReader Triple(ushort mainId, ushort subId, uint fileId)
