@@ -36,11 +36,11 @@ internal sealed class SqpkAddData(BinaryReader reader, long offset, long size)
     {
         TargetFile.ResolvePath(config.Platform);
 
-        // DQXUpdater never creates a missing .dat via AddData (only AddFile establishes a
-        // file); a SQPK data command on an absent .dat fails and aborts the whole patch.
-        // (It does extend existing files, so we don't clamp the write.)
+        // AddData on an absent .dat is skipped, not fatal — DQXUpdater neither creates the file
+        // nor aborts the patch (unlike DeleteData/ExpandData, which abort). It does extend an
+        // existing .dat up to the write, so we don't clamp.
         if (!TargetFile.Exists(config.GamePath))
-            throw new ZiPatchApplyAbortedException(TargetFile.RelativePath);
+            return;
 
         var file = config.Store == null
             ? TargetFile.OpenStream(config.GamePath, FileMode.Open)
