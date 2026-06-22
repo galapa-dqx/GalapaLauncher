@@ -56,13 +56,27 @@ internal sealed class SqpkHeader(BinaryReader reader, long offset, long size)
 
     public override void ApplyChunk(ZiPatchConfig config)
     {
-        // No-op. Dynamic tracing of DQXUpdater (WriteFile/SetFilePointerEx hooks over a real
-        // patch apply) shows it never writes a .dat's SqPack header region (offset 0 or 0x400)
-        // for incremental patches — only AddFile whole-file writes touch offset 0. So the
-        // updater simply ignores SQPK 'H' commands against existing .dat files; the headers
-        // stay as the base (or the AddFile that created the file) left them. We do the same so
-        // our output matches: the patch's header bytes (with their stale buildDate/dataSize)
-        // are never written over the live headers.
+        // DQXUpdater's ZiPatch_WriteSqpackHeader writes only Dat headers (Index-file 'H' is a
+        // no-op) and only when the .dat is already open — it never creates one. For incremental
+        // patches the 'H' commands usually sit after the chunk that aborts the patch, so they're
+        // never reached; when they ARE reached (e.g. a span-extension dat created via AddData,
+        // whose SqPack header was never written) they DO write. So: apply to existing .dats,
+        // skip missing ones.
+        if (FileKind != TargetFileKind.Dat)
+            return;
+
+        TargetFile.ResolvePath(config.Platform);
+        if (!TargetFile.Exists(config.GamePath))
+            return;
+
+        // Write the 0x400-byte header verbatim — the updater keeps the build stamp the patch
+        // carries (it does NOT zero buildDate or recompute the SHA-1; verified against the
+        // data00040000.dat1 version header in patch 6.0->6.1, buildDate 0x01348990).
+        var file = config.Store == null
+            ? TargetFile.OpenStream(config.GamePath, FileMode.Open)
+            : TargetFile.OpenStream(config.Store, config.GamePath, FileMode.Open);
+
+        file.WriteFromOffset(HeaderData, HeaderKind == TargetHeaderKind.Version ? 0 : HeaderSize);
     }
 
     public override string ToString() => $"{TypeName}:{CommandName}:{FileKind}:{HeaderKind}:{TargetFile}";
