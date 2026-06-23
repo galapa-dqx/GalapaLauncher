@@ -56,12 +56,14 @@ internal sealed class SqpkHeader(BinaryReader reader, long offset, long size)
 
     public override void ApplyChunk(ZiPatchConfig config)
     {
-        // DQXUpdater's ZiPatch_WriteSqpackHeader writes only Dat headers (Index-file 'H' is a
-        // no-op) and only when the .dat is already open — it never creates one. For incremental
-        // patches the 'H' commands usually sit after the chunk that aborts the patch, so they're
-        // never reached; when they ARE reached (e.g. a span-extension dat created via AddData,
-        // whose SqPack header was never written) they DO write. So: apply to existing .dats,
-        // skip missing ones.
+        // DQXUpdater's ZiPatch_WriteSqpackHeader writes the Dat header VERBATIM whenever the 'H'
+        // command is reached (Index-file 'H' is a no-op, and it never creates a missing .dat). It
+        // does NOT condition the write on anything — no buildDate-zeroing, no SHA-1 recompute, no
+        // "is it modified" check. The reason an 'H' sometimes appears NOT to apply is that the patch
+        // ABORTED earlier (at an unresolvable data command — see SqpkAddData/DeleteData/ExpandData),
+        // so the later 'H' chunks simply never run. Confirmed by oracle trace of the writer hook:
+        // 6.0->6.1 writes all 16 dat headers; 7.0.303921.4->7.0.306094.1 writes NONE because it
+        // aborts at data00130000.dat1 (its base dat0 doesn't exist) before the 'H' block.
         if (FileKind != TargetFileKind.Dat)
             return;
 
@@ -69,9 +71,6 @@ internal sealed class SqpkHeader(BinaryReader reader, long offset, long size)
         if (!TargetFile.Exists(config.GamePath))
             return;
 
-        // Write the 0x400-byte header verbatim — the updater keeps the build stamp the patch
-        // carries (it does NOT zero buildDate or recompute the SHA-1; verified against the
-        // data00040000.dat1 version header in patch 6.0->6.1, buildDate 0x01348990).
         var file = config.Store == null
             ? TargetFile.OpenStream(config.GamePath, FileMode.Open)
             : TargetFile.OpenStream(config.Store, config.GamePath, FileMode.Open);

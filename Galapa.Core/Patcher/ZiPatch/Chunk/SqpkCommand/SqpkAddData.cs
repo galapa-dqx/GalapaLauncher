@@ -36,12 +36,15 @@ internal sealed class SqpkAddData(BinaryReader reader, long offset, long size)
     {
         TargetFile.ResolvePath(config.Platform);
 
-        // A data command on a missing .dat: DQXUpdater's ResolveTargetFile only creates a NEW
-        // .dat when it extends an existing span (fileId > 0, i.e. dat0..dat{N-1} already exist).
-        // A missing dat0 (a whole span that doesn't exist) fails to resolve and ABORTS the patch
-        // — this is why the transient data00130000/data00150000 are never created. (It extends
-        // an existing .dat up to the write, so we don't clamp.)
-        if (!TargetFile.Exists(config.GamePath) && TargetFile.FileId == 0)
+        // A data command on a missing .dat: DQXUpdater's ResolveTargetFile only creates a NEW .dat
+        // when it extends an existing span (fileId > 0 AND dat{fileId-1} already exists). It ABORTS
+        // the patch otherwise — whether the missing .dat is the span base dat0 or an extension whose
+        // base is absent (e.g. data00130000.dat1 with no data00130000.dat0 in 7.0.303921.4->
+        // 7.0.306094.1). The abort stops the remaining chunks, so the later 'H' block never runs —
+        // which is why that patch leaves every .dat header untouched. (When the .dat does exist we
+        // extend it up to the write, so we don't clamp.)
+        if (!TargetFile.Exists(config.GamePath) &&
+            (TargetFile.FileId == 0 || TargetFile.PriorSpanFileMissing(config.GamePath, config.Platform)))
             throw new ZiPatchApplyAbortedException(TargetFile.RelativePath);
 
         var file = config.Store == null

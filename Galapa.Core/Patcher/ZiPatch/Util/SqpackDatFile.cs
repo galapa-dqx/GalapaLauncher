@@ -9,6 +9,22 @@ public sealed class SqpackDatFile(BinaryReader reader) : SqpackFile(reader)
         $"{base.GetFileName(platform)}.dat{FileId}";
 
     /// <summary>
+    /// True when this is a span extension (FileId &gt; 0) whose immediately-preceding span file
+    /// (dat{FileId-1}) is absent. DQXUpdater's ResolveTargetFile creates an extension only on top
+    /// of an existing span, so when the base is missing it fails to resolve and the data command is
+    /// skipped (NOT aborted) — e.g. data00130000.dat1 in 7.0.303921.4-&gt;7.0.306094.1, where
+    /// data00130000.dat0 never existed, so the transient dat1 is never created.
+    /// </summary>
+    public bool PriorSpanFileMissing(string basePath, ZiPatchConfig.PlatformId platform)
+    {
+        if (FileId == 0)
+            return false;
+
+        var prior = $"{base.GetFileName(platform)}.dat{FileId - 1}";
+        return !File.Exists($"{basePath}/{prior}");
+    }
+
+    /// <summary>
     /// Stamps an empty-file-block record over <paramref name="blockNumber"/> blocks
     /// starting at <paramref name="offset"/>, used by DeleteData/ExpandData to punch
     /// a hole in a .dat without shifting the rest of the file.

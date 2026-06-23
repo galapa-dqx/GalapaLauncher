@@ -29,10 +29,13 @@ internal sealed class SqpkDeleteData(BinaryReader reader, long offset, long size
     {
         TargetFile.ResolvePath(config.Platform);
 
-        // A missing dat0 (whole span absent) fails to resolve and ABORTS the patch (e.g. the
-        // data00130000 DeleteData in 1.6.97629.3->1.6.101161.1, which leaves data00150000 and
-        // every later chunk unapplied). A missing dat{N>0} is created as a span extension.
-        if (!TargetFile.Exists(config.GamePath) && TargetFile.FileId == 0)
+        // A missing .dat that can't resolve as a span extension ABORTS the patch: the span base dat0
+        // (e.g. the data00130000 DeleteData in 1.6.97629.3->1.6.101161.1, which leaves data00150000
+        // and every later chunk unapplied) OR an extension whose base is absent (e.g. the
+        // data00130000.dat1 DeleteData in 7.0.303921.4->7.0.306094.1, whose abort stops the trailing
+        // 'H' block). A missing dat{N>0} whose base exists is created as a span extension.
+        if (!TargetFile.Exists(config.GamePath) &&
+            (TargetFile.FileId == 0 || TargetFile.PriorSpanFileMissing(config.GamePath, config.Platform)))
             throw new ZiPatchApplyAbortedException(TargetFile.RelativePath);
 
         var file = config.Store == null

@@ -32,9 +32,11 @@ internal sealed class SqpkExpandData(BinaryReader reader, long offset, long size
     {
         TargetFile.ResolvePath(config.Platform);
 
-        // Missing dat0 aborts the patch; missing dat{N>0} is created as a span extension
-        // (see SqpkDeleteData / SqpkAddData).
-        if (!TargetFile.Exists(config.GamePath) && TargetFile.FileId == 0)
+        // A missing .dat that can't resolve as a span extension ABORTS the patch — the span base
+        // dat0, or an extension whose base is absent (see SqpkDeleteData / SqpkAddData). A missing
+        // dat{N>0} whose base exists is created as a span extension.
+        if (!TargetFile.Exists(config.GamePath) &&
+            (TargetFile.FileId == 0 || TargetFile.PriorSpanFileMissing(config.GamePath, config.Platform)))
             throw new ZiPatchApplyAbortedException(TargetFile.RelativePath);
 
         var file = config.Store == null
