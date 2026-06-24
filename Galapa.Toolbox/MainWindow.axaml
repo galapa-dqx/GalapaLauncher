@@ -25,6 +25,12 @@
                             <TextBlock Text="Home" VerticalAlignment="Center" />
                         </StackPanel>
                     </ListBoxItem>
+                    <ListBoxItem Tag="Launcher">
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <PathIcon Data="M8,5.14V19.14L19,12.14L8,5.14Z" Width="16" Height="16" />
+                            <TextBlock Text="Launcher" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </ListBoxItem>
                     <ListBoxItem Tag="SaveExplorer">
                         <StackPanel Orientation="Horizontal" Spacing="12">
                             <PathIcon
