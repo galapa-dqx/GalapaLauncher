@@ -19,7 +19,8 @@ public class SettingsFrameTab(Lazy<SettingsFramePageViewModel> viewModel)
 /// </summary>
 public partial class SettingsFrameViewModel(
     Lazy<GeneralSettingsPageViewModel> generalSettingsPage,
-    Lazy<GameSettingsPageViewModel> gameSettingsPage
+    Lazy<GameSettingsPageViewModel> gameSettingsPage,
+    Lazy<AboutPageViewModel> aboutPage
 ) : ObservableObject
 {
     [ObservableProperty] private SettingsFrameTab? _selectedPage;
@@ -27,6 +28,7 @@ public partial class SettingsFrameViewModel(
     public List<SettingsFrameTab> Pages { get; } =
     [
         new(new Lazy<SettingsFramePageViewModel>(() => generalSettingsPage.Value)),
-        new(new Lazy<SettingsFramePageViewModel>(() => gameSettingsPage.Value))
+        new(new Lazy<SettingsFramePageViewModel>(() => gameSettingsPage.Value)),
+        new(new Lazy<SettingsFramePageViewModel>(() => aboutPage.Value))
     ];
 }

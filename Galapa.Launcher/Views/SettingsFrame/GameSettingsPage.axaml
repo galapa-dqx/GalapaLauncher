@@ -1,0 +1,20 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Galapa.Launcher.ViewModels.SettingsFrame"
+             mc:Ignorable="d" d:DesignWidth="600" d:DesignHeight="450"
+             x:Class="Galapa.Launcher.Views.SettingsFrame.GameSettingsPage"
+             x:DataType="vm:GameSettingsPageViewModel">
+
+    <ScrollViewer>
+        <StackPanel Spacing="20" Margin="10">
+            <TextBlock Text="Game Settings" FontSize="24" FontWeight="Bold" />
+
+            <StackPanel Spacing="10">
+                <TextBlock Text="Game Configuration" FontSize="18" FontWeight="SemiBold" />
+                <!-- Add game settings controls here -->
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

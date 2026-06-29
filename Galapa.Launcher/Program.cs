@@ -60,6 +60,7 @@ internal sealed class Program
         container.Register<SettingsFrameViewModel>(Reuse.Singleton);
         container.Register<GeneralSettingsPageViewModel>(Reuse.Singleton);
         container.Register<GameSettingsPageViewModel>(Reuse.Singleton);
+        container.Register<AboutPageViewModel>(Reuse.Singleton);
         container.Register<LoginFlowState>(Reuse.Singleton);
         container.Register<LoginNavigationService>(Reuse.Singleton);
         container.Register<IPlayerCredentialFactory, WindowsCredentialManagerFactory>(Reuse.Singleton);

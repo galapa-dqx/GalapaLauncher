@@ -11,33 +11,29 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <AvaloniaResource Include="Assets\**"/>
+        <AvaloniaResource Include="Assets\**" />
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="Avalonia" Version="11.3.8"/>
-        <PackageReference Include="Avalonia.Desktop" Version="11.3.8"/>
-        <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.8"/>
-        <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.8"/>
+        <PackageReference Include="Avalonia" Version="11.3.8" />
+        <PackageReference Include="Avalonia.Desktop" Version="11.3.8" />
+        <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.8" />
+        <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.8" />
+        <PackageReference Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.3" />
         <!--Condition below is needed to remove Avalonia.Diagnostics package from build output in Release configuration.-->
-        <PackageReference Include="Avalonia.Diagnostics" Version="11.3.8">
-            <IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
-            <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
-        </PackageReference>
-        <PackageReference Include="AvaloniaUI.DiagnosticsSupport" Version="2.1.1"/>
-        <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.1"/>
-        <PackageReference Include="DryIoc.dll" Version="5.4.3"/>
-        <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0"/>
-        <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.251106002"/>
-        <PackageReference Include="SDL3-CS" Version="3.3.2.1"/>
-        <PackageReference Include="SDL3-CS.Native" Version="3.3.2"/>
-        <PackageReference Include="Sentry" Version="5.16.2"/>
-        <PackageReference Include="Serilog" Version="4.3.0"/>
-        <PackageReference Include="Serilog.Extensions.Logging" Version="10.0.0"/>
-        <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1"/>
-        <PackageReference Include="Serilog.Sinks.File" Version="7.0.0"/>
-        <PackageReference Include="Svg.Controls.Skia.Avalonia" Version="11.3.6.2"/>
-        <PackageReference Include="Svg.Skia" Version="3.2.1"/>
+        <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.1" />
+        <PackageReference Include="DryIoc.dll" Version="5.4.3" />
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
+        <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.251106002" />
+        <PackageReference Include="SDL3-CS" Version="3.3.2.1" />
+        <PackageReference Include="SDL3-CS.Native" Version="3.3.2" />
+        <PackageReference Include="Sentry" Version="5.16.2" />
+        <PackageReference Include="Serilog" Version="4.3.0" />
+        <PackageReference Include="Serilog.Extensions.Logging" Version="10.0.0" />
+        <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
+        <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
+        <PackageReference Include="Svg.Controls.Skia.Avalonia" Version="11.3.6.2" />
+        <PackageReference Include="Svg.Skia" Version="3.2.1" />
         <PackageReference Include="ThisAssembly.AssemblyInfo" Version="2.1.2">
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -46,12 +42,20 @@
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
-        <PackageReference Include="Velopack" Version="0.0.1298"/>
-        <PackageReference Include="Vortice.DirectInput" Version="3.8.1"/>
+        <PackageReference Include="Velopack" Version="0.0.1298" />
+        <PackageReference Include="Vortice.DirectInput" Version="3.8.1" />
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\Galapa.Core\Galapa.Core.csproj"/>
+        <ProjectReference Include="..\Galapa.Core\Galapa.Core.csproj" />
+        <ProjectReference Include="..\Galapa.UI\Galapa.UI.csproj" />
     </ItemGroup>
+
+    <!-- Remove Avalonia 12 version of DiagnosticsSupport, keep v11 subfolder version -->
+    <Target Name="RemoveDuplicateDiagnosticsSupport" AfterTargets="ResolveAssemblyReferences">
+        <ItemGroup>
+            <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)" Condition="$([System.String]::Copy('%(FullPath)').Contains('net10.0\AvaloniaUI.DiagnosticsSupport')) AND !$([System.String]::Copy('%(FullPath)').Contains('v11'))" />
+        </ItemGroup>
+    </Target>
 
 </Project>
