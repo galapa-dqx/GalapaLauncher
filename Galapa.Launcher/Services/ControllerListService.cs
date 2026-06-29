@@ -15,7 +15,14 @@ namespace Galapa.Launcher.Services;
 /// </summary>
 public class ControllerListService : IDisposable
 {
-    private const int PollIntervalMs = 250; // 4Hz
+    private const int PollIntervalMs = 250; // 4Hz; only pumps SDL3 events, which is cheap
+
+    // DirectInput has no hot-plug notifications and is expensive to enumerate (full
+    // native HID re-init per device, on the UI thread), so we never poll it in steady
+    // state. SDL3 is our hot-plug source; when it reports a change we re-enumerate
+    // DirectInput. A just-added device can take a moment to surface in DirectInput, so
+    // we reconcile over a short bounded window after each change, then go idle.
+    private const int ReconcileRetryTicks = 4; // ~1s at 250ms
     private readonly IDirectInput8 _directInput;
 
     private readonly ILogger<ControllerListService> _logger;
@@ -34,6 +41,7 @@ public class ControllerListService : IDisposable
 
     // State
     private bool _sdl3Initialized;
+    private int _reconcileTicksRemaining;
 
     public ControllerListService(ILogger<ControllerListService> logger)
     {
@@ -112,18 +120,25 @@ public class ControllerListService : IDisposable
 
     private void OnPollTick(object? sender, EventArgs e)
     {
-        // Process SDL3 events
-        this.ProcessSdl3Events();
+        // SDL3 is our hot-plug source and must be pumped regularly; this is cheap.
+        if (this.ProcessSdl3Events())
+            // A joystick was added/removed. DirectInput has no change notification and
+            // may not surface a just-added device immediately, so reconcile over a short
+            // bounded window rather than polling forever.
+            this._reconcileTicksRemaining = ReconcileRetryTicks;
 
-        // Re-enumerate DirectInput (no event system)
+        if (this._reconcileTicksRemaining == 0)
+            return;
+
+        this._reconcileTicksRemaining--;
         this.EnumerateDirectInputDevices();
-
-        // Correlate and detect changes
         this.CorrelateDevices();
     }
 
-    private void ProcessSdl3Events()
+    private bool ProcessSdl3Events()
     {
+        var changed = false;
+
         while (SDL.PollEvent(out var ev))
             switch ((SDL.EventType)ev.Type)
             {
@@ -132,15 +147,22 @@ public class ControllerListService : IDisposable
                     this._logger.LogDebug("SDL3: Joystick added (ID: {Id})", addedId);
                     var device = this.CreateSdl3Device(addedId);
                     if (device != null)
+                    {
                         this._sdl3Devices[addedId] = device;
+                        changed = true;
+                    }
+
                     break;
 
                 case SDL.EventType.JoystickRemoved:
                     var removedId = ev.JDevice.Which;
                     this._logger.LogDebug("SDL3: Joystick removed (ID: {Id})", removedId);
-                    this._sdl3Devices.Remove(removedId);
+                    if (this._sdl3Devices.Remove(removedId))
+                        changed = true;
                     break;
             }
+
+        return changed;
     }
 
     private void EnumerateSdl3Devices()
@@ -180,7 +202,7 @@ public class ControllerListService : IDisposable
     {
         var currentDevices = new Dictionary<Guid, DirectInputDevice>();
 
-        var devices = this._directInput.GetDevices(DeviceClass.GameControl, DeviceEnumerationFlags.AllDevices);
+        var devices = this._directInput.GetDevices(DeviceClass.GameControl, DeviceEnumerationFlags.AttachedOnly);
         foreach (var deviceInstance in devices)
         {
             var diDevice = this.CreateDirectInputDevice(deviceInstance);
