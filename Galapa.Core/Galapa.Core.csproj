@@ -16,7 +16,6 @@
 
     <ItemGroup>
         <Folder Include="Clarity\"/>
-        <Folder Include="Patcher\"/>
     </ItemGroup>
 
 </Project>
