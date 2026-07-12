@@ -65,8 +65,12 @@ public static class Program
         {
             Console.Error.WriteLine($"[install] {patch} -> {gameDir}");
             var applied = 0;
-            ZiPatchInstaller.InstallPatch(patch, gameDir, _ => applied++);
-            Console.Error.WriteLine($"[install] {Path.GetFileName(patch)}: {applied} chunk(s) applied");
+            var result = ZiPatchInstaller.InstallPatch(patch, gameDir, _ => applied++);
+            var note = result.Aborted
+                ? $" (aborted at {result.AbortedTarget}; partial apply — expected when a patch " +
+                  "targets a repository this install doesn't have)"
+                : string.Empty;
+            Console.Error.WriteLine($"[install] {Path.GetFileName(patch)}: {applied} chunk(s) applied{note}");
         }
 
         Console.Error.WriteLine("[install] done");

@@ -92,6 +92,19 @@ internal sealed class PatchBuilder
         return Sqpk('F', body.ToArray());
     }
 
+    /// <summary>A SQPK 'D' (DeleteData) command against a SqPack .dat, by (main, sub, file) triple.</summary>
+    public PatchBuilder DeleteData(ushort mainId, ushort subId, uint fileId, uint blockOffset, uint blockNumber)
+    {
+        var body = new List<byte> { 0, 0, 0 }; // alignment
+        body.AddRange(Be(mainId));
+        body.AddRange(Be(subId));
+        body.AddRange(Be(fileId));
+        body.AddRange(Be(blockOffset));
+        body.AddRange(Be(blockNumber));
+        body.AddRange(new byte[4]); // reserved
+        return Sqpk('D', body.ToArray());
+    }
+
     public PatchBuilder EndOfFile() => Chunk("EOF_", ReadOnlySpan<byte>.Empty);
 
     public byte[] Build() => _bytes.ToArray();
