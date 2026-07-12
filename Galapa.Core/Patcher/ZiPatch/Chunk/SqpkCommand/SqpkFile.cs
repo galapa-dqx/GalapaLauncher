@@ -73,6 +73,9 @@ internal sealed class SqpkFile(BinaryReader reader, long offset, long size)
     {
         switch (Operation)
         {
+            // DQXUpdater treats any op that isn't R/D/M as AddFile (verified in
+            // ZiPatchApply::onSqpkFile -> sub_4281b0: it early-returns for 'D'/'R', skips the
+            // block write for 'M', and otherwise falls into AddFile), so default shares this arm.
             case OperationKind.AddFile:
             default:
                 TargetFile.CreateDirectoryTree(config.GamePath);
@@ -91,8 +94,10 @@ internal sealed class SqpkFile(BinaryReader reader, long offset, long size)
                 break;
 
             case OperationKind.RemoveAll:
+                // GetAllExpansionFiles yields absolute paths, but SqexFile.Delete re-roots on
+                // GamePath — so pass each path relative to GamePath, not the absolute one.
                 foreach (var file in SqexFile.GetAllExpansionFiles(config.GamePath, ExpansionId).Where(RemoveAllFilter))
-                    new SqexFile(file).Delete(config.Store, config.GamePath);
+                    new SqexFile(System.IO.Path.GetRelativePath(config.GamePath, file)).Delete(config.Store, config.GamePath);
 
                 break;
 
