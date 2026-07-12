@@ -142,6 +142,25 @@ internal sealed class PatchBuilder
         return b.ToArray();
     }
 
+    /// <summary>
+    /// A deflate block that lies about its decompressed size — the data inflates to
+    /// <paramref name="data"/>.Length but the header declares <paramref name="declaredDecompressedSize"/>.
+    /// Used to exercise the decompression-bomb guard.
+    /// </summary>
+    public static byte[] OversizedDeflateBlock(byte[] data, uint declaredDecompressedSize)
+    {
+        var deflated = Deflate(data);
+        var total = Align(deflated.Length);
+        var b = new List<byte>();
+        b.AddRange(Le(0x10));                     // headerSize
+        b.AddRange(Le(0u));                       // reserved
+        b.AddRange(Le((uint)deflated.Length));    // compressedSize
+        b.AddRange(Le(declaredDecompressedSize)); // decompressedSize (deliberately wrong)
+        b.AddRange(deflated);
+        b.AddRange(new byte[total - 16 - deflated.Length]);
+        return b.ToArray();
+    }
+
     private static int Align(int size) => (size + 143) & ~0x7F;
 
     private static byte[] Deflate(byte[] data)

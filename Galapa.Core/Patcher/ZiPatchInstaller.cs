@@ -49,6 +49,11 @@ public static class ZiPatchInstaller
     /// <summary>
     /// Applies <paramref name="patchPaths"/> in order into <paramref name="gamePath"/>.
     /// Patches must be supplied oldest-to-newest. Returns one result per patch, in order.
+    ///
+    /// A patch that aborts does NOT stop the chain: a DQX abort only skips content for a repository
+    /// this install doesn't have, and later patches build on the repositories that ARE present
+    /// (which were applied in full), so continuing matches DQXUpdater byte-for-byte across the whole
+    /// 1.6→current chain. A caller that wants stop-on-abort can inspect the returned results and stop.
     /// </summary>
     public static IReadOnlyList<ZiPatchApplyResult> InstallPatches(IEnumerable<string> patchPaths, string gamePath, Action<ZiPatch.Chunk.ZiPatchChunk>? progress = null)
     {

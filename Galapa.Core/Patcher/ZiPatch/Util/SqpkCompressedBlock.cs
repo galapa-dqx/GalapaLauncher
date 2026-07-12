@@ -53,12 +53,36 @@ internal sealed class SqpkCompressedBlock
         if (IsCompressed)
         {
             using var stream = new DeflateStream(new MemoryStream(CompressedBlock), CompressionMode.Decompress);
-            stream.CopyTo(outStream);
+            // Copy exactly DecompressedSize bytes — no more, no less. A crafted block could otherwise
+            // declare a small size but supply deflate data that inflates far beyond it (a decompression
+            // bomb), growing the target file until the disk fills. A legitimate block inflates to
+            // exactly this size, so this is transparent to real patches.
+            CopyExactly(stream, outStream, DecompressedSize);
         }
         else
         {
             using var stream = new MemoryStream(CompressedBlock);
             stream.CopyTo(outStream);
         }
+    }
+
+    private static void CopyExactly(Stream source, Stream destination, int count)
+    {
+        var buffer = new byte[81920];
+        var remaining = count;
+
+        while (remaining > 0)
+        {
+            var read = source.Read(buffer, 0, Math.Min(buffer.Length, remaining));
+            if (read == 0)
+                throw new ZiPatchException("compressed block inflated to fewer bytes than declared.");
+
+            destination.Write(buffer, 0, read);
+            remaining -= read;
+        }
+
+        // Anything beyond DecompressedSize means the block lied about its size — reject it.
+        if (source.ReadByte() != -1)
+            throw new ZiPatchException("compressed block inflated beyond its declared size.");
     }
 }
