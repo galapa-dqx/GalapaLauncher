@@ -106,7 +106,7 @@ internal sealed class SqpkFile(BinaryReader reader, long offset, long size)
                 break;
 
             case OperationKind.MakeDirTree:
-                Directory.CreateDirectory(config.GamePath + "/" + TargetFile.RelativePath);
+                Directory.CreateDirectory(SqexFile.ResolveUnderBase(config.GamePath, TargetFile.RelativePath));
                 break;
         }
     }

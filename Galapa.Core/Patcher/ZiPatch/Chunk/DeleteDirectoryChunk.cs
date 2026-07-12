@@ -19,7 +19,7 @@ public sealed class DeleteDirectoryChunk(BinaryReader reader, long offset, long 
     }
 
     public override void ApplyChunk(ZiPatchConfig config) =>
-        Directory.Delete($"{config.GamePath}/{DirName.TrimStart('/', '\\')}");
+        Directory.Delete(SqexFile.ResolveUnderBase(config.GamePath, DirName));
 
     public override string ToString() => $"{TypeName}:{DirName}";
 }

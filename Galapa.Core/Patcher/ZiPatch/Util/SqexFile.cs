@@ -18,19 +18,19 @@ public class SqexFile
     }
 
     public SqexFileStream OpenStream(string basePath, FileMode mode, int tries = 5, int sleeptime = 1) =>
-        SqexFileStream.WaitForStream($@"{basePath}/{RelativePath}", mode, tries, sleeptime);
+        SqexFileStream.WaitForStream(ResolveUnderBase(basePath, RelativePath), mode, tries, sleeptime);
 
     public SqexFileStream OpenStream(SqexFileStreamStore store, string basePath, FileMode mode,
                                      int tries = 5, int sleeptime = 1) =>
-        store.GetStream($@"{basePath}/{RelativePath}", mode, tries, sleeptime);
+        store.GetStream(ResolveUnderBase(basePath, RelativePath), mode, tries, sleeptime);
 
     public void Delete(SqexFileStreamStore? store, string basePath, int tries = 5, int sleeptime = 1)
     {
-        var path = $"{basePath}/{RelativePath}";
+        var path = ResolveUnderBase(basePath, RelativePath);
 
         while (File.Exists(path))
         {
-            store?.CloseStream($"{basePath}/{RelativePath}");
+            store?.CloseStream(path);
 
             try
             {
@@ -53,9 +53,30 @@ public class SqexFile
 
     public void CreateDirectoryTree(string basePath)
     {
-        var dirName = System.IO.Path.GetDirectoryName($@"{basePath}/{RelativePath}");
+        var dirName = System.IO.Path.GetDirectoryName(ResolveUnderBase(basePath, RelativePath));
         if (dirName != null)
             Directory.CreateDirectory(dirName);
+    }
+
+    /// <summary>
+    /// Resolves <paramref name="relativePath"/> under <paramref name="basePath"/> and verifies the
+    /// result stays inside <paramref name="basePath"/>. Guards against a patch using ".." segments
+    /// (or an absolute path) to escape the game root — a path-traversal / "zip-slip" defence.
+    /// Legitimate DQX patches never trip this; a path that escapes throws <see cref="ZiPatchException"/>.
+    /// </summary>
+    public static string ResolveUnderBase(string basePath, string relativePath)
+    {
+        var root = System.IO.Path.GetFullPath(basePath);
+        var full = System.IO.Path.GetFullPath(System.IO.Path.Combine(root, relativePath.TrimStart('/', '\\')));
+
+        var rootWithSep = root.EndsWith(System.IO.Path.DirectorySeparatorChar)
+            ? root
+            : root + System.IO.Path.DirectorySeparatorChar;
+
+        if (full != root && !full.StartsWith(rootWithSep, StringComparison.OrdinalIgnoreCase))
+            throw new ZiPatchException($"patch path escapes the game root: {relativePath}");
+
+        return full;
     }
 
     public override string ToString() => RelativePath;

@@ -19,7 +19,7 @@ public sealed class AddDirectoryChunk(BinaryReader reader, long offset, long siz
     }
 
     public override void ApplyChunk(ZiPatchConfig config) =>
-        Directory.CreateDirectory($"{config.GamePath}/{DirName.TrimStart('/', '\\')}");
+        Directory.CreateDirectory(SqexFile.ResolveUnderBase(config.GamePath, DirName));
 
     public override string ToString() => $"{TypeName}:{DirName}";
 }
