@@ -1,0 +1,168 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:controls="using:Galapa.UI.Controls">
+
+    <!--
+        Self-contained card surface brushes. Defined here so Galapa.UI does not depend on the
+        host application's theme exposing specific WinUI/Fluent resource keys (which may resolve
+        to null). Theme-variant aware so cards look right in both light and dark.
+    -->
+    <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Light">
+            <SolidColorBrush x:Key="GalapaCardBackgroundBrush" Color="#F6F6F6" />
+            <SolidColorBrush x:Key="GalapaCardHoverBrush" Color="#EDEDED" />
+            <SolidColorBrush x:Key="GalapaCardBorderBrush" Color="#E0E0E0" />
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Dark">
+            <SolidColorBrush x:Key="GalapaCardBackgroundBrush" Color="#2B2B2B" />
+            <SolidColorBrush x:Key="GalapaCardHoverBrush" Color="#363636" />
+            <SolidColorBrush x:Key="GalapaCardBorderBrush" Color="#3A3A3A" />
+        </ResourceDictionary>
+    </ResourceDictionary.ThemeDictionaries>
+
+    <!-- SettingsCard Template -->
+    <ControlTheme x:Key="{x:Type controls:SettingsCard}" TargetType="controls:SettingsCard">
+        <Setter Property="Background" Value="{DynamicResource GalapaCardBackgroundBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource GalapaCardBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="Padding" Value="16" />
+        <Setter Property="MinHeight" Value="68" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}"
+                        CornerRadius="{TemplateBinding CornerRadius}"
+                        Padding="{TemplateBinding Padding}">
+                    <Grid ColumnDefinitions="Auto,*,Auto">
+                        <!-- Icon -->
+                        <ContentPresenter Name="PART_IconPresenter"
+                                          Margin="0,0,16,0"
+                                          VerticalAlignment="Center"
+                                          Content="{TemplateBinding Icon}"
+                                          IsVisible="{TemplateBinding Icon, Converter={x:Static ObjectConverters.IsNotNull}}" />
+
+                        <!-- Header and Description -->
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <TextBlock Name="PART_Header"
+                                       Text="{TemplateBinding Header}"
+                                       FontWeight="SemiBold"
+                                       IsVisible="{TemplateBinding Header, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                            <TextBlock Name="PART_Description"
+                                       Text="{TemplateBinding Description}"
+                                       Opacity="0.7"
+                                       TextWrapping="Wrap"
+                                       IsVisible="{TemplateBinding Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                        </StackPanel>
+
+                        <!-- Action Content -->
+                        <ContentPresenter Name="PART_ActionContent"
+                                          Grid.Column="2"
+                                          VerticalAlignment="Center"
+                                          Content="{TemplateBinding ActionContent}"
+                                          IsVisible="{TemplateBinding ActionContent, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                    </Grid>
+                </Border>
+            </ControlTemplate>
+        </Setter>
+
+        <!-- Clickable state -->
+        <Style Selector="^:clickable">
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="^:clickable:pointerover">
+            <Setter Property="Background" Value="{DynamicResource GalapaCardHoverBrush}" />
+        </Style>
+        <Style Selector="^:clickable:pressed">
+            <Setter Property="Background" Value="{DynamicResource GalapaCardBackgroundBrush}" />
+            <Setter Property="Opacity" Value="0.8" />
+        </Style>
+    </ControlTheme>
+
+    <!-- SettingsExpander Template -->
+    <ControlTheme x:Key="{x:Type controls:SettingsExpander}" TargetType="controls:SettingsExpander">
+        <Setter Property="Background" Value="{DynamicResource GalapaCardBackgroundBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource GalapaCardBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="Padding" Value="16" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}"
+                        CornerRadius="{TemplateBinding CornerRadius}">
+                    <StackPanel>
+                        <!-- Header Row. MinHeight matches SettingsCard's 68px content height
+                             (68 minus the 16px top/bottom margin applied from Padding). -->
+                        <Grid ColumnDefinitions="Auto,*,Auto,Auto" MinHeight="36" Margin="{TemplateBinding Padding}">
+                            <!-- Icon -->
+                            <ContentPresenter Name="PART_IconPresenter"
+                                              Margin="0,0,16,0"
+                                              VerticalAlignment="Center"
+                                              Content="{TemplateBinding Icon}"
+                                              IsVisible="{TemplateBinding Icon, Converter={x:Static ObjectConverters.IsNotNull}}" />
+
+                            <!-- Header and Description -->
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Name="PART_Header"
+                                           Text="{TemplateBinding Header}"
+                                           FontWeight="SemiBold"
+                                           IsVisible="{TemplateBinding Header, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                <TextBlock Name="PART_Description"
+                                           Text="{TemplateBinding Description}"
+                                           Opacity="0.7"
+                                           TextWrapping="Wrap"
+                                           IsVisible="{TemplateBinding Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                            </StackPanel>
+
+                            <!-- Action Content -->
+                            <ContentPresenter Name="PART_ActionContent"
+                                              Grid.Column="2"
+                                              VerticalAlignment="Center"
+                                              Margin="0,0,8,0"
+                                              Content="{TemplateBinding ActionContent}"
+                                              IsVisible="{TemplateBinding ActionContent, Converter={x:Static ObjectConverters.IsNotNull}}" />
+
+                            <!-- Expand Button -->
+                            <ToggleButton Name="PART_ExpandButton"
+                                          Grid.Column="3"
+                                          IsChecked="{TemplateBinding IsExpanded}"
+                                          Background="Transparent"
+                                          BorderThickness="0"
+                                          Padding="8">
+                                <PathIcon Data="M4.5 8.5L8 12L11.5 8.5"
+                                          Width="12" Height="12">
+                                    <PathIcon.RenderTransform>
+                                        <RotateTransform Angle="0" />
+                                    </PathIcon.RenderTransform>
+                                </PathIcon>
+                            </ToggleButton>
+                        </Grid>
+
+                        <!-- Expander Content -->
+                        <Border Name="PART_ExpanderContent"
+                                IsVisible="False"
+                                BorderThickness="0,1,0,0"
+                                BorderBrush="{DynamicResource GalapaCardBorderBrush}"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter Content="{TemplateBinding ExpanderContent}" />
+                        </Border>
+                    </StackPanel>
+                </Border>
+            </ControlTemplate>
+        </Setter>
+
+        <!-- Expanded state -->
+        <Style Selector="^:expanded /template/ Border#PART_ExpanderContent">
+            <Setter Property="IsVisible" Value="True" />
+        </Style>
+        <Style Selector="^:expanded /template/ ToggleButton#PART_ExpandButton PathIcon">
+            <Setter Property="RenderTransform">
+                <RotateTransform Angle="180" />
+            </Setter>
+        </Style>
+    </ControlTheme>
+
+</ResourceDictionary>

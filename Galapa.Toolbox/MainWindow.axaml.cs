@@ -18,6 +18,7 @@ public partial class MainWindow : Window
             this.ContentArea.Content = selectedItem.Tag switch
             {
                 "Home" => new HomePage(),
+                "Launcher" => new LauncherPage(),
                 "SaveExplorer" => new SaveExplorerPage(),
                 "GameExplorer" => new GameExplorerPage(),
                 "Obfuscator" => new ObfuscatorToolPage(),

@@ -12,6 +12,11 @@
     </Application.Styles>
 
     <Application.Resources>
-        <conv:BoolToObjectOrNullConverter x:Key="BoolToObjectOrNull" />
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceInclude Source="avares://Galapa.UI/Themes/Generic.axaml" />
+            </ResourceDictionary.MergedDictionaries>
+            <conv:BoolToObjectOrNullConverter x:Key="BoolToObjectOrNull" />
+        </ResourceDictionary>
     </Application.Resources>
 </Application>

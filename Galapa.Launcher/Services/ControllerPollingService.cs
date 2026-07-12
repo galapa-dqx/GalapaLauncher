@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Avalonia.Threading;
 using Galapa.Launcher.Models;
 using Microsoft.Extensions.Logging;
+using SharpGen.Runtime;
 using Vortice.DirectInput;
 
 namespace Galapa.Launcher.Services;
@@ -17,6 +18,11 @@ namespace Galapa.Launcher.Services;
 public class ControllerPollingService : IDisposable
 {
     private const int PollIntervalMs = 8; // ~120Hz
+
+    // DirectInput HRESULTs signalling the device is no longer readable (e.g. unplugged).
+    // Expected during normal use, not an error worth a stack trace.
+    private const int DIERR_INPUTLOST = unchecked((int)0x8007001E);
+    private const int DIERR_NOTACQUIRED = unchecked((int)0x8007001F);
 
     private readonly ILogger<ControllerPollingService> _logger;
     private readonly ControllerListService _controllerListService;
@@ -205,6 +211,16 @@ public class ControllerPollingService : IDisposable
 
                     this.ProcessStateChange(controller, newState, now);
                     controller.LastState = newState;
+                }
+                catch (SharpGenException ex) when (
+                    ex.ResultCode.Code is DIERR_INPUTLOST or DIERR_NOTACQUIRED)
+                {
+                    // Device access was lost, almost always because the controller was
+                    // unplugged. SDL3 will also fire a disconnect, but releasing here on
+                    // the first lost poll stops the 120Hz loop re-throwing every tick.
+                    this._logger.LogDebug("Lost access to controller {Name} (likely unplugged); releasing",
+                        controller.Name);
+                    this.ReleaseController(controller);
                 }
                 catch (Exception ex)
                 {

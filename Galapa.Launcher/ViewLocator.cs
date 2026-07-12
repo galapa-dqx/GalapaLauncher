@@ -1,6 +1,7 @@
 using System;
 using Avalonia.Controls;
 using Avalonia.Controls.Templates;
+using CommunityToolkit.Mvvm.ComponentModel;
 using DryIoc;
 using Galapa.Launcher.ViewModels;
 using Galapa.Launcher.ViewModels.AppFrame;
@@ -49,6 +50,9 @@ public class ViewLocator : IDataTemplate
             LoginCompletedPageViewModel => this.ResolveView<LoginCompletedPage>(),
             // SettingsFrame
             SettingsFrameViewModel => this.ResolveView<SettingsFrame>(),
+            GeneralSettingsPageViewModel => this.ResolveView<GeneralSettingsPage>(),
+            GameSettingsPageViewModel => this.ResolveView<GameSettingsPage>(),
+            AboutPageViewModel => this.ResolveView<AboutPage>(),
 
             // Fallback for unknown ViewModels
             _ => new TextBlock { Text = $"View not found for: {param.GetType().Name}" }
@@ -57,7 +61,11 @@ public class ViewLocator : IDataTemplate
 
     public bool Match(object? data)
     {
-        return true;
+        // Only act as a template for view models. Returning true for everything would intercept
+        // plain content like strings (e.g. a Button's string Content), routing them through this
+        // locator and producing "View not found" placeholders. All view models derive from
+        // ObservableObject (CommunityToolkit.Mvvm).
+        return data is ObservableObject;
     }
 
     /// <summary>
