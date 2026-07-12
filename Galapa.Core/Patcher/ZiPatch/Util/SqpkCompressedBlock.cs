@@ -39,12 +39,12 @@ internal sealed class SqpkCompressedBlock
 
         if (IsCompressed)
         {
-            CompressedBlock = reader.ReadBytes(CompressedBlockLength - HeaderSize);
+            CompressedBlock = reader.ReadBytesRequired(CompressedBlockLength - HeaderSize);
         }
         else
         {
-            CompressedBlock = reader.ReadBytes(DecompressedSize);
-            reader.ReadBytes(CompressedBlockLength - HeaderSize - DecompressedSize); // alignment padding
+            CompressedBlock = reader.ReadBytesRequired(DecompressedSize);
+            reader.ReadBytesRequired(CompressedBlockLength - HeaderSize - DecompressedSize); // alignment padding
         }
     }
 

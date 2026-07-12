@@ -21,7 +21,7 @@ public sealed class SqpackDatFile(BinaryReader reader) : SqpackFile(reader)
             return false;
 
         var prior = $"{base.GetFileName(platform)}.dat{FileId - 1}";
-        return !File.Exists($"{basePath}/{prior}");
+        return !File.Exists(ResolveUnderBase(basePath, prior));
     }
 
     /// <summary>

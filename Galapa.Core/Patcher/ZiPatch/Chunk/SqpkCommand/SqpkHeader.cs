@@ -51,7 +51,7 @@ internal sealed class SqpkHeader(BinaryReader reader, long offset, long size)
             : new SqpackIndexFile(Reader);
 
         HeaderDataSourceOffset = Offset + Reader.BaseStream.Position;
-        HeaderData = Reader.ReadBytes(HeaderSize);
+        HeaderData = Reader.ReadBytesRequired(HeaderSize);
     }
 
     public override void ApplyChunk(ZiPatchConfig config)

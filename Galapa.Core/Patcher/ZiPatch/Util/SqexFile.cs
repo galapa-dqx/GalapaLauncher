@@ -49,7 +49,7 @@ public class SqexFile
         }
     }
 
-    public bool Exists(string basePath) => File.Exists($@"{basePath}/{RelativePath}");
+    public bool Exists(string basePath) => File.Exists(ResolveUnderBase(basePath, RelativePath));
 
     public void CreateDirectoryTree(string basePath)
     {
@@ -93,8 +93,8 @@ public class SqexFile
     {
         var xpacPath = GetExpansionFolder((byte)expansionId);
 
-        var sqpack = $@"{fullPath}\sqpack\{xpacPath}";
-        var movie = $@"{fullPath}\movie\{xpacPath}";
+        var sqpack = $"{fullPath}/sqpack/{xpacPath}";
+        var movie = $"{fullPath}/movie/{xpacPath}";
 
         var files = Enumerable.Empty<string>();
 

@@ -29,7 +29,7 @@ internal sealed class SqpkAddData(BinaryReader reader, long offset, long size)
         BlockDeleteNumber = (long)Reader.ReadUInt32BE() << 7;
 
         BlockDataSourceOffset = Offset + Reader.BaseStream.Position;
-        BlockData = Reader.ReadBytes(checked((int)BlockNumber));
+        BlockData = Reader.ReadBytesRequired(checked((int)BlockNumber));
     }
 
     public override void ApplyChunk(ZiPatchConfig config)
