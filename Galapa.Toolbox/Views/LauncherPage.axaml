@@ -7,49 +7,67 @@
 
     <ScrollViewer>
         <StackPanel Margin="20" Spacing="24">
-            <TextBlock Text="Debug Launcher" FontSize="24" FontWeight="Bold"/>
-            <TextBlock Text="Launch DQXGame.exe with various debug configurations." Foreground="Gray"/>
+            <TextBlock Text="Debug Launcher" FontSize="24" FontWeight="Bold" />
+            <TextBlock Text="Launch DQXGame.exe with various debug configurations." Foreground="Gray" />
 
             <Border Background="#20808080" CornerRadius="8" Padding="20">
                 <StackPanel Spacing="16">
-                    <TextBlock Text="Quick Launch (No Login)" FontSize="16" FontWeight="SemiBold"/>
+                    <TextBlock Text="Quick Launch (No Login)" FontSize="16" FontWeight="SemiBold" />
                     <TextBlock TextWrapping="Wrap" Foreground="Gray"
-                               Text="Launches the game with a placeholder session ID. The game will boot but won't connect to servers. Useful for testing if the game executable works."/>
+                               Text="Launches the game with a placeholder session ID. The game will boot but won't connect to servers. Useful for testing if the game executable works." />
+
+                    <CheckBox x:Name="StartPausedCheckBox" Content="Start Paused (for debugger attachment)" />
 
                     <StackPanel Orientation="Horizontal" Spacing="12">
                         <Button Content="Launch Game"
                                 Click="LaunchWithoutLogin_Click"
-                                Padding="16,8"/>
+                                Padding="16,8" />
+                        <Button x:Name="ResumeButton"
+                                Content="Resume"
+                                Click="Resume_Click"
+                                Padding="16,8"
+                                IsVisible="False" />
                         <TextBlock x:Name="StatusText"
                                    VerticalAlignment="Center"
-                                   Foreground="Green"/>
+                                   Foreground="Green" />
                     </StackPanel>
                 </StackPanel>
             </Border>
 
             <Border Background="#20808080" CornerRadius="8" Padding="20">
                 <StackPanel Spacing="16">
-                    <TextBlock Text="Custom Session Launch" FontSize="16" FontWeight="SemiBold"/>
+                    <TextBlock Text="Custom Session Launch" FontSize="16" FontWeight="SemiBold" />
                     <TextBlock TextWrapping="Wrap" Foreground="Gray"
-                               Text="Launch with a custom session ID (56 hex characters) and player number."/>
+                               Text="Launch with a custom session ID (56 hex characters) and player number." />
 
-                    <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="8" ColumnSpacing="12">
-                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Session ID:" VerticalAlignment="Center"/>
+                    <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="8"
+                          ColumnSpacing="12">
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Session ID:" VerticalAlignment="Center" />
                         <TextBox Grid.Row="0" Grid.Column="1" x:Name="CustomSessionId"
                                  Watermark="56 hex characters (e.g., 00000000...)"
-                                 MaxLength="56"/>
+                                 MaxLength="56" />
 
-                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Player Number:" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Player Number:" VerticalAlignment="Center" />
                         <NumericUpDown Grid.Row="1" Grid.Column="1" x:Name="CustomPlayerNumber"
                                        Value="1" Minimum="1" Maximum="99"
-                                       HorizontalAlignment="Left" Width="100"/>
+                                       HorizontalAlignment="Left" Width="100" />
 
-                        <Button Grid.Row="2" Grid.Column="1" Content="Launch with Custom Session"
-                                Click="LaunchCustomSession_Click"
-                                Padding="16,8" HorizontalAlignment="Left"/>
+                        <CheckBox Grid.Row="2" Grid.Column="1" x:Name="CustomStartPausedCheckBox"
+                                  Content="Start Paused (for debugger attachment)" />
+
+                        <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Spacing="12">
+                            <Button Content="Launch with Custom Session"
+                                    Click="LaunchCustomSession_Click"
+                                    Padding="16,8" />
+                            <Button x:Name="CustomResumeButton"
+                                    Content="Resume"
+                                    Click="CustomResume_Click"
+                                    Padding="16,8"
+                                    IsVisible="False" />
+                        </StackPanel>
                     </Grid>
 
-                    <TextBlock x:Name="CustomStatusText" Foreground="Orange"/>
+                    <TextBlock x:Name="CustomStatusText" Foreground="Orange" />
                 </StackPanel>
             </Border>
         </StackPanel>
