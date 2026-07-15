@@ -25,14 +25,18 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      # Galapa.slnf is Galapa.sln minus the native C++ project (Talon.Boot.vcxproj),
+      # which the .NET SDK cannot build. The boot DLL is built separately with MSBuild
+      # + the C++ workload (follow-up CI job); Talon.Injector's copy of it is guarded by
+      # an Exists() condition so this managed build stays green without it.
       - name: 📦 Install dependencies
-        run: dotnet restore
+        run: dotnet restore Galapa.slnf
 
       - name: 🛠 Build solution
-        run: dotnet build --no-restore --configuration Release
+        run: dotnet build Galapa.slnf --no-restore --configuration Release
 
       - name: 🧪 Run tests with coverage
-        run: dotnet test --no-build --configuration Release --collect:"XPlat Code Coverage"
+        run: dotnet test Galapa.slnf --no-build --configuration Release --collect:"XPlat Code Coverage"
 
       - name: 🛠 Publish Galapa.Launcher for x64
         run: dotnet publish Galapa.Launcher --configuration Release -r win-x64 --self-contained false -o artifacts/Galapa.Launcher-x64
