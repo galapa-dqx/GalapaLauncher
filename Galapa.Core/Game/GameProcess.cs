@@ -7,10 +7,13 @@ using Galapa.Core.Configuration;
 
 namespace Galapa.Core.Game;
 
-public class GameProcess(Settings settings)
+public partial class GameProcess(Settings settings)
 {
+    private const uint CREATE_SUSPENDED = 0x00000004;
+
     private static readonly char[] SqEx = "SqEx".ToCharArray();
     private Process? _process;
+    private nint _suspendedThreadHandle;
 
     public string? SessionId { get; set; }
 
@@ -39,6 +42,125 @@ public class GameProcess(Settings settings)
         this._process.EnableRaisingEvents = true;
         this._process.Exited += this.OnProcessExited;
         this._process.Start();
+    }
+
+    /// <summary>
+    ///     Starts the game process in a suspended state for debugger attachment.
+    ///     Call <see cref="Resume" /> after attaching a debugger to continue execution.
+    /// </summary>
+    public void StartSuspended()
+    {
+        if (this.SessionId is null) throw new InvalidOperationException("SessionId is null");
+        if (settings.GameFolderPath is null) throw new InvalidOperationException("GameFolderPath is null");
+
+        var gamePath = Path.Combine(settings.GameFolderPath, "game", "DQXGame.exe");
+        var workingDir = Path.Combine(settings.GameFolderPath, "game");
+        var commandLine = $"\"{gamePath}\" {this.GetArguments()}";
+
+        var startupInfo = new STARTUPINFO { cb = Marshal.SizeOf<STARTUPINFO>() };
+
+        var success = CreateProcess(
+            null,
+            commandLine,
+            nint.Zero,
+            nint.Zero,
+            false,
+            CREATE_SUSPENDED,
+            nint.Zero,
+            workingDir,
+            ref startupInfo,
+            out var processInfo);
+
+        if (!success)
+        {
+            var error = Marshal.GetLastWin32Error();
+            throw new InvalidOperationException($"Failed to create suspended process. Error code: {error}");
+        }
+
+        this._suspendedThreadHandle = processInfo.hThread;
+        this._process = Process.GetProcessById((int)processInfo.dwProcessId);
+        this._process.EnableRaisingEvents = true;
+        this._process.Exited += this.OnProcessExited;
+
+        // Close the process handle since we have a Process object now
+        CloseHandle(processInfo.hProcess);
+    }
+
+    /// <summary>
+    ///     Resumes a process that was started with <see cref="StartSuspended" />.
+    /// </summary>
+    public void Resume()
+    {
+        if (this._suspendedThreadHandle == nint.Zero)
+            throw new InvalidOperationException("No suspended thread to resume. Did you call StartSuspended?");
+
+        ResumeThread(this._suspendedThreadHandle);
+        CloseHandle(this._suspendedThreadHandle);
+        this._suspendedThreadHandle = nint.Zero;
+    }
+
+    /// <summary>
+    ///     Gets whether the process is currently suspended.
+    /// </summary>
+    public bool IsSuspended => this._suspendedThreadHandle != nint.Zero;
+
+    /// <summary>
+    ///     Gets the process ID if the process has been started.
+    /// </summary>
+    public int? ProcessId => this._process?.Id;
+
+    [LibraryImport("kernel32.dll", EntryPoint = "CreateProcessW", SetLastError = true,
+        StringMarshalling = StringMarshalling.Utf16)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool CreateProcess(
+        string? lpApplicationName,
+        string lpCommandLine,
+        nint lpProcessAttributes,
+        nint lpThreadAttributes,
+        [MarshalAs(UnmanagedType.Bool)] bool bInheritHandles,
+        uint dwCreationFlags,
+        nint lpEnvironment,
+        string lpCurrentDirectory,
+        ref STARTUPINFO lpStartupInfo,
+        out PROCESS_INFORMATION lpProcessInformation);
+
+    [LibraryImport("kernel32.dll")]
+    private static partial uint ResumeThread(nint hThread);
+
+    [LibraryImport("kernel32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool CloseHandle(nint hObject);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct STARTUPINFO
+    {
+        public int cb;
+        public nint lpReserved;
+        public nint lpDesktop;
+        public nint lpTitle;
+        public int dwX;
+        public int dwY;
+        public int dwXSize;
+        public int dwYSize;
+        public int dwXCountChars;
+        public int dwYCountChars;
+        public int dwFillAttribute;
+        public int dwFlags;
+        public short wShowWindow;
+        public short cbReserved2;
+        public nint lpReserved2;
+        public nint hStdInput;
+        public nint hStdOutput;
+        public nint hStdError;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PROCESS_INFORMATION
+    {
+        public nint hProcess;
+        public nint hThread;
+        public uint dwProcessId;
+        public uint dwThreadId;
     }
 
     public async Task WaitForExitAsync()
