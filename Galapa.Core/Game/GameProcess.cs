@@ -45,17 +45,39 @@ public partial class GameProcess(Settings settings)
     }
 
     /// <summary>
-    ///     Starts the game process in a suspended state for debugger attachment.
-    ///     Call <see cref="Resume" /> after attaching a debugger to continue execution.
+    ///     Working directory for the game process (the <c>game</c> subfolder of the install).
     /// </summary>
-    public void StartSuspended()
+    public string WorkingDirectory
+    {
+        get
+        {
+            if (settings.GameFolderPath is null) throw new InvalidOperationException("GameFolderPath is null");
+            return Path.Combine(settings.GameFolderPath, "game");
+        }
+    }
+
+    /// <summary>
+    ///     Builds the full command line (<c>"exe path" arguments</c>) that <see cref="Start" /> and
+    ///     <see cref="StartSuspended" /> use, without launching. Lets an external launcher (e.g. the
+    ///     Talon injector) spawn the game itself with identical DQX arguments.
+    /// </summary>
+    public string BuildCommandLine()
     {
         if (this.SessionId is null) throw new InvalidOperationException("SessionId is null");
         if (settings.GameFolderPath is null) throw new InvalidOperationException("GameFolderPath is null");
 
         var gamePath = Path.Combine(settings.GameFolderPath, "game", "DQXGame.exe");
-        var workingDir = Path.Combine(settings.GameFolderPath, "game");
-        var commandLine = $"\"{gamePath}\" {this.GetArguments()}";
+        return $"\"{gamePath}\" {this.GetArguments()}";
+    }
+
+    /// <summary>
+    ///     Starts the game process in a suspended state for debugger attachment.
+    ///     Call <see cref="Resume" /> after attaching a debugger to continue execution.
+    /// </summary>
+    public void StartSuspended()
+    {
+        var commandLine = this.BuildCommandLine();
+        var workingDir = this.WorkingDirectory;
 
         var startupInfo = new STARTUPINFO { cb = Marshal.SizeOf<STARTUPINFO>() };
 

@@ -17,6 +17,9 @@
                                Text="Launches the game with a placeholder session ID. The game will boot but won't connect to servers. Useful for testing if the game executable works." />
 
                     <CheckBox x:Name="StartPausedCheckBox" Content="Start Paused (for debugger attachment)" />
+                    <CheckBox x:Name="InjectTalonCheckBox"
+                              Content="Inject Talon (loads Talon.Boot.dll into the game)"
+                              ToolTip.Tip="Launches via the bundled x86 Talon.Injector. Overrides Start Paused (Talon resumes the game itself)." />
 
                     <StackPanel Orientation="Horizontal" Spacing="12">
                         <Button Content="Launch Game"
@@ -52,8 +55,13 @@
                                        Value="1" Minimum="1" Maximum="99"
                                        HorizontalAlignment="Left" Width="100" />
 
-                        <CheckBox Grid.Row="2" Grid.Column="1" x:Name="CustomStartPausedCheckBox"
-                                  Content="Start Paused (for debugger attachment)" />
+                        <StackPanel Grid.Row="2" Grid.Column="1" Spacing="8">
+                            <CheckBox x:Name="CustomStartPausedCheckBox"
+                                      Content="Start Paused (for debugger attachment)" />
+                            <CheckBox x:Name="CustomInjectTalonCheckBox"
+                                      Content="Inject Talon (loads Talon.Boot.dll into the game)"
+                                      ToolTip.Tip="Launches via the bundled x86 Talon.Injector. Overrides Start Paused (Talon resumes the game itself)." />
+                        </StackPanel>
 
                         <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Spacing="12">
                             <Button Content="Launch with Custom Session"
