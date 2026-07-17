@@ -231,6 +231,13 @@ typedef void* (__cdecl *PfnVfsConstruct)(const char* path, uint32_t size,
 static PfnVfsLoadResource g_orig_VfsLoadResource = nullptr;
 static char               g_override_dir[MAX_PATH] = {};
 
+// Opt-in diagnostic (TALON_VFS_CENSUS): log the path of every resource the game
+// requests through Vfs_LoadResource, capped so an asset-heavy boot can't flood
+// the log. Useful for discovering the archive-relative paths a mod would mirror.
+static bool               g_census = false;
+static volatile LONG      g_census_count = 0;
+static const LONG         kCensusCap = 400;
+
 // Our replacement. Declared __fastcall so we capture the incoming ecx (`this`);
 // edx is unused (the game's __thiscall never sets it) and the remaining four
 // params land on the stack exactly as Vfs_LoadResource's stack args do, so the
@@ -238,6 +245,12 @@ static char               g_override_dir[MAX_PATH] = {};
 static void* __fastcall hook_VfsLoadResource(void* thisPtr, void* /*edx*/,
                                              const char* path, int expansion,
                                              int mount, int mustBeZero) {
+    if (g_census && path) {
+        LONG n = InterlockedIncrement(&g_census_count);
+        if (n <= kCensusCap)
+            dbg("[census] #%ld exp=%d mount=%d path=%s\n", n, expansion, mount, path);
+    }
+
     if (thisPtr && path && g_override_dir[0]) {
         char fs[MAX_PATH];
         int n = snprintf(fs, sizeof(fs), "%s\\%s", g_override_dir, path);
@@ -415,6 +428,10 @@ static void talon_boot() {
         return;
     }
     dbg("[boot] override dir = %s\n", g_override_dir);
+
+    char censusBuf[8];
+    g_census = GetEnvironmentVariableA("TALON_VFS_CENSUS", censusBuf, sizeof(censusBuf)) > 0;
+    if (g_census) dbg("[boot] VFS census logging ENABLED (cap=%ld)\n", kCensusCap);
 
     // Spawn the watcher off the loader lock. Creating (not waiting on) a thread
     // from DllMain is safe; DisableThreadLibraryCalls suppresses its attach call.
