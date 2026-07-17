@@ -338,60 +338,52 @@ static bool region_readable(const uint8_t* addr, size_t len) {
     return true;
 }
 
-// One guarded signature scan over the main module's image (fallback for when the
-// expected RVA no longer matches, e.g. after a game patch).
-static uint8_t* scan_for_vfs(uint8_t* base) {
-    IMAGE_DOS_HEADER* dos = (IMAGE_DOS_HEADER*)base;
-    if (dos->e_magic != IMAGE_DOS_SIGNATURE) return nullptr;
-    IMAGE_NT_HEADERS* nt = (IMAGE_NT_HEADERS*)(base + dos->e_lfanew);
-    if (nt->Signature != IMAGE_NT_SIGNATURE) return nullptr;
-    uint32_t imageSize = nt->OptionalHeader.SizeOfImage;
-
-    MEMORY_BASIC_INFORMATION mbi;
-    uint8_t* addr = base;
-    uint8_t* end  = base + imageSize;
-    while (addr < end) {
-        if (VirtualQuery(addr, &mbi, sizeof(mbi)) == 0) break;
-        uint8_t* regionEnd = (uint8_t*)mbi.BaseAddress + mbi.RegionSize;
-        DWORD prot = mbi.Protect & 0xFF;
-        bool exec = (prot == PAGE_EXECUTE || prot == PAGE_EXECUTE_READ ||
-                     prot == PAGE_EXECUTE_READWRITE || prot == PAGE_EXECUTE_WRITECOPY);
-        if (mbi.State == MEM_COMMIT && exec && !(mbi.Protect & PAGE_GUARD)) {
-            uint8_t* scanEnd = (regionEnd < end ? regionEnd : end) - VFS_SIG_LEN;
-            for (uint8_t* p = (uint8_t*)mbi.BaseAddress; p <= scanEnd; p++)
-                if (sig_matches(p)) return p;
-        }
-        addr = regionEnd;
-    }
-    return nullptr;
-}
-
 // ── Unpack trigger ─────────────────────────────────────────────────────────────
-// DQX's .text is packed: at inject the target region is committed but zero-filled;
-// the packer writes the decrypted code in a few hundred ms. Rather than poll for
-// the prologue to appear, we arm a HARDWARE WRITE breakpoint at target[0] before
-// the packer runs; the resulting #DB (caught by a VEH) signals the exact moment
-// the unpacker writes our function. This is event-driven and deterministic, and
-// it survives because DQX does not scan debug registers (verified 2026-07-17).
+// DQX's .text is packed: at inject the target region is committed but zero-filled,
+// and the unpacker DECOMPRESSES it in blocks (non-linear writes), so watching a
+// single byte's write does not tell us the whole function is present. Instead we arm
+// a HARDWARE EXECUTE breakpoint at target[0] on every thread before the game runs.
+// It sits harmlessly on the zero-filled address until the game unpacks the function
+// and CALLS it — and a call cannot happen until the function is fully unpacked. The
+// resulting #DB (caught by a VEH) is our exact, poll-free signal: we install the
+// inline hook right there and resume, so the just-written E9 serves that first call.
+// This survives because DQX does not scan debug registers (verified 2026-07-17).
 //
-// The write fires when byte 0 is written, so the rest of the prologue lands micro-
-// seconds later — the watcher does a short bounded confirm before hooking. A poll
-// fallback (loudly logged) covers the case where the trigger never fires, e.g. a
-// future patch that clears DRs; per-patch testing is expected to catch that.
+// There is intentionally NO poll or scan fallback: if the trigger never fires (e.g.
+// a patch moved the function or cleared DRs) we no-op and log a re-anchor notice.
+// Per-patch testing before the injector is used is expected to catch that.
 
-// DR7 for DR0 as a 1-byte WRITE breakpoint: L0=1 (bit 0), RW0=01 (write), LEN0=00.
-static const DWORD    kDr7WriteDr0 = 0x00010001;
-static volatile LONG  g_write_armed = 0;
+// DR7 for DR0 as a 1-byte EXECUTE breakpoint: L0=1 (bit 0), RW0=00, LEN0=00.
+static const DWORD    kDr7ExecDr0  = 0x00000001;
+static volatile LONG  g_call_armed = 0;
+static volatile LONG  g_hook_done  = 0;
+static uintptr_t      g_target_va  = 0;
 static HANDLE         g_unpack_event = nullptr;
 static PVOID          g_veh_handle   = nullptr;
 
+// Install the inline hook on Vfs_LoadResource. Idempotent — the execute-BP trigger
+// can fire on more than one thread before the watcher finishes disarming.
+static void install_vfs_hook(uint8_t* target) {
+    if (InterlockedCompareExchange(&g_hook_done, 1, 0) != 0) return;
+    g_orig_VfsLoadResource = (PfnVfsLoadResource)inline_hook(target, (void*)hook_VfsLoadResource);
+    if (g_orig_VfsLoadResource)
+        dbg("[boot] hooked Vfs_LoadResource @%p, trampoline=%p, override dir=%s\n",
+            target, g_orig_VfsLoadResource, g_override_dir);
+    else
+        dbg("[boot] inline_hook failed\n");
+}
+
+// Fires on the FIRST execution of Vfs_LoadResource — by which point the function is
+// necessarily fully unpacked (you can't call a half-decompressed function). We install
+// the hook here and resume with EIP unchanged, so the freshly-written E9 at target[0]
+// immediately jumps into our hook and this very call is served.
 static LONG CALLBACK unpack_veh(EXCEPTION_POINTERS* ep) {
-    if (g_write_armed &&
+    if (g_call_armed &&
         ep->ExceptionRecord->ExceptionCode == EXCEPTION_SINGLE_STEP &&
-        (ep->ContextRecord->Dr6 & 0xF)) {
-        // The unpacker just wrote target[0]. Disarm this thread's DR so we don't
-        // re-trap, signal the watcher, and let the packer finish its copy.
-        ep->ContextRecord->Dr0 = 0;
+        (ep->ContextRecord->Dr6 & 0xF) &&
+        (uintptr_t)ep->ExceptionRecord->ExceptionAddress == g_target_va) {
+        install_vfs_hook((uint8_t*)g_target_va);
+        ep->ContextRecord->Dr0 = 0;   // disarm this thread so we don't re-trap on the E9
         ep->ContextRecord->Dr7 = 0;
         ep->ContextRecord->Dr6 = 0;
         if (g_unpack_event) SetEvent(g_unpack_event);
@@ -432,71 +424,36 @@ static void set_dr_all_threads(uintptr_t addr, DWORD dr7, DWORD selfTid) {
 
 static volatile LONG g_booted = 0;
 
-// Locate Vfs_LoadResource (via the write-BP unpack trigger, with a poll fallback)
-// and install the inline hook. Runs on its own thread so DllMain does no work under
-// the loader lock beyond spawning it.
+// Install the inline hook when the game first CALLS Vfs_LoadResource, detected purely
+// via an execute-BP trigger (no polling, no scan fallback). Runs on its own thread so
+// DllMain does no work under the loader lock beyond spawning it.
 static DWORD WINAPI watcher_thread(LPVOID) {
     uint8_t* base = (uint8_t*)GetModuleHandleA(nullptr);
     uint8_t* candidate = base + VFS_LOADRESOURCE_RVA;
     DWORD selfTid = GetCurrentThreadId();
+    g_target_va = (uintptr_t)candidate;
     dbg("[boot] watcher: module base=%p, expecting Vfs_LoadResource at %p\n", base, candidate);
 
-    uint8_t* target = nullptr;
+    // Arm an execute BP at target[0] on every thread and wait for the first call. The
+    // breakpoint sits harmlessly on the (currently zero-filled) address until the game
+    // unpacks the function and calls it — at which point the whole function is present.
+    g_unpack_event = CreateEventA(nullptr, TRUE, FALSE, nullptr);
+    g_veh_handle = AddVectoredExceptionHandler(1, unpack_veh);
+    InterlockedExchange(&g_call_armed, 1);
+    set_dr_all_threads((uintptr_t)candidate, kDr7ExecDr0, selfTid);
+    dbg("[boot] watcher: armed execute-BP trigger @%p (first call); waiting\n", candidate);
 
-    if (region_readable(candidate, VFS_SIG_LEN) && sig_matches(candidate)) {
-        // Already unpacked (we lost the race, or a future build ships unpacked).
-        target = candidate;
-        dbg("[boot] watcher: target already unpacked; hooking directly\n");
-    } else {
-        // Arm the write-BP trigger and wait for the unpacker to write target[0].
-        g_unpack_event = CreateEventA(nullptr, TRUE, FALSE, nullptr);
-        g_veh_handle = AddVectoredExceptionHandler(1, unpack_veh);
-        InterlockedExchange(&g_write_armed, 1);
-        set_dr_all_threads((uintptr_t)candidate, kDr7WriteDr0, selfTid);
-        dbg("[boot] watcher: armed write-BP trigger @%p; waiting for unpack\n", candidate);
+    DWORD wr = g_unpack_event ? WaitForSingleObject(g_unpack_event, 30000) : WAIT_FAILED;
+    InterlockedExchange(&g_call_armed, 0);
+    set_dr_all_threads(0, 0, selfTid);              // disarm every thread
+    if (g_veh_handle) { RemoveVectoredExceptionHandler(g_veh_handle); g_veh_handle = nullptr; }
+    if (g_unpack_event) { CloseHandle(g_unpack_event); g_unpack_event = nullptr; }
 
-        DWORD wr = g_unpack_event ? WaitForSingleObject(g_unpack_event, 15000) : WAIT_FAILED;
-        InterlockedExchange(&g_write_armed, 0);
-        set_dr_all_threads(0, 0, selfTid);              // disarm every thread
-        if (g_veh_handle) { RemoveVectoredExceptionHandler(g_veh_handle); g_veh_handle = nullptr; }
-        if (g_unpack_event) { CloseHandle(g_unpack_event); g_unpack_event = nullptr; }
-
-        if (wr == WAIT_OBJECT_0) {
-            // Trigger fired — the copy of our function is in flight; confirm the full
-            // prologue is present (lands within microseconds) before hooking.
-            for (int i = 0; i < 200 && !target; i++) {
-                if (region_readable(candidate, VFS_SIG_LEN) && sig_matches(candidate)) target = candidate;
-                else Sleep(1);
-            }
-            dbg(target ? "[boot] watcher: unpack-write trigger FIRED; prologue present\n"
-                       : "[boot] watcher: trigger fired but prologue never completed — will poll\n");
-        } else {
-            dbg("[boot] watcher: *** WRITE-BP TRIGGER DID NOT FIRE (wait=%lu) — FALLING BACK TO POLL ***\n", wr);
-        }
-    }
-
-    // Fallback: poll the expected address, then a one-shot signature scan.
-    for (int i = 0; i < 600 && !target; i++) {
-        if (region_readable(candidate, VFS_SIG_LEN) && sig_matches(candidate)) { target = candidate; break; }
-        Sleep(100);
-    }
-    if (!target) {
-        dbg("[boot] watcher: expected address never matched; scanning image\n");
-        target = scan_for_vfs(base);
-        if (target)
-            dbg("[boot] watcher: found by scan at %p (rva=0x%X)\n", target, (unsigned)(target - base));
-    }
-    if (!target) {
-        dbg("[boot] watcher: Vfs_LoadResource not found — Talon.Boot is a no-op this launch\n");
-        return 0;
-    }
-
-    g_orig_VfsLoadResource = (PfnVfsLoadResource)inline_hook(target, (void*)hook_VfsLoadResource);
-    if (g_orig_VfsLoadResource)
-        dbg("[boot] watcher: hooked Vfs_LoadResource @%p, trampoline=%p, override dir=%s\n",
-            target, g_orig_VfsLoadResource, g_override_dir);
+    if (wr == WAIT_OBJECT_0 && g_hook_done)
+        dbg("[boot] watcher: execute-BP trigger FIRED; hook installed on first call\n");
     else
-        dbg("[boot] watcher: inline_hook failed\n");
+        dbg("[boot] watcher: *** EXECUTE-BP TRIGGER DID NOT FIRE (wait=%lu) — not hooked; "
+            "re-anchor the RVA/signature after a game patch ***\n", wr);
     return 0;
 }
 
