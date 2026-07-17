@@ -421,6 +421,20 @@ static void talon_boot() {
         GetCurrentProcessId(), st.wYear, st.wMonth, st.wDay,
         st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
 
+    // DIAGNOSTIC: is Vfs_LoadResource already unpacked at inject time (pre-entrypoint)?
+    // If so, .text is plaintext at load and we can hook right here in DllMain — no watcher,
+    // no polling. If not, the code is packed and we genuinely need an unpack signal.
+    {
+        uint8_t* base = (uint8_t*)GetModuleHandleA(nullptr);
+        uint8_t* cand = base + VFS_LOADRESOURCE_RVA;
+        bool readable = region_readable(cand, VFS_SIG_LEN);
+        bool present  = readable && sig_matches(cand);
+        dbg("[boot] DIAGNOSTIC pre-entrypoint: target=%p readable=%d prologue=%s  first bytes: %02X %02X %02X %02X %02X %02X\n",
+            cand, (int)readable, present ? "PRESENT (.text plaintext at load — no unpack signal needed)" : "absent (packed)",
+            readable ? cand[0] : 0, readable ? cand[1] : 0, readable ? cand[2] : 0,
+            readable ? cand[3] : 0, readable ? cand[4] : 0, readable ? cand[5] : 0);
+    }
+
     DWORD n = GetEnvironmentVariableA("TALON_OVERRIDE_DIR", g_override_dir, sizeof(g_override_dir));
     if (n == 0 || n >= sizeof(g_override_dir)) {
         g_override_dir[0] = '\0';

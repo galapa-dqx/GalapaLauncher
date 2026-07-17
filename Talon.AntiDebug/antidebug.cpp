@@ -121,6 +121,13 @@ namespace
     volatile LONG g_hwFires     = 0;   // Phase 3: times it fired
     volatile LONG g_stackDumped = 0;   // one-shot stack capture guard
 
+    // Phase 0: HW write breakpoint that catches the unpacker writing target[0].
+    volatile LONG g_writeWatch  = 0;   // write BP active
+    volatile LONG g_writeHit    = 0;   // fired (one-shot)
+    DWORD         g_writeEip     = 0;   // the writing instruction (= the unpacker)
+    constexpr int kWriteStackWords = 24;
+    DWORD         g_writeStack[kWriteStackWords] = {};
+
     using PFN_RtlCapture = USHORT (WINAPI*)(ULONG, ULONG, PVOID*, PULONG);
     PFN_RtlCapture g_rtlCapture = nullptr;
 
@@ -161,6 +168,21 @@ namespace
             return EXCEPTION_CONTINUE_EXECUTION;
         }
 
+        // Phase 0: HW WRITE breakpoint fired — the unpacker just wrote target[0]. The faulting
+        // instruction (Eip) is inside the unpacker's decrypt/copy routine. Snapshot Eip + a slice
+        // of the interrupted stack (own thread, readable) and disarm so it fires once.
+        if (g_writeWatch && er->ExceptionCode == EXCEPTION_SINGLE_STEP && (ep->ContextRecord->Dr6 & 0xF)
+            && InterlockedExchange(&g_writeHit, 1) == 0)
+        {
+            g_writeEip = ep->ContextRecord->Eip;
+            const uint32_t* sp = (const uint32_t*)ep->ContextRecord->Esp;
+            for (int i = 0; i < kWriteStackWords; i++) g_writeStack[i] = sp[i];
+            ep->ContextRecord->Dr0 = 0;
+            ep->ContextRecord->Dr7 = 0;
+            ep->ContextRecord->Dr6 = 0;
+            return EXCEPTION_CONTINUE_EXECUTION;
+        }
+
         // Phase 3: HW execute breakpoint fired at the target.
         if (g_hwArmed && er->ExceptionCode == EXCEPTION_SINGLE_STEP && addr == g_target)
         {
@@ -176,10 +198,11 @@ namespace
     }
 
     // ── debug-register helpers ───────────────────────────────────────────────────
-    // DR7 for DR0 as a 1-byte EXECUTE breakpoint: L0=1 (bit 0); RW0=00, LEN0=00.
-    constexpr DWORD kDr7ExecDr0 = 0x00000001;
+    // DR7 for DR0 as a 1-byte breakpoint. EXECUTE: RW0=00, LEN0=00. WRITE: RW0=01, LEN0=00.
+    constexpr DWORD kDr7ExecDr0  = 0x00000001;
+    constexpr DWORD kDr7WriteDr0 = 0x00010001;
 
-    bool SetHwBp(HANDLE th, uintptr_t addr)
+    bool SetHwBp(HANDLE th, uintptr_t addr, DWORD dr7 = kDr7ExecDr0)
     {
         if (SuspendThread(th) == (DWORD)-1) return false;
         CONTEXT c; c.ContextFlags = CONTEXT_DEBUG_REGISTERS;
@@ -187,7 +210,7 @@ namespace
         if (ok)
         {
             c.Dr0 = addr;
-            c.Dr7 = kDr7ExecDr0;
+            c.Dr7 = dr7;
             c.ContextFlags = CONTEXT_DEBUG_REGISTERS;
             ok = SetThreadContext(th, &c) != 0;
         }
@@ -409,7 +432,56 @@ namespace
 
         AddVectoredExceptionHandler(1, Veh);
 
+        // Phase 0: arm a HW WRITE breakpoint at target[0] on every existing thread BEFORE the
+        // packer runs, so we catch the exact instruction that unpacks Vfs_LoadResource into place
+        // — an event-driven alternative to polling, which also identifies the unpacker.
+        Log("=== Phase 0: catch the unpack write (HW write BP at target[0]) ===");
+        InterlockedExchange(&g_writeHit, 0);
+        InterlockedExchange(&g_writeWatch, 1);
+        DWORD selfTid = GetCurrentThreadId();
+        {
+            int warmed = 0;
+            HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+            if (snap != INVALID_HANDLE_VALUE)
+            {
+                DWORD pid = GetCurrentProcessId();
+                THREADENTRY32 te; te.dwSize = sizeof(te);
+                if (Thread32First(snap, &te))
+                    do {
+                        if (te.th32OwnerProcessID != pid || te.th32ThreadID == selfTid) continue;
+                        HANDLE th = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT,
+                                               FALSE, te.th32ThreadID);
+                        if (!th) continue;
+                        if (SetHwBp(th, g_target, kDr7WriteDr0)) warmed++;
+                        CloseHandle(th);
+                    } while (Thread32Next(snap, &te));
+                CloseHandle(snap);
+            }
+            Log("  armed write BP @%08X on %d thread(s); waiting for the unpacker to write it",
+                (unsigned)g_target, warmed);
+        }
+
         bool unpacked = WaitForUnpack(60);
+
+        InterlockedExchange(&g_writeWatch, 0);
+        if (g_writeHit)
+        {
+            Log("  UNPACK WRITE CAUGHT: writing instruction EIP=%08X (exe+0x%X) -- this is the unpacker",
+                g_writeEip, (unsigned)(g_writeEip - g_base));
+            Log("  interrupted-stack slice (in-module addresses = unpacker call chain):");
+            for (int i = 0; i < kWriteStackWords; i++)
+            {
+                uint32_t v = g_writeStack[i];
+                if (v >= g_base && v < g_base + g_size)
+                    Log("    [esp+%02X] %08X (exe+0x%X)", i * 4, v, (unsigned)(v - g_base));
+            }
+        }
+        else
+        {
+            Log("  write BP did NOT fire (packer may map the region wholesale rather than storing "
+                "byte 0, or writes from a thread created after arming)");
+        }
+
         if (unpacked)
         {
             const uint8_t* p = (const uint8_t*)g_target;
