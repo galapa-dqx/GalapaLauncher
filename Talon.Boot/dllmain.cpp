@@ -39,6 +39,7 @@
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <tlhelp32.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -365,36 +366,126 @@ static uint8_t* scan_for_vfs(uint8_t* base) {
     return nullptr;
 }
 
+// ── Unpack trigger ─────────────────────────────────────────────────────────────
+// DQX's .text is packed: at inject the target region is committed but zero-filled;
+// the packer writes the decrypted code in a few hundred ms. Rather than poll for
+// the prologue to appear, we arm a HARDWARE WRITE breakpoint at target[0] before
+// the packer runs; the resulting #DB (caught by a VEH) signals the exact moment
+// the unpacker writes our function. This is event-driven and deterministic, and
+// it survives because DQX does not scan debug registers (verified 2026-07-17).
+//
+// The write fires when byte 0 is written, so the rest of the prologue lands micro-
+// seconds later — the watcher does a short bounded confirm before hooking. A poll
+// fallback (loudly logged) covers the case where the trigger never fires, e.g. a
+// future patch that clears DRs; per-patch testing is expected to catch that.
+
+// DR7 for DR0 as a 1-byte WRITE breakpoint: L0=1 (bit 0), RW0=01 (write), LEN0=00.
+static const DWORD    kDr7WriteDr0 = 0x00010001;
+static volatile LONG  g_write_armed = 0;
+static HANDLE         g_unpack_event = nullptr;
+static PVOID          g_veh_handle   = nullptr;
+
+static LONG CALLBACK unpack_veh(EXCEPTION_POINTERS* ep) {
+    if (g_write_armed &&
+        ep->ExceptionRecord->ExceptionCode == EXCEPTION_SINGLE_STEP &&
+        (ep->ContextRecord->Dr6 & 0xF)) {
+        // The unpacker just wrote target[0]. Disarm this thread's DR so we don't
+        // re-trap, signal the watcher, and let the packer finish its copy.
+        ep->ContextRecord->Dr0 = 0;
+        ep->ContextRecord->Dr7 = 0;
+        ep->ContextRecord->Dr6 = 0;
+        if (g_unpack_event) SetEvent(g_unpack_event);
+        return EXCEPTION_CONTINUE_EXECUTION;
+    }
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+
+// Set DR0/DR7 on every thread in this process except `selfTid`.
+static void set_dr_all_threads(uintptr_t addr, DWORD dr7, DWORD selfTid) {
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+    if (snap == INVALID_HANDLE_VALUE) return;
+    DWORD pid = GetCurrentProcessId();
+    THREADENTRY32 te; te.dwSize = sizeof(te);
+    if (Thread32First(snap, &te)) {
+        do {
+            if (te.th32OwnerProcessID != pid || te.th32ThreadID == selfTid) continue;
+            HANDLE th = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT,
+                                   FALSE, te.th32ThreadID);
+            if (!th) continue;
+            if (SuspendThread(th) != (DWORD)-1) {
+                CONTEXT c; c.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+                if (GetThreadContext(th, &c)) {
+                    c.Dr0 = addr;
+                    c.Dr7 = dr7;
+                    c.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+                    SetThreadContext(th, &c);
+                }
+                ResumeThread(th);
+            }
+            CloseHandle(th);
+        } while (Thread32Next(snap, &te));
+    }
+    CloseHandle(snap);
+}
+
 // ── Boot ─────────────────────────────────────────────────────────────────────
 
 static volatile LONG g_booted = 0;
 
-// Poll for Vfs_LoadResource to appear (the packer unpacks it after our injection),
-// then install the inline hook. Runs on its own thread so DllMain does no work
-// under the loader lock beyond spawning it.
+// Locate Vfs_LoadResource (via the write-BP unpack trigger, with a poll fallback)
+// and install the inline hook. Runs on its own thread so DllMain does no work under
+// the loader lock beyond spawning it.
 static DWORD WINAPI watcher_thread(LPVOID) {
     uint8_t* base = (uint8_t*)GetModuleHandleA(nullptr);
     uint8_t* candidate = base + VFS_LOADRESOURCE_RVA;
+    DWORD selfTid = GetCurrentThreadId();
     dbg("[boot] watcher: module base=%p, expecting Vfs_LoadResource at %p\n", base, candidate);
 
     uint8_t* target = nullptr;
-    // Poll the expected address for up to ~60s (100ms cadence) while the packer runs.
-    for (int i = 0; i < 600 && !target; i++) {
-        if (region_readable(candidate, VFS_SIG_LEN) && sig_matches(candidate)) {
-            target = candidate;
-            break;
+
+    if (region_readable(candidate, VFS_SIG_LEN) && sig_matches(candidate)) {
+        // Already unpacked (we lost the race, or a future build ships unpacked).
+        target = candidate;
+        dbg("[boot] watcher: target already unpacked; hooking directly\n");
+    } else {
+        // Arm the write-BP trigger and wait for the unpacker to write target[0].
+        g_unpack_event = CreateEventA(nullptr, TRUE, FALSE, nullptr);
+        g_veh_handle = AddVectoredExceptionHandler(1, unpack_veh);
+        InterlockedExchange(&g_write_armed, 1);
+        set_dr_all_threads((uintptr_t)candidate, kDr7WriteDr0, selfTid);
+        dbg("[boot] watcher: armed write-BP trigger @%p; waiting for unpack\n", candidate);
+
+        DWORD wr = g_unpack_event ? WaitForSingleObject(g_unpack_event, 15000) : WAIT_FAILED;
+        InterlockedExchange(&g_write_armed, 0);
+        set_dr_all_threads(0, 0, selfTid);              // disarm every thread
+        if (g_veh_handle) { RemoveVectoredExceptionHandler(g_veh_handle); g_veh_handle = nullptr; }
+        if (g_unpack_event) { CloseHandle(g_unpack_event); g_unpack_event = nullptr; }
+
+        if (wr == WAIT_OBJECT_0) {
+            // Trigger fired — the copy of our function is in flight; confirm the full
+            // prologue is present (lands within microseconds) before hooking.
+            for (int i = 0; i < 200 && !target; i++) {
+                if (region_readable(candidate, VFS_SIG_LEN) && sig_matches(candidate)) target = candidate;
+                else Sleep(1);
+            }
+            dbg(target ? "[boot] watcher: unpack-write trigger FIRED; prologue present\n"
+                       : "[boot] watcher: trigger fired but prologue never completed — will poll\n");
+        } else {
+            dbg("[boot] watcher: *** WRITE-BP TRIGGER DID NOT FIRE (wait=%lu) — FALLING BACK TO POLL ***\n", wr);
         }
-        Sleep(100);
     }
 
+    // Fallback: poll the expected address, then a one-shot signature scan.
+    for (int i = 0; i < 600 && !target; i++) {
+        if (region_readable(candidate, VFS_SIG_LEN) && sig_matches(candidate)) { target = candidate; break; }
+        Sleep(100);
+    }
     if (!target) {
-        // Expected RVA never matched — try a one-shot scan in case a patch moved it.
         dbg("[boot] watcher: expected address never matched; scanning image\n");
         target = scan_for_vfs(base);
         if (target)
             dbg("[boot] watcher: found by scan at %p (rva=0x%X)\n", target, (unsigned)(target - base));
     }
-
     if (!target) {
         dbg("[boot] watcher: Vfs_LoadResource not found — Talon.Boot is a no-op this launch\n");
         return 0;
