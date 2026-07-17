@@ -206,7 +206,7 @@ public partial class GameProcess(Settings settings)
     {
         var args = new StringBuilder();
 
-        args.Append($"-StartupToken={GetStartupToken()} ");
+        args.Append($"-StartupToken={GenerateStartupToken()} ");
         if (this.SessionId is not null) args.Append($"-SessionID={this.EncodeSessionId(this.SessionId)} ");
         if (this.PlayerNumber is not null) args.Append($"-PlayerNumber={this.PlayerNumber} ");
         args.Append("-USE_APARTMENTTHREADED");
@@ -242,7 +242,12 @@ public partial class GameProcess(Settings settings)
     [DllImport("winmm.dll", EntryPoint = "timeGetTime")]
     private static extern uint GetTime();
 
-    private static string GetStartupToken()
+    /// <summary>
+    ///     Generates a fresh DQX <c>-StartupToken</c> value. This is a purely local computation
+    ///     (no network, no credentials): the game checks its shape, not its randomness. Exposed so
+    ///     headless callers (the Toolbox CLI) can mint one to splice into a launch command line.
+    /// </summary>
+    public static string GenerateStartupToken()
     {
         // The official version of this function actually uses an MT RNG seeded from the Windows "true" RNG to generate
         // these 4 chars, but because that makes it *actually random*, they can't check it and we just stuff 0000 in.
