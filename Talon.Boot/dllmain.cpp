@@ -75,6 +75,10 @@ static void talon_boot() {
         dbg("[boot] VFS census logging ENABLED\n");
     }
 
+    // Register hooks with the manager (descriptors only); the unpack watcher installs
+    // them via hook_install_all() once .text is unpacked.
+    vfs_register();
+
     start_unpack_watcher();
 }
 

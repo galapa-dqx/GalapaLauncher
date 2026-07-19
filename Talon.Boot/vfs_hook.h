@@ -13,12 +13,10 @@
 void vfs_set_override_dir(const char* dir);
 void vfs_set_census(bool enabled);
 
-// Install the inline hook on Vfs_LoadResource. Idempotent — the execute-BP
-// trigger can fire on more than one thread before the watcher finishes disarming.
-void install_vfs_hook(uint8_t* target);
-
-// True once install_vfs_hook has successfully installed the hook.
-bool vfs_hook_installed();
+// Register the Vfs_LoadResource override hook with the hook manager. Does not install —
+// the unpack barrier calls hook_install_all() once .text is unpacked (MinHook needs the
+// prologue present to build the trampoline).
+void vfs_register();
 
 // ── Locating Vfs_LoadResource at runtime ─────────────────────────────────────
 // Runtime VA = <exe load base> + VFS_LOADRESOURCE_RVA. The prologue signature

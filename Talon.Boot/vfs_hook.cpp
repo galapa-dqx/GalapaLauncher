@@ -16,6 +16,7 @@
 //   0, 0); return res — with NO free (freeing buf here would be a use-after-free).
 
 #include "vfs_hook.h"
+#include "hook_manager.h"
 #include "log.h"
 
 #define WIN32_LEAN_AND_MEAN
@@ -23,8 +24,6 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdint.h>
-
-#include "MinHook.h"
 
 // __thiscall: `this` in ecx, four stack args, callee-cleans.
 typedef void* (__thiscall *PfnVfsLoadResource)(void* thisPtr, const char* path,
@@ -38,6 +37,7 @@ typedef void* (__cdecl *PfnVfsConstruct)(const char* path, uint32_t size,
 
 static PfnVfsLoadResource g_orig_VfsLoadResource = nullptr;
 static char               g_override_dir[MAX_PATH] = {};
+static TalonHook*         g_vfs_hook = nullptr;   // our registration in the hook manager
 
 // Opt-in diagnostic (TALON_VFS_CENSUS): log the path of every resource the game
 // requests through Vfs_LoadResource, capped so an asset-heavy boot can't flood
@@ -61,6 +61,9 @@ void vfs_set_census(bool enabled) { g_census = enabled; }
 static void* __fastcall hook_VfsLoadResource(void* thisPtr, void* /*edx*/,
                                              const char* path, int expansion,
                                              int mount, int mustBeZero) {
+    // In-flight guard so hook_remove() can drain safely if this hook is ever torn down.
+    HookGuard guard(g_vfs_hook);
+
     if (g_census && path) {
         LONG n = InterlockedIncrement(&g_census_count);
         if (n <= kCensusCap)
@@ -151,36 +154,20 @@ bool region_readable(const uint8_t* addr, size_t len) {
     return true;
 }
 
-// ── Hook installation ────────────────────────────────────────────────────────
+// ── Hook registration ────────────────────────────────────────────────────────
+// Register the override hook with the manager; the unpack barrier installs it (via
+// hook_install_all) once .text is unpacked. The target VA is a fixed linear address
+// (base + RVA), valid to register even though the bytes are still zero-filled here —
+// only the later MH_CreateHook needs the prologue present.
 
-static volatile LONG g_hook_done = 0;
-
-void install_vfs_hook(uint8_t* target) {
-    if (InterlockedCompareExchange(&g_hook_done, 1, 0) != 0) return;
-
-    // MinHook is the hooking engine — it builds the trampoline via its own length
-    // disassembler and installs the E9 patch with all other threads suspended and their
-    // IPs fixed up if they land in the patched bytes. That thread-suspension is exactly
-    // why this MUST run in normal thread context (the watcher thread), never from inside
-    // the unpack VEH: suspending arbitrary game threads while handling an exception on one
-    // of them risks a lock-order deadlock. See unpack_trigger.cpp.
-    MH_STATUS s = MH_Initialize();
-    if (s != MH_OK && s != MH_ERROR_ALREADY_INITIALIZED) {
-        dbg("[boot] MH_Initialize failed: %s\n", MH_StatusToString(s));
-        return;
-    }
-    s = MH_CreateHook(target, (LPVOID)hook_VfsLoadResource, (LPVOID*)&g_orig_VfsLoadResource);
-    if (s != MH_OK) {
-        dbg("[boot] MH_CreateHook @%p failed: %s\n", target, MH_StatusToString(s));
-        return;
-    }
-    s = MH_EnableHook(target);
-    if (s != MH_OK) {
-        dbg("[boot] MH_EnableHook @%p failed: %s\n", target, MH_StatusToString(s));
-        return;
-    }
-    dbg("[boot] hooked Vfs_LoadResource via MinHook @%p, trampoline=%p, override dir=%s\n",
-        target, g_orig_VfsLoadResource, g_override_dir);
+void vfs_register() {
+    uint8_t* base   = (uint8_t*)GetModuleHandleA(nullptr);
+    void*    target = base + VFS_LOADRESOURCE_RVA;
+    g_vfs_hook = hook_register("Vfs_LoadResource", target,
+                               (void*)hook_VfsLoadResource, (void**)&g_orig_VfsLoadResource);
+    if (g_vfs_hook)
+        dbg("[boot] registered Vfs_LoadResource hook (target=%p, override dir=%s)\n",
+            target, g_override_dir);
+    else
+        dbg("[boot] vfs_register: hook_register failed\n");
 }
-
-bool vfs_hook_installed() { return g_hook_done != 0; }

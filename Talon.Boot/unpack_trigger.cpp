@@ -19,6 +19,7 @@
 
 #include "unpack_trigger.h"
 #include "vfs_hook.h"
+#include "hook_manager.h"
 #include "log.h"
 
 #define WIN32_LEAN_AND_MEAN
@@ -110,12 +111,14 @@ static DWORD WINAPI watcher_thread(LPVOID) {
     if (g_veh_handle) { RemoveVectoredExceptionHandler(g_veh_handle); g_veh_handle = nullptr; }
 
     if (wr == WAIT_OBJECT_0) {
-        // Normal thread context now — safe for MinHook's thread suspension.
-        install_vfs_hook((uint8_t*)g_target_va);
-        if (vfs_hook_installed())
-            dbg("[boot] watcher: execute-BP trigger FIRED; hook installed in watcher thread\n");
+        // Normal thread context now — safe for MinHook's thread suspension. Install every
+        // registered hook (currently just VFS; the OEP barrier will drive the same call
+        // for the full multi-hook set).
+        int n = hook_install_all();
+        if (n > 0)
+            dbg("[boot] watcher: execute-BP trigger FIRED; %d hook(s) installed in watcher thread\n", n);
         else
-            dbg("[boot] watcher: trigger fired but MinHook install FAILED (see MH_ error above)\n");
+            dbg("[boot] watcher: trigger fired but NO hooks installed (see [hookmgr] errors)\n");
     } else {
         dbg("[boot] watcher: *** EXECUTE-BP TRIGGER DID NOT FIRE (wait=%lu) — not hooked; "
             "re-anchor the RVA/signature after a game patch ***\n", wr);
