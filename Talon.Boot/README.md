@@ -32,21 +32,22 @@ that moves when the game is patched. That's an explicit, documented cost (see
 
 ## The full boot sequence
 
-```
-Talon.Injector (C#)            Talon.Boot (this DLL, native x86)
-─────────────────              ─────────────────────────────────
-CreateProcess(SUSPENDED)
-QueueUserAPC(LoadLibraryW) ──▶  DllMain(DLL_PROCESS_ATTACH)
-ResumeThread                      └─ talon_boot()
-                                       ├─ read TALON_OVERRIDE_DIR
-                                       └─ start_unpack_watcher()  ── spawns watcher thread
-                                                                       │
-game unpacks its own .text ◀───────────────────────────────────────── arms HW execute-BP
-                                                                       │  at Vfs_LoadResource
-game first CALLS Vfs_LoadResource ─▶ #DB → VEH signals the watcher
-                                       └─ watcher installs the hook via
-                                          MinHook (normal context); every
-                                          call after this one is served
+```text
+Injector (suspended process)                   Talon.Boot
+-----------------------------------------      --------------------------------
+decode validated KONN stage metadata
+arm DR0 at decoded stage-two entry
+queue early LoadLibrary APC                ->  install VEH synchronously
+resume primary thread                          start normal worker
+
+stage-two entry executes                   ->  #DB: retarget DR0 to NtProtect
+packer requests executable .text           ->  #DB: page-rounded candidate covers .text
+                                                park packer thread
+                                                scan executable PE sections
+                              false candidate <-  resume + rearm DR0
+                              confirmed      ->  register unique VFS signature
+                                                install all hooks with MinHook
+                                            <-  release packer; startup continues
 ```
 
 ### 1. Injection (Talon.Injector)
@@ -66,44 +67,30 @@ be x86 to inject the 32-bit game. See `Talon.Injector/Injector.cs`.
 - reads **`TALON_OVERRIDE_DIR`** — the directory of loose files to serve. If unset,
   Talon is a no-op for that launch,
 - optionally enables the **VFS census** (`TALON_VFS_CENSUS`, see below),
-- spawns the unpack watcher thread and returns immediately (no real work under the
-  loader lock).
+- installs the barrier VEH synchronously (so the injector-armed DR0 cannot race it),
+- spawns the normal-context scanner/install worker and returns.
 
 ### 3. Waiting for the unpack (`unpack_trigger.cpp`)
 
-DQX ships with a **packed `.text`**: at inject time the region holding
-`Vfs_LoadResource` is committed but zero-filled, and the packer decompresses it in
-blocks (non-linear writes), so we can't just watch one byte and know the function is
-whole.
+DQX ships with a packed `.text`; target functions are zero-filled at injection time.
+The injector decodes the file's self-describing `KONN` record and arms DR0 at the
+second-stage entry before resuming the primary thread. Talon.Boot's synchronously
+installed VEH catches that execute breakpoint and retargets DR0 to
+`ntdll!NtProtectVirtualMemory`.
 
-Instead the watcher arms a **hardware execute breakpoint** (`DR0`, 1-byte execute,
-`DR7 = 0x1`) at the function's address on every thread. It sits harmlessly on the
-zero-filled address until the game unpacks the function and *calls* it — and **a call
-can't happen until the function is fully unpacked**. The resulting `#DB` is caught by
-a Vectored Exception Handler, which:
+A Windows-page-rounded executable request covering `.text` is a barrier candidate. The
+VEH temporarily disarms DR0, sets x86 EFLAGS.RF, and parks the unpacker while the
+worker scans. If no unique VFS signature exists yet, the worker rejects the candidate
+and the VEH resumes with DR0 rearmed. On confirmation, the worker installs in normal
+context before releasing the unpacker. No VFS call is lost.
 
-1. clears `DR0`/`DR6`/`DR7` on that thread so it doesn't re-trap,
-2. **signals the watcher thread** and resumes with `EIP` unchanged.
-
-The VEH does *not* install the hook itself: the MinHook engine suspends threads and
-takes locks while patching, which is unsafe from inside an exception handler. So the
-watcher does the install in normal context (see step 4). The one consequence is that
-*this* first triggering call runs the original function unhooked; every call after it
-is served. (The planned OEP barrier will install before any game code runs, closing
-even that one-call gap.)
-
-This is a poll-free, exact signal. It works because DQX does not scan the debug
-registers (verified 2026-07-17).
-
-> **No fallback by design.** There is intentionally no polling or signature-scan
-> fallback. If the trigger never fires (a patch moved the function or cleared the
-> debug registers), Talon no-ops and logs a re-anchor notice. Per-patch testing
-> before shipping the injector is expected to catch that.
+If `TALON_UNPACK_STAGE_RVA` is missing or invalid, Boot fails closed for hooking and logs
+that the launch must use `Talon.Injector --unpack-barrier`.
 
 ### 4. Installing the hook (MinHook, `vendor/minhook`)
 
 The hooking engine is **[MinHook](https://github.com/TsudaKageyu/minhook)** (vendored,
-BSD-2). `install_vfs_hook` calls `MH_Initialize` → `MH_CreateHook(target, detour,
+BSD-2). `hook_install_all` calls `MH_Initialize` → `MH_CreateHook(target, detour,
 &original)` → `MH_EnableHook`. MinHook patches the first bytes of the target with an
 `E9` `jmp` to our detour and builds a **trampoline** that runs the stolen original
 bytes and jumps back — so the original `Vfs_LoadResource` remains callable for
@@ -115,8 +102,6 @@ in the VEH (step 3): suspending arbitrary game threads while handling an excepti
 one of them risks a lock-order deadlock. MinHook owns the trampoline construction,
 atomic patching, and thread safety, so Talon no longer hand-rolls any of it.
 
-> The earlier hand-rolled inline hooker (`inline_hook.cpp` + the `disasm.cpp` length
-> decoder) is superseded by MinHook and slated for removal.
 
 ### 5. Serving overrides (`vfs_hook.cpp`)
 
@@ -160,6 +145,7 @@ precisely so the resource can later free it through the game's matching free pat
 | Variable | Effect |
 |---|---|
 | `TALON_OVERRIDE_DIR` | Directory of loose override files. **Unset ⇒ Talon is a no-op.** |
+| `TALON_UNPACK_STAGE_RVA` | Internal: validated KONN stage RVA set by `Talon.Injector --unpack-barrier`. |
 | `TALON_VFS_CENSUS` | If set (any value), logs the path of every resource the game requests, capped at 400 entries — useful for discovering the archive-relative paths a mod would mirror. |
 
 ## Source layout
@@ -167,25 +153,24 @@ precisely so the resource can later free it through the game's matching free pat
 | File | Responsibility |
 |---|---|
 | `dllmain.cpp` | Boot orchestration and entrypoints (`DllMain`, `TalonInit`). |
-| `unpack_trigger.*` | Execute-BP watcher that fires on the first `Vfs_LoadResource` call and installs the hook. |
-| `vfs_hook.*` | The override hook, target location/signature, and MinHook install. |
+| `unpack_trigger.*` | KONN stage-two / `NtProtectVirtualMemory` barrier and parked-thread handoff. |
+| `vfs_hook.*` | Override hook plus post-unpack executable-section signature scanner. |
 | `vendor/minhook/` | Vendored MinHook (BSD-2) — the hooking engine. |
 | `log.*` | Diagnostics to `%TEMP%\talon-boot.log` + `OutputDebugString`. |
-| `inline_hook.*`, `disasm.*` | Superseded hand-rolled inline hooker + length decoder (pending removal). |
 
 ## Re-anchoring after a game patch
 
-The hook binds to `Vfs_LoadResource` by RVA and confirms it with a prologue signature:
+Runtime binding is entirely scanner-driven. The signature wildcards stack sizes,
+relocations, and call displacements while retaining the security-cookie sequence and
+VFS-specific object member loads.
 
-- **RVA** `0xFD0E0` — derived from the Binary Ninja DB address `0x5AD0E0` at image base
-  `0x4B0000` (`0x5AD0E0 − 0x4B0000`). Runtime VA = `<exe load base> + RVA`.
-- **Prologue signature** — `53 8B DC 83 ?? ?? 83 ?? ?? 83 ?? ?? 55 8B ?? ?? 89 ?? ?? ?? 8B EC B8 ?? ?? ?? ?? E8`
-  (`push ebx; mov ebx,esp; sub/and/add esp,imm8 ×3; push ebp; …; call __chkstk`).
+The scanner requires exactly one match across committed regions of executable PE
+sections. Zero or multiple matches fail safely and are logged. On a patch, re-find
+`Vfs_LoadResource` in Binary Ninja via strings such as `"ERROR: readerror0 %x"`, then
+update `VFS_SIG` in `vfs_hook.cpp`.
 
-If a patch moves the function, the signature stops matching and the trigger won't fire
-(logged as a re-anchor notice). To fix: re-find `Vfs_LoadResource` in Binary Ninja via
-its error strings (e.g. `"ERROR: readerror0 %x"`), then update `VFS_LOADRESOURCE_RVA`
-and `VFS_SIG` in `vfs_hook.cpp`.
+The unpack anchor normally needs no re-anchoring: `--unpack-barrier` scans and validates
+the packed file's KONN metadata against the PE entrypoint and `SizeOfImage` each launch.
 
 ## Diagnostics
 
@@ -195,8 +180,9 @@ compile-time toggle: `LOG_ENABLED` in `log.h`; when undefined, `dbg()` collapses
 no-op that doesn't even evaluate its arguments. Key lines to look for:
 
 - `[boot] override dir = …` — configuration read.
-- `[boot] watcher: armed execute-BP trigger … waiting` — breakpoint set.
-- `[boot] hooked Vfs_LoadResource via MinHook @… trampoline=…` — MinHook install succeeded.
-- `[boot] watcher: execute-BP trigger FIRED; hook installed in watcher thread` — success.
-- `[vfs] OVERRIDE <path> (<n> bytes) -> res=…` — an override was served.
-- `*** EXECUTE-BP TRIGGER DID NOT FIRE …` — re-anchor needed after a patch.
+- `[barrier] KONN stage2=... -> NtProtectVirtualMemory=...` — universal barrier armed.
+- `[boot] VFS scanner: signature match ...` — unique runtime VFS target found.
+- `[hookmgr] installed 'Vfs_LoadResource' ...` — MinHook install succeeded.
+- `[barrier] executable .text candidate rejected ...` — an early transition was skipped.
+- `[barrier] CONFIRMED ... scanner resolved=1, hooks installed=1` — full barrier success.
+- `[vfs] OVERRIDE ...` — an override was served.

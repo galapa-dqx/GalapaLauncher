@@ -103,7 +103,6 @@ int hook_install_all() {
     return installed;
 }
 
-void* hook_original(TalonHook* h) { return (h && h->ppOriginal) ? *h->ppOriginal : nullptr; }
 
 void hook_enter(TalonHook* h) { if (h) InterlockedIncrement(&h->inflight); }
 void hook_leave(TalonHook* h) { if (h) InterlockedDecrement(&h->inflight); }

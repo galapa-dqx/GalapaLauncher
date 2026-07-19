@@ -16,16 +16,14 @@
 //   version-specific (see vfs_hook.cpp's re-anchoring notes) whereas dragonhook is not.
 //
 // Source layout:
-//   log.*            diagnostics to %TEMP%\talon-boot.log + OutputDebugString
-//   disasm.*         minimal x86-32 instruction length decoder
-//   inline_hook.*    steal-bytes + trampoline inline hooking
-//   vfs_hook.*       the override hook, target location, and hook installation
-//   unpack_trigger.* execute-BP watcher that fires on the first Vfs_LoadResource call
-//   dllmain.cpp      boot orchestration (this file) and entrypoints
+//   log.*            diagnostics to %TEMP%\\talon-boot.log + OutputDebugString
+//   hook_manager.*   MinHook-backed hook registry
+//   vfs_hook.*       VFS override and post-unpack signature scanner
+//   unpack_trigger.* universal KONN/NtProtect unpack barrier
+//   dllmain.cpp      boot orchestration and entrypoints
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#include <stdint.h>
 
 #include "log.h"
 #include "vfs_hook.h"
@@ -33,7 +31,7 @@
 
 static volatile LONG g_booted = 0;
 
-// Reads TALON_OVERRIDE_DIR and, if present, spawns the watcher. Idempotent.
+// Reads configuration and starts the universal unpack barrier. Idempotent.
 static void talon_boot() {
     if (InterlockedCompareExchange(&g_booted, 1, 0) != 0) return;
 
@@ -45,20 +43,6 @@ static void talon_boot() {
         GetCurrentProcessId(), st.wYear, st.wMonth, st.wDay,
         st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
 
-    // DIAGNOSTIC: is Vfs_LoadResource already unpacked at inject time (pre-entrypoint)?
-    // If so, .text is plaintext at load and we could hook right here in DllMain — no
-    // watcher, no polling. If not, the code is packed and we genuinely need an unpack
-    // signal.
-    {
-        uint8_t* base = (uint8_t*)GetModuleHandleA(nullptr);
-        uint8_t* cand = base + VFS_LOADRESOURCE_RVA;
-        bool readable = region_readable(cand, VFS_SIG_LEN);
-        bool present  = readable && sig_matches(cand);
-        dbg("[boot] DIAGNOSTIC pre-entrypoint: target=%p readable=%d prologue=%s  first bytes: %02X %02X %02X %02X %02X %02X\n",
-            cand, (int)readable, present ? "PRESENT (.text plaintext at load — no unpack signal needed)" : "absent (packed)",
-            readable ? cand[0] : 0, readable ? cand[1] : 0, readable ? cand[2] : 0,
-            readable ? cand[3] : 0, readable ? cand[4] : 0, readable ? cand[5] : 0);
-    }
 
     char overrideDir[MAX_PATH];
     DWORD n = GetEnvironmentVariableA("TALON_OVERRIDE_DIR", overrideDir, sizeof(overrideDir));
@@ -75,10 +59,7 @@ static void talon_boot() {
         dbg("[boot] VFS census logging ENABLED\n");
     }
 
-    // Register hooks with the manager (descriptors only); the unpack watcher installs
-    // them via hook_install_all() once .text is unpacked.
-    vfs_register();
-
+    // The barrier worker resolves and registers scanner-driven hooks after unpacking.
     start_unpack_watcher();
 }
 

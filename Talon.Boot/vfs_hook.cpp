@@ -114,60 +114,80 @@ static void* __fastcall hook_VfsLoadResource(void* thisPtr, void* /*edx*/,
 }
 
 // ── Locating Vfs_LoadResource at runtime ─────────────────────────────────────
-// Binary Ninja DB address 0x5ad0e0 sits at image base 0x4b0000, so the function
-// RVA is 0x5ad0e0 - 0x4b0000 = 0xfd0e0. At runtime VA = <exe load base> + RVA.
-// The prologue signature is used both to confirm the expected address and, if the
-// game has been patched and the RVA moved, to scan for it. Patch-day re-anchor:
-// if this signature stops matching, re-find Vfs_LoadResource in Binary Ninja via
-// its error strings ("ERROR: readerror0 %x") and update RVA + signature.
-
-const uint32_t VFS_LOADRESOURCE_RVA = 0xFD0E0;
-
-// 53 8B DC 83 ?? ?? 83 ?? ?? 83 ?? ?? 55 8B ?? ?? 89 ?? ?? ?? 8B EC B8 ?? ?? ?? ?? E8
-//   push ebx; mov ebx,esp; (sub/and/add esp,imm8)x3; push ebp; mov ebp,[ebx+4];
-//   mov [esp+4],ebp; mov ebp,esp; mov eax,imm32; call __chkstk
+// Extended MSVC prologue + security-cookie sequence + VFS object member loads.
+// Relocations, stack size, and call displacement are wildcarded.
 static const int VFS_SIG[] = {
     0x53, 0x8B, 0xDC, 0x83, -1, -1, 0x83, -1, -1, 0x83, -1, -1,
-    0x55, 0x8B, -1, -1, 0x89, -1, -1, -1, 0x8B, 0xEC, 0xB8, -1, -1, -1, -1, 0xE8
+    0x55, 0x8B, -1, -1, 0x89, -1, -1, -1, 0x8B, 0xEC,
+    0xB8, -1, -1, -1, -1,                         // stack size
+    0xE8, -1, -1, -1, -1,                         // __chkstk displacement
+    0xA1, -1, -1, -1, -1,                         // security cookie address
+    0x33, 0xC5, 0x89, 0x45, 0xFC,
+    0x8B, 0x43, 0x0C, 0x8B, 0x53, 0x08             // VFS object member loads
 };
-const int VFS_SIG_LEN = (int)(sizeof(VFS_SIG) / sizeof(VFS_SIG[0]));
+static const int VFS_SIG_LEN = (int)(sizeof(VFS_SIG) / sizeof(VFS_SIG[0]));
 
-bool sig_matches(const uint8_t* p) {
+static bool sig_matches(const uint8_t* p) {
     for (int i = 0; i < VFS_SIG_LEN; i++)
         if (VFS_SIG[i] >= 0 && p[i] != (uint8_t)VFS_SIG[i]) return false;
     return true;
 }
 
-bool region_readable(const uint8_t* addr, size_t len) {
-    MEMORY_BASIC_INFORMATION mbi;
-    const uint8_t* end = addr + len;
-    while (addr < end) {
-        if (VirtualQuery(addr, &mbi, sizeof(mbi)) == 0) return false;
-        if (mbi.State != MEM_COMMIT) return false;
-        DWORD prot = mbi.Protect & 0xFF;
-        if (prot == PAGE_NOACCESS || (mbi.Protect & PAGE_GUARD)) return false;
-        if (!(prot == PAGE_EXECUTE || prot == PAGE_EXECUTE_READ ||
-              prot == PAGE_EXECUTE_READWRITE || prot == PAGE_EXECUTE_WRITECOPY))
-            return false;
-        addr = (const uint8_t*)mbi.BaseAddress + mbi.RegionSize;
-    }
-    return true;
-}
 
 // ── Hook registration ────────────────────────────────────────────────────────
-// Register the override hook with the manager; the unpack barrier installs it (via
-// hook_install_all) once .text is unpacked. The target VA is a fixed linear address
-// (base + RVA), valid to register even though the bytes are still zero-filled here —
-// only the later MH_CreateHook needs the prologue present.
+// Scan the unpacked executable sections, require one match, and register it.
 
-void vfs_register() {
-    uint8_t* base   = (uint8_t*)GetModuleHandleA(nullptr);
-    void*    target = base + VFS_LOADRESOURCE_RVA;
-    g_vfs_hook = hook_register("Vfs_LoadResource", target,
+bool vfs_resolve_and_register() {
+    uint8_t* base = (uint8_t*)GetModuleHandleA(nullptr);
+    auto dos = (PIMAGE_DOS_HEADER)base;
+    auto nt = (PIMAGE_NT_HEADERS)(base + dos->e_lfanew);
+    auto section = IMAGE_FIRST_SECTION(nt);
+    uint8_t* match = nullptr;
+    int matches = 0;
+
+    // Resolve after unpacking. Scan every executable image section and require a unique match.
+    for (WORD s = 0; s < nt->FileHeader.NumberOfSections; ++s) {
+        if (!(section[s].Characteristics & IMAGE_SCN_MEM_EXECUTE)) continue;
+        size_t size = section[s].Misc.VirtualSize;
+        if (size < (size_t)VFS_SIG_LEN) continue;
+        uint8_t* cursor = base + section[s].VirtualAddress;
+        uint8_t* section_end = cursor + size;
+        while (cursor < section_end) {
+            MEMORY_BASIC_INFORMATION mbi = {};
+            if (!VirtualQuery(cursor, &mbi, sizeof(mbi))) break;
+            uint8_t* region_end = (uint8_t*)mbi.BaseAddress + mbi.RegionSize;
+            if (region_end > section_end) region_end = section_end;
+            DWORD prot = mbi.Protect & 0xFF;
+            bool scannable = mbi.State == MEM_COMMIT && !(mbi.Protect & PAGE_GUARD) &&
+                             prot != PAGE_NOACCESS;
+            if (scannable && region_end - cursor >= VFS_SIG_LEN) {
+                size_t region_size = (size_t)(region_end - cursor);
+                for (size_t i = 0; i + VFS_SIG_LEN <= region_size; ++i) {
+                    if (cursor[i] != 0x53 || !sig_matches(cursor + i)) continue;
+                    match = cursor + i;
+                    ++matches;
+                    dbg("[boot] VFS scanner: signature match @%p (RVA %08X)\n",
+                        match, (unsigned)(match - base));
+                }
+            }
+            if (region_end <= cursor) break;
+            cursor = region_end;
+        }
+    }
+
+    if (matches != 1) {
+        dbg("[boot] VFS scanner: expected exactly one match, found %d; refusing to hook\n", matches);
+        return false;
+    }
+
+    g_vfs_hook = hook_register("Vfs_LoadResource", match,
                                (void*)hook_VfsLoadResource, (void**)&g_orig_VfsLoadResource);
-    if (g_vfs_hook)
-        dbg("[boot] registered Vfs_LoadResource hook (target=%p, override dir=%s)\n",
-            target, g_override_dir);
-    else
-        dbg("[boot] vfs_register: hook_register failed\n");
+    if (!g_vfs_hook) {
+        dbg("[boot] vfs_resolve_and_register: hook_register failed\n");
+        return false;
+    }
+
+    dbg("[boot] registered scanner-resolved Vfs_LoadResource hook (target=%p, override dir=%s)\n",
+        match, g_override_dir);
+    return true;
 }

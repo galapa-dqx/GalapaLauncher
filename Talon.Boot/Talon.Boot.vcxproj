@@ -79,13 +79,11 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp" />
-    <ClCompile Include="disasm.cpp" />
     <ClCompile Include="hook_manager.cpp" />
-    <ClCompile Include="inline_hook.cpp" />
     <ClCompile Include="log.cpp" />
     <ClCompile Include="unpack_trigger.cpp" />
     <ClCompile Include="vfs_hook.cpp" />
-    <!-- vendored MinHook (BSD-2) — the hooking engine; replaces the hand-rolled inline_hook -->
+    <!-- vendored MinHook (BSD-2) -->
     <ClCompile Include="vendor\minhook\src\buffer.c" />
     <ClCompile Include="vendor\minhook\src\hook.c" />
     <ClCompile Include="vendor\minhook\src\trampoline.c" />
@@ -93,9 +91,7 @@
     <ClCompile Include="vendor\minhook\src\hde\hde64.c" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="disasm.h" />
     <ClInclude Include="hook_manager.h" />
-    <ClInclude Include="inline_hook.h" />
     <ClInclude Include="log.h" />
     <ClInclude Include="unpack_trigger.h" />
     <ClInclude Include="vfs_hook.h" />

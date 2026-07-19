@@ -3,13 +3,9 @@
 
 // ── Hook manager ─────────────────────────────────────────────────────────────
 // A small MinHook-backed registry, shaped after Dalamud.Boot's native hook layer.
-// It separates REGISTRATION from INSTALLATION, which is mandatory for a packed
-// target: MinHook reads the target's prologue to build a trampoline, and that
-// prologue does not exist while DQX's .text is still packed. So hook modules
-// register descriptors at boot (target address is a fixed VA, valid even while the
-// bytes are zero-filled), and the unpack barrier calls hook_install_all() once the
-// code is present. This is exactly the shape the multi-hook OEP barrier will drive:
-// N modules register, one barrier installs them all.
+// It separates registration from installation because MinHook must read unpacked target
+// bytes to build trampolines. The barrier worker resolves/registers dynamic targets and
+// then installs every pending hook together.
 //
 // Teardown is admitted from day one (plugins will load/unload): every detour must
 // bracket its body with the in-flight guard so hook_remove() can drain safely while
@@ -21,7 +17,7 @@
 struct TalonHook;
 
 // Register a hook descriptor. Does NOT install. `name` is for logging; `target` is
-// the absolute VA to hook (valid even while packed/zero-filled); `detour` is the
+// the resolved absolute VA to hook; `detour` is the
 // replacement; `ppOriginal` receives the trampoline (the un-hooked callable) at
 // install time, mirroring MinHook's out-param. One hook per target (MinHook's model)
 // — a duplicate target returns nullptr. Returns nullptr if the table is full.
@@ -31,10 +27,6 @@ TalonHook* hook_register(const char* name, void* target, void* detour, void** pp
 // (normal) thread context — call this from the unpack barrier, never from a VEH.
 // Returns the number of hooks newly installed. Idempotent per hook.
 int hook_install_all();
-
-// The trampoline (un-hooked callable) for a hook; null before install. A detour that
-// stored its own `ppOriginal` slot uses that directly; this is for callers that didn't.
-void* hook_original(TalonHook* h);
 
 // ── in-flight guard (WaitGroup) ──────────────────────────────────────────────
 // A detour MUST bracket its whole body with these so hook_remove() can drain in-flight
