@@ -45,6 +45,7 @@
       <SDLCheck>false</SDLCheck>
       <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>$(ProjectDir)vendor\minhook\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <!-- Static CRT so the boot DLL has no VCRuntime redistributable dependency
            inside the target process. -->
@@ -65,6 +66,7 @@
       <SDLCheck>false</SDLCheck>
       <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>$(ProjectDir)vendor\minhook\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
     </ClCompile>
@@ -77,6 +79,24 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp" />
+    <ClCompile Include="disasm.cpp" />
+    <ClCompile Include="inline_hook.cpp" />
+    <ClCompile Include="log.cpp" />
+    <ClCompile Include="unpack_trigger.cpp" />
+    <ClCompile Include="vfs_hook.cpp" />
+    <!-- vendored MinHook (BSD-2) — the hooking engine; replaces the hand-rolled inline_hook -->
+    <ClCompile Include="vendor\minhook\src\buffer.c" />
+    <ClCompile Include="vendor\minhook\src\hook.c" />
+    <ClCompile Include="vendor\minhook\src\trampoline.c" />
+    <ClCompile Include="vendor\minhook\src\hde\hde32.c" />
+    <ClCompile Include="vendor\minhook\src\hde\hde64.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="disasm.h" />
+    <ClInclude Include="inline_hook.h" />
+    <ClInclude Include="log.h" />
+    <ClInclude Include="unpack_trigger.h" />
+    <ClInclude Include="vfs_hook.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>
