@@ -35,17 +35,15 @@ that moves when the game is patched. That's an explicit, documented cost (see
 ```text
 Injector (suspended process)                   Talon.Boot
 -----------------------------------------      --------------------------------
-decode validated KONN stage metadata
-arm DR0 at decoded stage-two entry
+read mapped PE entrypoint
+arm DR0 at packed entrypoint
 queue early LoadLibrary APC                ->  install VEH synchronously
-resume primary thread                          start normal worker
-
-stage-two entry executes                   ->  #DB: retarget DR0 to NtProtect
-packer requests executable .text           ->  #DB: page-rounded candidate covers .text
+resume primary thread                          launch scan/install worker
+packed entrypoint executes                 ->  #DB: retarget DR0 to NtProtect
+packer requests exact .text -> RX          ->  #DB: bulk-unpack boundary
                                                 park packer thread
                                                 scan executable PE sections
-                              false candidate <-  resume + rearm DR0
-                              confirmed      ->  register unique VFS signature
+                                                register unique VFS signature
                                                 install all hooks with MinHook
                                             <-  release packer; startup continues
 ```
@@ -56,7 +54,9 @@ The game is launched **suspended**, an APC that calls `LoadLibraryW(<boot dll pa
 is queued onto its primary thread, and the thread is resumed. The APC drains during
 the loader's early alertable wait, so **Talon.Boot is mapped before the game's own
 entry point runs** ("early-bird" APC injection). Both the injector and this DLL must
-be x86 to inject the 32-bit game. See `Talon.Injector/Injector.cs`.
+be x86 to inject the 32-bit game. Before resuming, the Injector reads the mapped PE's
+validated `AddressOfEntryPoint` and arms DR0 there as a generic post-APC rendezvous.
+See `Talon.Injector/Injector.cs`.
 
 ### 2. Boot orchestration (`dllmain.cpp`)
 
@@ -67,25 +67,22 @@ be x86 to inject the 32-bit game. See `Talon.Injector/Injector.cs`.
 - reads **`TALON_OVERRIDE_DIR`** — the directory of loose files to serve. If unset,
   Talon is a no-op for that launch,
 - optionally enables the **VFS census** (`TALON_VFS_CENSUS`, see below),
-- installs the barrier VEH synchronously (so the injector-armed DR0 cannot race it),
-- spawns the normal-context scanner/install worker and returns.
+- installs the barrier VEH synchronously,
+- launches the normal-context scan/install worker.
 
 ### 3. Waiting for the unpack (`unpack_trigger.cpp`)
 
 DQX ships with a packed `.text`; target functions are zero-filled at injection time.
-The injector decodes the file's self-describing `KONN` record and arms DR0 at the
-second-stage entry before resuming the primary thread. Talon.Boot's synchronously
-installed VEH catches that execute breakpoint and retargets DR0 to
-`ntdll!NtProtectVirtualMemory`.
+When the injection APC returns, Windows restores the Injector-armed entrypoint DR0.
+Boot's VEH catches that breakpoint before the first packed instruction executes and
+retargets DR0 to `ntdll!NtProtectVirtualMemory`.
 
-A Windows-page-rounded executable request covering `.text` is a barrier candidate. The
-VEH temporarily disarms DR0, sets x86 EFLAGS.RF, and parks the unpacker while the
-worker scans. If no unique VFS signature exists yet, the worker rejects the candidate
-and the VEH resumes with DR0 rearmed. On confirmation, the worker installs in normal
-context before releasing the unpacker. No VFS call is lost.
-
-If `TALON_UNPACK_STAGE_RVA` is missing or invalid, Boot fails closed for hooking and logs
-that the launch must use `Talon.Injector --unpack-barrier`.
+The completion predicate is the packer's single bulk transition: `PAGE_EXECUTE_READ`
+over exactly the page-rounded `.text` range. The VEH clears DR0, sets x86 EFLAGS.RF,
+and parks the unpacker before that call executes. The worker then scans and installs
+hooks in normal context and releases the unpacker. Scanner success does not define the
+barrier: a missing or ambiguous signature means the unpack completed but this build is
+unsupported. No VFS call is lost.
 
 ### 4. Installing the hook (MinHook, `vendor/minhook`)
 
@@ -145,7 +142,6 @@ precisely so the resource can later free it through the game's matching free pat
 | Variable | Effect |
 |---|---|
 | `TALON_OVERRIDE_DIR` | Directory of loose override files. **Unset ⇒ Talon is a no-op.** |
-| `TALON_UNPACK_STAGE_RVA` | Internal: validated KONN stage RVA set by `Talon.Injector --unpack-barrier`. |
 | `TALON_VFS_CENSUS` | If set (any value), logs the path of every resource the game requests, capped at 400 entries — useful for discovering the archive-relative paths a mod would mirror. |
 
 ## Source layout
@@ -153,7 +149,7 @@ precisely so the resource can later free it through the game's matching free pat
 | File | Responsibility |
 |---|---|
 | `dllmain.cpp` | Boot orchestration and entrypoints (`DllMain`, `TalonInit`). |
-| `unpack_trigger.*` | KONN stage-two / `NtProtectVirtualMemory` barrier and parked-thread handoff. |
+| `unpack_trigger.*` | Boot-owned `NtProtectVirtualMemory` bulk-unpack barrier and parked-thread handoff. |
 | `vfs_hook.*` | Override hook plus post-unpack executable-section signature scanner. |
 | `vendor/minhook/` | Vendored MinHook (BSD-2) — the hooking engine. |
 | `log.*` | Diagnostics to `%TEMP%\talon-boot.log` + `OutputDebugString`. |
@@ -169,8 +165,8 @@ sections. Zero or multiple matches fail safely and are logged. On a patch, re-fi
 `Vfs_LoadResource` in Binary Ninja via strings such as `"ERROR: readerror0 %x"`, then
 update `VFS_SIG` in `vfs_hook.cpp`.
 
-The unpack anchor normally needs no re-anchoring: `--unpack-barrier` scans and validates
-the packed file's KONN metadata against the PE entrypoint and `SizeOfImage` each launch.
+The unpack anchor normally needs no re-anchoring: Boot derives `.text` from the mapped
+PE headers and observes the exact page-rounded transition to `PAGE_EXECUTE_READ`.
 
 ## Diagnostics
 
@@ -180,9 +176,9 @@ compile-time toggle: `LOG_ENABLED` in `log.h`; when undefined, `dbg()` collapses
 no-op that doesn't even evaluate its arguments. Key lines to look for:
 
 - `[boot] override dir = …` — configuration read.
-- `[barrier] KONN stage2=... -> NtProtectVirtualMemory=...` — universal barrier armed.
+- `[barrier] entrypoint rendezvous hit ...` — Boot retargeted Injector's DR0 to `NtProtect`.
+- `[barrier] exact .text -> PAGE_EXECUTE_READ ...` — bulk-unpack boundary reached.
 - `[boot] VFS scanner: signature match ...` — unique runtime VFS target found.
 - `[hookmgr] installed 'Vfs_LoadResource' ...` — MinHook install succeeded.
-- `[barrier] executable .text candidate rejected ...` — an early transition was skipped.
-- `[barrier] CONFIRMED ... scanner resolved=1, hooks installed=1` — full barrier success.
+- `[barrier] bulk unpack complete; scanner resolved=1, hooks installed=1` — full success.
 - `[vfs] OVERRIDE ...` — an override was served.

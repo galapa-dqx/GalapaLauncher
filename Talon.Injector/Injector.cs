@@ -27,14 +27,7 @@ public static partial class Injector
     /// </param>
     /// <param name="workingDir">Working directory for the target process.</param>
     /// <param name="bootDllPath">Absolute path to the native x86 boot DLL to inject.</param>
-    /// <param name="armExecBpRva">
-    /// If set, arm a hardware execute breakpoint (DR0) at <c>imageBase + rva</c> on the main
-    /// thread while it is still suspended, so it is live before the target's entry point runs.
-    /// The injected boot DLL's VEH catches it. The universal barrier uses this to anchor on the
-    /// KONN second-stage entry, which executes too early to instrument from a worker thread.
-    /// </param>
-    public static InjectResult LaunchAndInject(string gameCommandLine, string workingDir, string bootDllPath,
-        uint? armExecBpRva = null)
+    public static InjectResult LaunchAndInject(string gameCommandLine, string workingDir, string bootDllPath)
     {
         if (string.IsNullOrWhiteSpace(gameCommandLine))
             throw new ArgumentException("Game command line is empty.", nameof(gameCommandLine));
@@ -88,11 +81,10 @@ public static partial class Injector
             if (loadLibraryW == nint.Zero)
                 throw new InvalidOperationException("GetProcAddress(LoadLibraryW) returned null.");
 
-            // 3. Optionally arm a hardware execute breakpoint on the still-suspended main
-            //    thread, so it is live before the entry point (and the packer stub) runs.
-            //    Must happen before ResumeThread; the boot DLL's VEH handles the trap.
-            if (armExecBpRva is { } rva)
-                ArmExecuteBreakpoint(pi.hProcess, pi.hThread, rva);
+            // 3. Arm a deterministic post-APC rendezvous at the mapped PE entrypoint.
+            //    The saved thread context restores this DR0 after LoadLibraryW returns;
+            //    Talon.Boot's VEH then retargets it to NtProtectVirtualMemory.
+            ArmEntrypointRendezvous(pi.hProcess, pi.hThread);
 
             // 4. Queue the APC onto the (still suspended) primary thread, then resume.
             //    The APC calls LoadLibraryW(remotePath) during the loader's early
@@ -117,63 +109,6 @@ public static partial class Injector
         }
     }
 
-    /// <summary>
-    /// Finds and decodes this packer's 32-byte KONN stage record. The record contains
-    /// both the PE entry RVA and the second-stage entry RVA, which makes the validation
-    /// independent of file offsets and game load addresses.
-    /// </summary>
-    public static uint FindKonnStageEntryRva(string path)
-    {
-        var image = File.ReadAllBytes(path);
-        if (image.Length < 0x100)
-            throw new BadImageFormatException($"'{path}' is too small to be a PE image.");
-
-        var peOffset = BitConverter.ToInt32(image, 0x3C);
-        if (peOffset < 0 || peOffset + 0x78 > image.Length ||
-            BitConverter.ToUInt32(image, peOffset) != 0x00004550)
-            throw new BadImageFormatException($"'{path}' has no valid PE header.");
-
-        var optionalHeader = peOffset + 24;
-        if (BitConverter.ToUInt16(image, optionalHeader) != 0x010B)
-            throw new BadImageFormatException($"'{path}' is not a PE32 image.");
-        var peEntryRva = BitConverter.ToUInt32(image, optionalHeader + 16);
-        var sizeOfImage = BitConverter.ToUInt32(image, optionalHeader + 56);
-
-        var raw = new uint[8];
-        var decoded = new uint[8];
-        for (var offset = 0; offset + 32 <= image.Length; offset += 4)
-        {
-            var raw0 = BitConverter.ToUInt32(image, offset);
-            var raw1 = BitConverter.ToUInt32(image, offset + 4);
-            if ((raw1 ^ raw0) != 0x4E4E4F4B) // bytes "KONN"
-                continue;
-
-            for (var i = 0; i < 8; ++i)
-                raw[i] = BitConverter.ToUInt32(image, offset + i * 4);
-
-            decoded[0] = raw[0];
-            var previous = raw[0];
-            for (uint i = 0; i < 7; ++i)
-            {
-                decoded[(int)i + 1] = raw[(int)i + 1] ^ previous;
-                previous = unchecked((raw[(int)i + 1] - i + previous) ^ (i * i));
-            }
-
-            var stageBaseRva = decoded[3];
-            var stageEntryRva = decoded[6];
-            if (decoded[1] == 0x4E4E4F4B && decoded[2] == peEntryRva &&
-                stageBaseRva < sizeOfImage && stageEntryRva >= stageBaseRva &&
-                stageEntryRva < sizeOfImage)
-            {
-                Console.WriteLine($"[talon] KONN metadata @ file+0x{offset:X}: stage2 RVA 0x{stageEntryRva:X}");
-                return stageEntryRva;
-            }
-        }
-
-        throw new InvalidDataException(
-            $"No valid KONN unpacker record was found in '{path}'; refusing to arm an unsafe barrier.");
-    }
-
     /// <summary>Reads the COFF machine field from a PE file on disk (0x14C == x86).</summary>
     private static ushort ReadPeMachine(string path)
     {
@@ -189,43 +124,66 @@ public static partial class Injector
         return reader.ReadUInt16(); // Machine
     }
 
-    /// <summary>
-    /// Arms DR0 as a 1-byte execute breakpoint at <c>imageBase + rva</c> on the (suspended)
-    /// thread. Reads the target's load base from its PEB, since the module isn't enumerable
-    /// via the usual APIs while suspended.
-    /// </summary>
-    private static void ArmExecuteBreakpoint(nint hProcess, nint hThread, uint rva)
-    {
-        var imageBase = GetRemoteImageBase(hProcess);
-        var target = imageBase + rva;
-        Console.WriteLine($"[talon] arming DR0 @ 0x{target:X8} (imageBase 0x{imageBase:X8} + 0x{rva:X})");
-
-        var ctx = new CONTEXT_X86 { ContextFlags = CONTEXT_DEBUG_REGISTERS };
-        if (!GetThreadContext(hThread, ref ctx))
-            throw new InvalidOperationException($"GetThreadContext failed (Win32 error {Marshal.GetLastWin32Error()}).");
-
-        ctx.Dr0 = target;
-        ctx.Dr7 = 0x00000001;                 // L0=1, RW0=00 (execute), LEN0=00 (1 byte)
-        ctx.ContextFlags = CONTEXT_DEBUG_REGISTERS;
-        if (!SetThreadContext(hThread, ref ctx))
-            throw new InvalidOperationException($"SetThreadContext failed (Win32 error {Marshal.GetLastWin32Error()}).");
-    }
-
-    /// <summary>Reads the target process's image base from PEB.ImageBaseAddress (PEB+0x08 on x86).</summary>
-    private static uint GetRemoteImageBase(nint hProcess)
+    private static void ArmEntrypointRendezvous(nint process, nint thread)
     {
         var pbi = new PROCESS_BASIC_INFORMATION();
-        var status = NtQueryInformationProcess(hProcess, 0, ref pbi, Marshal.SizeOf<PROCESS_BASIC_INFORMATION>(), out _);
-        if (status != 0)
-            throw new InvalidOperationException($"NtQueryInformationProcess failed (NTSTATUS 0x{status:X8}).");
+        var status = NtQueryInformationProcess(process, 0, ref pbi,
+            Marshal.SizeOf<PROCESS_BASIC_INFORMATION>(), out _);
+        if (status != 0 || pbi.PebBaseAddress == nint.Zero)
+            throw new InvalidOperationException(
+                $"NtQueryInformationProcess failed (NTSTATUS 0x{status:X8}).");
 
-        var buf = new byte[4];
-        if (!ReadProcessMemory(hProcess, pbi.PebBaseAddress + 0x08, buf, 4, out _))
-            throw new InvalidOperationException($"ReadProcessMemory(PEB.ImageBaseAddress) failed (Win32 error {Marshal.GetLastWin32Error()}).");
-        return BitConverter.ToUInt32(buf, 0);
+        var peb = ReadRemote(process, pbi.PebBaseAddress + 0x08, 4, "PEB.ImageBaseAddress");
+        var imageBase = BitConverter.ToUInt32(peb, 0);
+        var dos = ReadRemote(process, (nint)imageBase, 0x40, "DOS header");
+        if (BitConverter.ToUInt16(dos, 0) != 0x5A4D)
+            throw new BadImageFormatException("Target's mapped image has no MZ header.");
+
+        var peOffset = BitConverter.ToInt32(dos, 0x3C);
+        if (peOffset < 0x40 || peOffset > 0x100000 ||
+            (uint)peOffset > uint.MaxValue - imageBase)
+            throw new BadImageFormatException($"Target's mapped e_lfanew is invalid: 0x{peOffset:X}.");
+
+        var nt = ReadRemote(process, (nint)(imageBase + (uint)peOffset), 0x60, "NT headers");
+        if (BitConverter.ToUInt32(nt, 0) != 0x00004550 ||
+            BitConverter.ToUInt16(nt, 4) != IMAGE_FILE_MACHINE_I386 ||
+            BitConverter.ToUInt16(nt, 24) != 0x010B)
+            throw new BadImageFormatException("Target's mapped image is not a valid x86 PE32 image.");
+
+        var entryRva = BitConverter.ToUInt32(nt, 24 + 16);
+        var sizeOfImage = BitConverter.ToUInt32(nt, 24 + 56);
+        if (entryRva == 0 || entryRva >= sizeOfImage || entryRva > uint.MaxValue - imageBase)
+            throw new BadImageFormatException(
+                $"Target's mapped entrypoint RVA is invalid: 0x{entryRva:X}.");
+
+        var target = imageBase + entryRva;
+        var context = new CONTEXT_X86 { ContextFlags = CONTEXT_DEBUG_REGISTERS };
+        if (!GetThreadContext(thread, ref context))
+            throw new InvalidOperationException(
+                $"GetThreadContext failed (Win32 error {Marshal.GetLastWin32Error()}).");
+
+        context.Dr0 = target;
+        context.Dr7 = (context.Dr7 & ~0x000F0003u) | 1u;
+        context.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+        if (!SetThreadContext(thread, ref context))
+            throw new InvalidOperationException(
+                $"SetThreadContext failed (Win32 error {Marshal.GetLastWin32Error()}).");
+
+        Console.WriteLine($"[talon] entry rendezvous: 0x{target:X8} " +
+            $"(imageBase 0x{imageBase:X8} + RVA 0x{entryRva:X})");
     }
 
-    private const uint CONTEXT_DEBUG_REGISTERS = 0x00010010;   // CONTEXT_i386 | 0x10
+    private static byte[] ReadRemote(nint process, nint address, int size, string description)
+    {
+        var bytes = new byte[size];
+        if (!ReadProcessMemory(process, address, bytes, (nuint)size, out var read) ||
+            read != (nuint)size)
+            throw new InvalidOperationException(
+                $"ReadProcessMemory({description}) failed (Win32 error {Marshal.GetLastWin32Error()}).");
+        return bytes;
+    }
+
+    private const uint CONTEXT_DEBUG_REGISTERS = 0x00010010;
     private const uint CREATE_SUSPENDED = 0x00000004;
     private const uint MEM_COMMIT = 0x1000;
     private const uint MEM_RESERVE = 0x2000;
@@ -275,7 +233,8 @@ public static partial class Injector
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool ReadProcessMemory(nint hProcess, nint lpBaseAddress, byte[] lpBuffer, nuint nSize, out nuint lpNumberOfBytesRead);
+    private static partial bool ReadProcessMemory(nint hProcess, nint lpBaseAddress,
+        byte[] lpBuffer, nuint nSize, out nuint lpNumberOfBytesRead);
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -286,12 +245,9 @@ public static partial class Injector
     private static partial bool SetThreadContext(nint hThread, ref CONTEXT_X86 lpContext);
 
     [LibraryImport("ntdll.dll")]
-    private static partial int NtQueryInformationProcess(nint hProcess, int processInformationClass,
-        ref PROCESS_BASIC_INFORMATION processInformation, int processInformationLength, out int returnLength);
+    private static partial int NtQueryInformationProcess(nint process, int informationClass,
+        ref PROCESS_BASIC_INFORMATION information, int informationLength, out int returnLength);
 
-    // x86 CONTEXT is 716 (0x2CC) bytes; we only touch ContextFlags, Dr0 and Dr7. Explicit
-    // layout with the full size lets Get/SetThreadContext marshal the whole structure while
-    // we address just the debug-register fields.
     [StructLayout(LayoutKind.Explicit, Size = 0x2CC)]
     private struct CONTEXT_X86
     {

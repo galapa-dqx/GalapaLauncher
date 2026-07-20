@@ -19,7 +19,7 @@
 //   log.*            diagnostics to %TEMP%\\talon-boot.log + OutputDebugString
 //   hook_manager.*   MinHook-backed hook registry
 //   vfs_hook.*       VFS override and post-unpack signature scanner
-//   unpack_trigger.* universal KONN/NtProtect unpack barrier
+//   unpack_trigger.* in-process bulk-unpack barrier
 //   dllmain.cpp      boot orchestration and entrypoints
 
 #define WIN32_LEAN_AND_MEAN
@@ -31,7 +31,7 @@
 
 static volatile LONG g_booted = 0;
 
-// Reads configuration and starts the universal unpack barrier. Idempotent.
+// Reads configuration and starts the bulk-unpack barrier. Idempotent.
 static void talon_boot() {
     if (InterlockedCompareExchange(&g_booted, 1, 0) != 0) return;
 
@@ -59,8 +59,8 @@ static void talon_boot() {
         dbg("[boot] VFS census logging ENABLED\n");
     }
 
-    // The barrier worker resolves and registers scanner-driven hooks after unpacking.
-    start_unpack_watcher();
+    // Boot observes the packer's final bulk .text protection transition itself.
+    start_unpack_barrier();
 }
 
 // Explicit hand-off entrypoint for the entrypoint-rewrite / CLR bootstrap paths.
