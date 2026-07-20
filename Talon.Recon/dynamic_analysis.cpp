@@ -1,8 +1,9 @@
-// Talon.AntiDebug — one-shot anti-tamper probe payload.
+// Optional dynamic-analysis probes for Talon.Recon.
 //
-// Injected by the existing Talon.Injector (`--boot-dll Talon.AntiDebug.dll`) via early-bird
-// APC. Purpose: empirically answer, for DQXGame.exe, two questions that decide which hooking
-// primitive Talon.Boot can rely on:
+// Injected as part of Talon.Recon via the existing Talon.Injector. These opt-in probes
+// preserve the reusable experiments from the earlier one-shot probe payload:
+// unpack-trajectory sampling, debug-register persistence, executable-byte integrity,
+// hardware-breakpoint stack capture, and NtProtect transition tracing.
 //
 //   1. Does the game scan/clear DEBUG REGISTERS? -> is hardware-breakpoint hooking viable?
 //   2. Does the game self-repair its own .text?  -> does our inline (byte-patch) hook survive?
@@ -11,17 +12,16 @@
 // independent of login, so no real account is ever authenticated (and a crash on the menu is
 // harmless). This payload only observes — it installs no production hook.
 //
-// Probe target is Vfs_LoadResource at module RVA 0xFD0E0 (BN addr 0x5ad0e0 - image base
-// 0x4b0000). Because the game is packed, the function is not present at that address until the
-// packer unpacks it, so we poll for its prologue signature first.
+// TALON_RECON_TARGET_RVA overrides the historical Vfs_LoadResource RVA. This makes the
+// integrity and breakpoint probes reusable when a patch moves the function.
 //
-// Output: %TEMP%\talon-antidebug.log (text, one line per event, flushed each write).
+// Output: %TEMP%\talon-recon-analysis.log (text, one line per event, flushed each write).
 //
 // Phases run sequentially, each logging its verdict BEFORE the next (riskier) phase, so a
 // later crash never loses an earlier answer:
 //   Phase T  .text unpack trajectory: bulk single-pass vs incremental on-execute (safe)
 //   Phase 1  debug-register persistence on a private victim thread          (safe)
-//   Phase 2  patch Vfs_LoadResource[0] = 0xCC and watch for self-repair     (recoverable)
+//   Phase 2  patch target[0] = 0xCC and watch for self-repair              (recoverable)
 //   Phase 3  arm a HW execute BP on every game thread + VEH fire detection  (invasive)
 //
 // Phase T is the load-bearing test for Talon's many-hooks plan. The proposed architecture
@@ -37,8 +37,10 @@
 #include <tlhelp32.h>
 #include <intrin.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <stdarg.h>
 #include <stdint.h>
+#include "dynamic_analysis.h"
 
 namespace
 {
@@ -64,12 +66,12 @@ namespace
     {
         wchar_t dir[MAX_PATH], path[MAX_PATH];
         if (!GetTempPathW(MAX_PATH, dir)) return;
-        _snwprintf(path, MAX_PATH, L"%stalon-antidebug.log", dir);
+        _snwprintf(path, MAX_PATH, L"%stalon-recon-analysis.log", dir);
         g_log = _wfopen(path, L"a");
     }
 
     // ── module / target ─────────────────────────────────────────────────────────
-    constexpr uint32_t kVfsRva = 0xFD0E0;
+    constexpr uint32_t kDefaultTargetRva = 0xFD0E0;
 
     // Named function starts from the reversed VFS map (BN addr - image base 0x4b0000), used by
     // Phase T as labelled anchors: in a bulk unpack they all populate in the same tick as the
@@ -86,7 +88,26 @@ namespace
 
     uintptr_t g_base   = 0;
     uint32_t  g_size   = 0;
-    uintptr_t g_target = 0;   // runtime VA of Vfs_LoadResource
+    uintptr_t g_target = 0;
+    uint32_t  g_targetRva = kDefaultTargetRva;
+    bool      g_targetConfigured = false;
+
+    bool ReadTargetRva()
+    {
+        char value[32] = {};
+        if (!GetEnvironmentVariableA("TALON_RECON_TARGET_RVA", value, sizeof(value)))
+            return true;
+        char* end = nullptr;
+        unsigned long parsed = strtoul(value, &end, 0);
+        if (end == value || *end != '\0' || parsed >= g_size)
+        {
+            Log("invalid TALON_RECON_TARGET_RVA='%s' (expected an RVA inside SizeOfImage)", value);
+            return false;
+        }
+        g_targetRva = parsed;
+        g_targetConfigured = true;
+        return true;
+    }
 
     // Prologue signature (-1 = wildcard):
     // 53 8B DC 83 ?? ?? 83 ?? ?? 83 ?? ?? 55 8B ?? ?? 89 ?? ?? ?? 8B EC B8 ?? ?? ?? ?? E8
@@ -101,6 +122,18 @@ namespace
         for (int i = 0; i < kSigLen; i++)
             if (kSig[i] >= 0 && p[i] != (uint8_t)kSig[i]) return false;
         return true;
+    }
+
+    bool RegionExecReadable(const uint8_t* addr, size_t len);
+
+    bool TargetReady()
+    {
+        if (!RegionExecReadable((const uint8_t*)g_target, kSigLen)) return false;
+        if (!g_targetConfigured) return SigMatches((const uint8_t*)g_target);
+        uint8_t populated = 0;
+        __try { for (int i = 0; i < 16; ++i) populated |= ((volatile uint8_t*)g_target)[i]; }
+        __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+        return populated != 0;
     }
 
     bool RegionExecReadable(const uint8_t* addr, size_t len)
@@ -126,8 +159,7 @@ namespace
     {
         for (int i = 0; i < seconds * 10; i++)
         {
-            if (RegionExecReadable((const uint8_t*)g_target, kSigLen) &&
-                SigMatches((const uint8_t*)g_target))
+            if (TargetReady())
                 return true;
             Sleep(100);
         }
@@ -175,7 +207,7 @@ namespace
     // section flips zero->code within a few ticks) = bulk single-pass unpack, so a single
     // "unpack complete" barrier is valid. A spread-out ramp, or many regions never filling
     // during boot, = incremental/on-execute decryption, which has no single barrier moment.
-    // Returns true if the Vfs_LoadResource prologue is present at the end (feeds `unpacked`).
+    // Returns true if the configured target is present at the end (feeds `unpacked`).
     bool TextUnpackTrajectory()
     {
         Log("=== Phase T: .text unpack trajectory (bulk single-pass vs incremental on-execute) ===");
@@ -256,7 +288,7 @@ namespace
             Log("  VERDICT: LEANS INCREMENTAL/INCONCLUSIVE — population spread over %dms and/or %d/%d points "
                 "never filled during boot -> re-examine before adopting one barrier", riseMs, never, nPoints);
 
-        return RegionExecReadable((const uint8_t*)g_target, kSigLen) && SigMatches((const uint8_t*)g_target);
+        return TargetReady();
     }
 
     // ── shared VEH state ─────────────────────────────────────────────────────────
@@ -275,36 +307,16 @@ namespace
     constexpr int kWriteStackWords = 24;
     DWORD         g_writeStack[kWriteStackWords] = {};
 
-    // Phase NX-OEP: .text made non-executable so the packer's jump to OEP faults on execute.
-    volatile LONG g_oepWatch    = 0;   // NX-OEP arming active
-    volatile LONG g_oepHit      = 0;   // OEP execute-fault caught (one-shot)
-    DWORD         g_oepAddr     = 0;   // the OEP (faulting execute address)
     uintptr_t     g_textStart   = 0;
     uint32_t      g_textSize    = 0;
-
-    // Phase TAIL: execute BP at the packer stub's tail-jump (RVA 0x1011, "push eax; ret").
-    volatile LONG g_tailWatch   = 0;
-    volatile LONG g_tailHit     = 0;
-    uintptr_t     g_tailTarget  = 0;
-    DWORD         g_tailEax = 0, g_tailEip = 0, g_tailEsp = 0;
-    DWORD         g_tailStack[8] = {};
-
-    // Phase ESP: ASPack pushad/popad stack-breakpoint OEP finder (two-stage DR).
-    volatile LONG g_espWatch      = 0;
-    volatile LONG g_espStage      = 0;   // 0=await exec-BP at the stub call, 1=await access-BP
-    volatile LONG g_espHit        = 0;
-    uintptr_t     g_espCallTarget = 0;
-    DWORD         g_espStackAddr  = 0;   // pushad-saved EAX slot on the stack
-    DWORD         g_espEip = 0, g_espEax = 0, g_espSlotVal = 0;
-    DWORD         g_espStack[8]   = {};
-    // Stage-2 barrier probe.
-    constexpr uint32_t kStage2EntryRva = 0x02023A00;
+    // Entrypoint -> NtProtectVirtualMemory barrier trace.
     volatile LONG g_protectWatch = 0;
     volatile LONG g_protectStage = 0;
     volatile LONG g_protectHit = 0;
-    uintptr_t g_stage2Target = 0;
+    uintptr_t g_entryTarget = 0;
+    uint32_t g_entryRva = 0;
     uintptr_t g_ntProtectTarget = 0;
-    DWORD g_stage2Bytes[4] = {};
+    DWORD g_entryBytes[4] = {};
     struct ProtectCall { DWORD ret, process, base, size, protect; };
     static const int kMaxProtectCalls = 2048;
     ProtectCall g_protectCalls[kMaxProtectCalls] = {};
@@ -313,6 +325,19 @@ namespace
 
     using PFN_RtlCapture = USHORT (WINAPI*)(ULONG, ULONG, PVOID*, PULONG);
     PFN_RtlCapture g_rtlCapture = nullptr;
+
+    bool AnalysisModeIs(const char* expected)
+    {
+        char value[32] = {};
+        if (!GetEnvironmentVariableA("TALON_RECON_ANALYSIS", value, sizeof(value)))
+            return false;
+        return _stricmp(value, expected) == 0;
+    }
+
+    bool AnalysisWorkerRequested()
+    {
+        return GetEnvironmentVariableA("TALON_RECON_ANALYSIS", nullptr, 0) != 0;
+    }
 
     void DumpStack(const char* tag)
     {
@@ -338,89 +363,68 @@ namespace
 
         if (g_protectWatch && er->ExceptionCode == EXCEPTION_SINGLE_STEP && (ep->ContextRecord->Dr6 & 1))
         {
-            if (g_protectStage == 0 && addr == g_stage2Target)
+            if (g_protectStage == 0 && addr == g_entryTarget)
             {
-                __try { const DWORD* p = (const DWORD*)g_stage2Target; for (int i=0;i<4;i++) g_stage2Bytes[i]=p[i]; }
-                __except (EXCEPTION_EXECUTE_HANDLER) { for (int i=0;i<4;i++) g_stage2Bytes[i]=0; }
-                ep->ContextRecord->Dr0 = g_ntProtectTarget; ep->ContextRecord->Dr7 = 1; ep->ContextRecord->Dr6 = 0;
-                InterlockedExchange(&g_protectStage, 1); return EXCEPTION_CONTINUE_EXECUTION;
+                __try
+                {
+                    const DWORD* p = (const DWORD*)g_entryTarget;
+                    for (int i = 0; i < 4; ++i) g_entryBytes[i] = p[i];
+                }
+                __except (EXCEPTION_EXECUTE_HANDLER)
+                {
+                    for (int i = 0; i < 4; ++i) g_entryBytes[i] = 0;
+                }
+                ep->ContextRecord->Dr0 = g_ntProtectTarget;
+                ep->ContextRecord->Dr7 = 1;
+                ep->ContextRecord->Dr6 = 0;
+                InterlockedExchange(&g_protectStage, 1);
+                return EXCEPTION_CONTINUE_EXECUTION;
             }
             if (g_protectStage == 1 && addr == g_ntProtectTarget)
             {
                 ProtectCall c = {};
-                __try { const DWORD* sp=(const DWORD*)ep->ContextRecord->Esp; c.ret=sp[0]; c.process=sp[1]; c.base=sp[2]?*(const DWORD*)(uintptr_t)sp[2]:0; c.size=sp[3]?*(const DWORD*)(uintptr_t)sp[3]:0; c.protect=sp[4]; }
-                __except (EXCEPTION_EXECUTE_HANDLER) { c={}; }
-                LONG n=InterlockedIncrement(&g_protectCallCount)-1; if(n>=0 && n<kMaxProtectCalls) g_protectCalls[n]=c;
-                uint64_t end=(uint64_t)c.base+c.size, textEnd=(uint64_t)g_textStart+g_textSize; DWORD p=c.protect&0xff;
-                bool executable=p==PAGE_EXECUTE||p==PAGE_EXECUTE_READ||p==PAGE_EXECUTE_READWRITE||p==PAGE_EXECUTE_WRITECOPY;
-                if(executable && c.base<textEnd && end>g_textStart && InterlockedExchange(&g_protectHit,1)==0)
-                { ep->ContextRecord->Dr0=0; ep->ContextRecord->Dr7=0; InterlockedExchange(&g_protectWatch,0); }
+                __try
+                {
+                    const DWORD* sp = (const DWORD*)ep->ContextRecord->Esp;
+                    c.ret = sp[0];
+                    c.process = sp[1];
+                    c.base = sp[2] ? *(const DWORD*)(uintptr_t)sp[2] : 0;
+                    c.size = sp[3] ? *(const DWORD*)(uintptr_t)sp[3] : 0;
+                    c.protect = sp[4];
+                }
+                __except (EXCEPTION_EXECUTE_HANDLER) { c = {}; }
+
+                LONG n = InterlockedIncrement(&g_protectCallCount) - 1;
+                if (n >= 0 && n < kMaxProtectCalls) g_protectCalls[n] = c;
+
+                uint64_t end = (uint64_t)c.base + c.size;
+                uint64_t textEnd = (uint64_t)g_textStart + g_textSize;
+                DWORD protection = c.protect & 0xff;
+                bool executable = protection == PAGE_EXECUTE || protection == PAGE_EXECUTE_READ ||
+                                  protection == PAGE_EXECUTE_READWRITE || protection == PAGE_EXECUTE_WRITECOPY;
+                if (executable && c.base < textEnd && end > g_textStart &&
+                    InterlockedExchange(&g_protectHit, 1) == 0)
+                {
+                    ep->ContextRecord->Dr0 = 0;
+                    ep->ContextRecord->Dr7 = 0;
+                    InterlockedExchange(&g_protectWatch, 0);
+                }
                 // RF suppresses DR0 for the instruction being resumed.
                 ep->ContextRecord->EFlags |= 0x00010000;
-                ep->ContextRecord->Dr6=0; return EXCEPTION_CONTINUE_EXECUTION;
-            }
-        }
-
-        // Phase NX-OEP: an EXECUTE access violation inside .text (which we set non-executable)
-        // is the packer transferring control to the real game — the fault address IS the OEP.
-        // Capture it, restore .text to executable, and resume so the game runs on normally.
-        // ExceptionInformation[0] == 8 is a DEP/execute violation.
-        if (g_oepWatch && er->ExceptionCode == EXCEPTION_ACCESS_VIOLATION
-            && er->NumberParameters >= 1 && er->ExceptionInformation[0] == 8
-            && addr >= g_textStart && addr < g_textStart + g_textSize
-            && InterlockedExchange(&g_oepHit, 1) == 0)
-        {
-            g_oepAddr = (DWORD)addr;
-            DWORD op;
-            VirtualProtect((void*)g_textStart, g_textSize, PAGE_EXECUTE_READWRITE, &op);
-            InterlockedExchange(&g_oepWatch, 0);
-            return EXCEPTION_CONTINUE_EXECUTION;   // re-execute at OEP, now executable
-        }
-
-        // Phase ESP: the ASPack pushad/popad ESP trick, two stages.
-        if (g_espWatch && er->ExceptionCode == EXCEPTION_SINGLE_STEP)
-        {
-            DWORD dr6 = (DWORD)ep->ContextRecord->Dr6;
-            // Stage 0: exec-BP at the stub's `call` (pushad + push eax already done). Point a
-            // 4-byte read/write access-BP (DR1) at the pushad-saved EAX slot [esp+0x20]; the
-            // matching popad at unpack-end reads it (and the unpacker stores OEP there first).
-            if (g_espStage == 0 && (dr6 & 1) && addr == g_espCallTarget)
-            {
-                g_espStackAddr = (DWORD)ep->ContextRecord->Esp + 0x20;
-                ep->ContextRecord->Dr0 = 0;
-                ep->ContextRecord->Dr1 = g_espStackAddr;
-                ep->ContextRecord->Dr7 = 0x00F00004;   // DR1 enabled, RW=11 (r/w), LEN=11 (4 bytes)
-                ep->ContextRecord->Dr6 = 0;
-                InterlockedExchange(&g_espStage, 1);
-                return EXCEPTION_CONTINUE_EXECUTION;
-            }
-            // Stage 1: the access-BP fired — popad/mov touched the saved-EAX slot = end of
-            // unpack, immediately before the jump to OEP. The slot now holds the OEP.
-            if (g_espStage == 1 && (dr6 & 2) && InterlockedExchange(&g_espHit, 1) == 0)
-            {
-                g_espEip = ep->ContextRecord->Eip;
-                g_espEax = ep->ContextRecord->Eax;
-                g_espSlotVal = *(DWORD*)(uintptr_t)g_espStackAddr;
-                const uint32_t* sp = (const uint32_t*)ep->ContextRecord->Esp;
-                for (int i = 0; i < 8; i++) g_espStack[i] = sp[i];
-                ep->ContextRecord->Dr1 = 0;
-                ep->ContextRecord->Dr7 = 0;
                 ep->ContextRecord->Dr6 = 0;
                 return EXCEPTION_CONTINUE_EXECUTION;
             }
         }
 
-        // Phase TAIL: execute-BP at the stub tail-jump fired. eax = OEP at this instant.
-        if (g_tailWatch && er->ExceptionCode == EXCEPTION_SINGLE_STEP && addr == g_tailTarget
-            && InterlockedExchange(&g_tailHit, 1) == 0)
+        // Talon.Injector always leaves DR0 armed at the mapped PE entrypoint. Recon must
+        // consume that rendezvous even when no analysis mode is selected; otherwise the
+        // target receives an unhandled EXCEPTION_SINGLE_STEP. PROTECT mode handles the
+        // same event above and retargets DR0 instead of clearing it.
+        if (er->ExceptionCode == EXCEPTION_SINGLE_STEP && (ep->ContextRecord->Dr6 & 1)
+            && addr == g_entryTarget)
         {
-            g_tailEax = ep->ContextRecord->Eax;
-            g_tailEip = ep->ContextRecord->Eip;
-            g_tailEsp = ep->ContextRecord->Esp;
-            const uint32_t* sp = (const uint32_t*)ep->ContextRecord->Esp;
-            for (int i = 0; i < 8; i++) g_tailStack[i] = sp[i];
             ep->ContextRecord->Dr0 = 0;
-            ep->ContextRecord->Dr7 = 0;
+            ep->ContextRecord->Dr7 &= ~0x000F0003u;
             ep->ContextRecord->Dr6 = 0;
             return EXCEPTION_CONTINUE_EXECUTION;
         }
@@ -525,7 +529,7 @@ namespace
         if (!victim) { Log("  could not create victim thread; skipping"); return; }
         Sleep(50);
 
-        uintptr_t sentinel = g_target ? g_target : (g_base + kVfsRva);
+        uintptr_t sentinel = g_target ? g_target : (g_base + kDefaultTargetRva);
         bool set = SetHwBp(victim, sentinel);
         uintptr_t dr0 = 0; DWORD dr7 = 0;
         ReadHwBp(victim, &dr0, &dr7);
@@ -564,7 +568,7 @@ namespace
     // ── Phase 2: .text self-repair / software-breakpoint scan ─────────────────────
     void Phase2()
     {
-        Log("=== Phase 2: .text self-repair (patch Vfs_LoadResource[0]=0xCC) ===");
+        Log("=== Phase 2: .text self-repair (patch target[0]=0xCC) ===");
         uint8_t orig[8];
         memcpy(orig, (void*)g_target, 8);
         g_origByte = orig[0];
@@ -590,8 +594,8 @@ namespace
             {
                 repaired = true;
                 if (g_int3Exec)
-                    Log("  target[0] changed to 0x%02X after ~%dms — but OUR VEH restored it (game EXECUTED "
-                        "Vfs_LoadResource; menu loads via VFS). Repair test inconclusive.", cur, i * 250);
+                    Log("  target[0] changed to 0x%02X after ~%dms — but OUR VEH restored it "
+                        "after target execution. Repair test inconclusive.", cur, i * 250);
                 else
                     Log("  target[0] REPAIRED to 0x%02X after ~%dms (game restored it)", cur, i * 250);
             }
@@ -672,7 +676,7 @@ namespace
         else if (checked > 0 && stillSet == 0)
             Log("  RESULT: HW BP was cleared on all threads before firing -> active DR scanning");
         else if (checked > 0 && stillSet == checked)
-            Log("  RESULT: HW BP retained but never fired (Vfs_LoadResource not called this session)");
+            Log("  RESULT: HW BP retained but never fired (target not called this session)");
         else
             Log("  RESULT: inconclusive (armed=%d checked=%d)", armed, checked);
 
@@ -686,225 +690,49 @@ namespace
         }
     }
 
-    // ── Phase NX-OEP: find the OEP by making .text non-executable ──────────────────
-    // Design B: mark the whole .text non-executable at inject. The unpacker's WRITES are
-    // unaffected (the page stays writable), but the instant the packer JUMPS into .text —
-    // the OEP — executing the first instruction faults, and Veh captures that address as the
-    // OEP, restores .text, and resumes so the game runs on. If no fault fires, either DEP is
-    // off or the packer re-protected .text executable itself (Design B defeated); the DEP
-    // check and the protection poll tell which. Runs standalone, gated on TALON_NXOEP, armed
-    // before the packer reaches the OEP (~125ms of unpack gives ample margin).
-    void PhaseNxOep()
-    {
-        Log("=== Phase NX-OEP: find OEP via non-executable .text (Design B) ===");
-
-        // DEP must be enabled for an execute of a non-exec page to fault at all.
-        {
-            typedef BOOL (WINAPI *PFN_GetDep)(HANDLE, LPDWORD, PBOOL);
-            auto k32  = GetModuleHandleW(L"kernel32.dll");
-            auto pGet = k32 ? (PFN_GetDep)GetProcAddress(k32, "GetProcessDEPPolicy") : nullptr;
-            DWORD flags = 0; BOOL perm = FALSE;
-            if (pGet && pGet(GetCurrentProcess(), &flags, &perm))
-                Log("  DEP policy: flags=%lu permanent=%d -> %s", flags, perm,
-                    (flags & 1) ? "ENABLED" : "DISABLED (NX-fault will NOT fire — Design B needs DEP)");
-            else
-                Log("  DEP policy: query unavailable (assuming enabled)");
-        }
-
-        uintptr_t tStart = 0; uint32_t tSize = 0;
-        if (!FindTextSection(&tStart, &tSize)) { Log("  .text not found; abort"); return; }
-        g_textStart = tStart; g_textSize = tSize;
-
-        DWORD prev = 0;
-        BOOL ok = VirtualProtect((void*)tStart, tSize, PAGE_READWRITE, &prev);
-        if (!ok)
-        {
-            // A .text page may be uncommitted; fall back to page-by-page.
-            int done = 0, fail = 0;
-            for (uintptr_t a = tStart; a < tStart + tSize; a += 0x1000)
-            {
-                DWORD o;
-                if (VirtualProtect((void*)a, 0x1000, PAGE_READWRITE, &o)) done++; else fail++;
-            }
-            Log("  whole-range VirtualProtect failed (err=%lu); page-by-page: %d ok, %d failed",
-                GetLastError(), done, fail);
-            ok = done > 0;
-        }
-        if (!ok) { Log("  could not make .text non-executable; abort"); return; }
-        Log("  .text [%08X,%08X) -> PAGE_READWRITE (prev prot=%08X); waiting for the OEP execute-fault",
-            (unsigned)tStart, (unsigned)(tStart + tSize), prev);
-
-        InterlockedExchange(&g_oepHit, 0);
-        InterlockedExchange(&g_oepWatch, 1);
-
-        // Poll .text protection so we can see if the packer re-protects it (which would defeat
-        // the trick), and stop the instant the OEP fault fires. ~8s window.
-        DWORD lastProt = 0;
-        for (int i = 0; i < 1600 && !g_oepHit; i++)
-        {
-            MEMORY_BASIC_INFORMATION mbi;
-            if (VirtualQuery((void*)tStart, &mbi, sizeof(mbi)) && mbi.Protect != lastProt)
-            {
-                Log("  [poll t=%dms] .text prot=%08X state=%lx", i * 5, mbi.Protect, mbi.State);
-                lastProt = mbi.Protect;
-            }
-            Sleep(5);
-        }
-
-        if (g_oepHit)
-        {
-            Log("  RESULT: DESIGN B VIABLE — OEP execute-fault caught.");
-            Log("  >>> OEP = %08X   (RVA exe+0x%X) <<<", g_oepAddr, (unsigned)(g_oepAddr - g_base));
-            const uint8_t* p = (const uint8_t*)(uintptr_t)g_oepAddr;   // .text is executable/readable again
-            Log("  OEP prologue: %02X %02X %02X %02X %02X %02X %02X %02X",
-                p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7]);
-        }
-        else
-        {
-            InterlockedExchange(&g_oepWatch, 0);
-            MEMORY_BASIC_INFORMATION mbi; VirtualQuery((void*)tStart, &mbi, sizeof(mbi));
-            Log("  RESULT: DESIGN B DEFEATED / no fault in 8s. Final .text prot=%08X. The packer likely "
-                "re-protected .text executable — fall back to Design A (find OEP statically in BN).",
-                mbi.Protect);
-            DWORD o; VirtualProtect((void*)tStart, tSize, PAGE_EXECUTE_READWRITE, &o); // leave the game runnable
-        }
-    }
-
-    // ── Phase TAIL: catch the packer stub's tail-jump to OEP ───────────────────────
-    // The on-disk stub ends with `push eax; ret` at RVA 0x1011, where eax = the OEP the
-    // unpacker computed. Arming a hardware execute-BP there (present at load; HW BPs work
-    // even with DEP off) fires exactly once, at unpack-complete, right before control
-    // reaches the game. Confirms 0x1011 as the barrier anchor and reads eax = OEP.
-    void PhaseTailJump()
-    {
-        Log("=== Phase TAIL: execute-BP at packer stub tail-jump (RVA 0x1011 = push eax; ret) ===");
-        g_tailTarget = g_base + 0x1011;
-        InterlockedExchange(&g_tailHit, 0);
-        InterlockedExchange(&g_tailWatch, 1);
-
-        DWORD selfTid = GetCurrentThreadId();
-        int armed = 0;
-        HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
-        if (snap != INVALID_HANDLE_VALUE)
-        {
-            DWORD pid = GetCurrentProcessId();
-            THREADENTRY32 te; te.dwSize = sizeof(te);
-            if (Thread32First(snap, &te))
-                do {
-                    if (te.th32OwnerProcessID != pid || te.th32ThreadID == selfTid) continue;
-                    HANDLE th = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT,
-                                           FALSE, te.th32ThreadID);
-                    if (!th) continue;
-                    if (SetHwBp(th, g_tailTarget, kDr7ExecDr0)) armed++;
-                    CloseHandle(th);
-                } while (Thread32Next(snap, &te));
-            CloseHandle(snap);
-        }
-        Log("  armed execute-BP @%08X (RVA 0x1011) on %d thread(s); waiting for the tail jump", (unsigned)g_tailTarget, armed);
-
-        for (int i = 0; i < 1200 && !g_tailHit; i++) Sleep(5);   // ~6s
-        InterlockedExchange(&g_tailWatch, 0);
-
-        if (g_tailHit)
-        {
-            Log("  TAIL JUMP FIRED at EIP=%08X, esp=%08X", g_tailEip, g_tailEsp);
-            Log("  >>> eax (OEP) = %08X   (RVA exe+0x%X) <<<", g_tailEax, (unsigned)(g_tailEax - g_base));
-            Log("  stack: [esp]=%08X [+4]=%08X [+8]=%08X [+c]=%08X",
-                g_tailStack[0], g_tailStack[1], g_tailStack[2], g_tailStack[3]);
-            uint8_t pro[8]; bool ok = false;
-            __try { const volatile uint8_t* p = (const volatile uint8_t*)(uintptr_t)g_tailEax;
-                    for (int i = 0; i < 8; i++) pro[i] = p[i]; ok = true; }
-            __except (EXCEPTION_EXECUTE_HANDLER) { ok = false; }
-            if (ok)
-                Log("  OEP prologue: %02X %02X %02X %02X %02X %02X %02X %02X",
-                    pro[0], pro[1], pro[2], pro[3], pro[4], pro[5], pro[6], pro[7]);
-            else
-                Log("  OEP prologue: (not readable)");
-        }
-        else
-        {
-            Log("  RESULT: tail-jump BP did NOT fire in 6s — stub layout differs from expectation; re-examine.");
-        }
-    }
-
-    // ── Phase ESP: ASPack pushad/popad stack-BP OEP finder ─────────────────────────
-    // The stub does `pushad` then calls the (obfuscated) unpacker; at the very end it
-    // `popad`s the saved registers right before jumping to OEP. We can't rely on the
-    // visible .text tail (it's a decoy — RVA 0x1011 never fires), but the popad MUST read
-    // back the pushad'd stack. So: exec-BP at the stub's `call` (0x1003, guaranteed on the
-    // path), read ESP, then set a 4-byte read/write hardware BP on the saved-EAX slot. The
-    // popad (wherever it hides) touches it = end of unpack, and the slot holds the OEP.
-    // Self-anchoring: no OEP address is hardcoded. HW BPs work despite DEP being off.
-    void PhaseEspTrick()
-    {
-        Log("=== Phase ESP: ASPack pushad/popad stack-BP OEP finder ===");
-        g_espCallTarget = g_base + 0x1003;   // the stub's `call <unpacker>`, after pushad+push eax
-        InterlockedExchange(&g_espHit, 0);
-        InterlockedExchange(&g_espStage, 0);
-        InterlockedExchange(&g_espWatch, 1);
-
-        DWORD selfTid = GetCurrentThreadId();
-        int armed = 0;
-        HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
-        if (snap != INVALID_HANDLE_VALUE)
-        {
-            DWORD pid = GetCurrentProcessId();
-            THREADENTRY32 te; te.dwSize = sizeof(te);
-            if (Thread32First(snap, &te))
-                do {
-                    if (te.th32OwnerProcessID != pid || te.th32ThreadID == selfTid) continue;
-                    HANDLE th = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT,
-                                           FALSE, te.th32ThreadID);
-                    if (!th) continue;
-                    if (SetHwBp(th, g_espCallTarget, kDr7ExecDr0)) armed++;
-                    CloseHandle(th);
-                } while (Thread32Next(snap, &te));
-            CloseHandle(snap);
-        }
-        Log("  armed exec-BP @%08X (stub call, RVA 0x1003) on %d thread(s); ESP trick engaged",
-            (unsigned)g_espCallTarget, armed);
-
-        for (int i = 0; i < 1200 && !g_espHit; i++) Sleep(5);   // ~6s
-        InterlockedExchange(&g_espWatch, 0);
-
-        if (g_espHit)
-        {
-            Log("  ACCESS-BP FIRED at EIP=%08X (exe+0x%X) — popad/mov touched the pushad slot (unpack end)",
-                g_espEip, (unsigned)(g_espEip - g_base));
-            Log("  >>> OEP (saved-EAX slot @%08X) = %08X   (RVA exe+0x%X);  eax=%08X <<<",
-                g_espStackAddr, g_espSlotVal, (unsigned)(g_espSlotVal - g_base), g_espEax);
-            Log("  stack: [esp]=%08X [+4]=%08X [+8]=%08X", g_espStack[0], g_espStack[1], g_espStack[2]);
-            uint8_t pro[8]; bool ok = false;
-            __try { const volatile uint8_t* p = (const volatile uint8_t*)(uintptr_t)g_espSlotVal;
-                    for (int i = 0; i < 8; i++) pro[i] = p[i]; ok = true; }
-            __except (EXCEPTION_EXECUTE_HANDLER) { ok = false; }
-            if (ok)
-                Log("  OEP prologue: %02X %02X %02X %02X %02X %02X %02X %02X",
-                    pro[0], pro[1], pro[2], pro[3], pro[4], pro[5], pro[6], pro[7]);
-            else
-                Log("  OEP prologue: (not readable)");
-        }
-        else
-        {
-            Log("  RESULT: ESP-trick did NOT fire in 6s (stage=%ld) — re-examine.", g_espStage);
-        }
-    }
-
     void PhaseProtectBarrier()
     {
-        Log("=== Phase PROTECT: stage-2 -> NtProtectVirtualMemory execute-BP chain ===");
-        Log("  stage2=%08X RVA=%08X NtProtect=%08X text=[%08X,%08X)", (unsigned)g_stage2Target,kStage2EntryRva,(unsigned)g_ntProtectTarget,(unsigned)g_textStart,(unsigned)(g_textStart+g_textSize));
-        for(int i=0;i<1200 && !g_protectHit;i++) Sleep(5);
-        LONG count=g_protectCallCount; if(count>kMaxProtectCalls) count=kMaxProtectCalls;
-        Log("  stage=%ld bytes=%08X %08X %08X %08X calls=%ld hit=%ld",g_protectStage,g_stage2Bytes[0],g_stage2Bytes[1],g_stage2Bytes[2],g_stage2Bytes[3],g_protectCallCount,g_protectHit);
-        for(LONG i=0;i<count;i++){ const ProtectCall& c=g_protectCalls[i]; Log("  #%03ld ret=%08X base=%08X size=%08X protect=%08X%s",i,c.ret,c.base,c.size,c.protect,(c.base<(uint64_t)g_textStart+g_textSize && (uint64_t)c.base+c.size>g_textStart)?" [overlaps .text]":""); }
-        Log("  RESULT: %s",g_protectHit?"BARRIER FIRED on executable transition overlapping .text":"barrier did not fire");
+        Log("=== Phase PROTECT: PE entrypoint -> NtProtectVirtualMemory execute-BP chain ===");
+        Log("  entry=%08X RVA=%08X NtProtect=%08X text=[%08X,%08X)",
+            (unsigned)g_entryTarget, g_entryRva, (unsigned)g_ntProtectTarget,
+            (unsigned)g_textStart, (unsigned)(g_textStart + g_textSize));
+        for (int i = 0; i < 1200 && !g_protectHit; ++i) Sleep(5);
+
+        LONG count = g_protectCallCount;
+        if (count > kMaxProtectCalls) count = kMaxProtectCalls;
+        Log("  stage=%ld bytes=%08X %08X %08X %08X calls=%ld hit=%ld",
+            g_protectStage, g_entryBytes[0], g_entryBytes[1], g_entryBytes[2],
+            g_entryBytes[3], g_protectCallCount, g_protectHit);
+        for (LONG i = 0; i < count; ++i)
+        {
+            const ProtectCall& c = g_protectCalls[i];
+            bool overlaps = c.base < (uint64_t)g_textStart + g_textSize &&
+                            (uint64_t)c.base + c.size > g_textStart;
+            Log("  #%03ld ret=%08X base=%08X size=%08X protect=%08X%s",
+                i, c.ret, c.base, c.size, c.protect, overlaps ? " [overlaps .text]" : "");
+        }
+        Log("  RESULT: %s", g_protectHit
+            ? "BARRIER FIRED on executable transition overlapping .text"
+            : "barrier did not fire");
         if (!g_protectHit)
         {
-            HANDLE snap=CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD,0);
-            if(snap!=INVALID_HANDLE_VALUE){ DWORD pid=GetCurrentProcessId(); THREADENTRY32 te; te.dwSize=sizeof(te); if(Thread32First(snap,&te)) do { if(te.th32OwnerProcessID!=pid||te.th32ThreadID==GetCurrentThreadId()) continue; HANDLE th=OpenThread(THREAD_SUSPEND_RESUME|THREAD_GET_CONTEXT|THREAD_SET_CONTEXT,FALSE,te.th32ThreadID); if(th){ClearHwBp(th);CloseHandle(th);} } while(Thread32Next(snap,&te)); CloseHandle(snap); }
+            HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+            if (snap != INVALID_HANDLE_VALUE)
+            {
+                DWORD pid = GetCurrentProcessId();
+                THREADENTRY32 te; te.dwSize = sizeof(te);
+                if (Thread32First(snap, &te))
+                    do {
+                        if (te.th32OwnerProcessID != pid || te.th32ThreadID == GetCurrentThreadId()) continue;
+                        HANDLE thread = OpenThread(
+                            THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT,
+                            FALSE, te.th32ThreadID);
+                        if (thread) { ClearHwBp(thread); CloseHandle(thread); }
+                    } while (Thread32Next(snap, &te));
+                CloseHandle(snap);
+            }
         }
-        InterlockedExchange(&g_protectWatch,0);
+        InterlockedExchange(&g_protectWatch, 0);
     }
 
     // ── driver thread ─────────────────────────────────────────────────────────────
@@ -915,44 +743,34 @@ namespace
         auto dos = (PIMAGE_DOS_HEADER)g_base;
         auto nt  = (PIMAGE_NT_HEADERS)((uint8_t*)g_base + dos->e_lfanew);
         g_size = nt->OptionalHeader.SizeOfImage;
-        g_target = g_base + kVfsRva;
+        if (!ReadTargetRva()) return 1;
+        g_target = g_base + g_targetRva;
 
         HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
         g_rtlCapture = (PFN_RtlCapture)GetProcAddress(ntdll, "RtlCaptureStackBackTrace");
 
-        Log("###### Talon.AntiDebug pid=%lu base=%08X size=%08X target=%08X ######",
-            GetCurrentProcessId(), (unsigned)g_base, g_size, (unsigned)g_target);
+        Log("###### Talon.Recon analysis pid=%lu base=%08X size=%08X target=%08X (RVA %08X) ######",
+            GetCurrentProcessId(), (unsigned)g_base, g_size, (unsigned)g_target, g_targetRva);
 
         if (InterlockedCompareExchange(&g_vehInstalled,1,0)==0) AddVectoredExceptionHandler(1,Veh);
-        char protectBuf[8];
-        if (GetEnvironmentVariableA("TALON_PROTECTBP",protectBuf,sizeof(protectBuf))>0) { PhaseProtectBarrier(); Log("###### PROTECT barrier probe complete ######"); return 0; }
+        if (AnalysisModeIs("protect")) { PhaseProtectBarrier(); Log("###### PROTECT barrier probe complete ######"); return 0; }
 
-        // Standalone Design-B probe: if TALON_NXOEP is set, run only the NX-.text OEP finder
-        // (armed here, pre-entrypoint, before the packer reaches the OEP) and stop.
-        char nxbuf[8];
-        if (GetEnvironmentVariableA("TALON_NXOEP", nxbuf, sizeof(nxbuf)) > 0)
+        if (AnalysisModeIs("trajectory"))
         {
-            PhaseNxOep();
-            Log("###### NX-OEP probe complete ######");
+            TextUnpackTrajectory();
+            Log("###### unpack trajectory complete ######");
             return 0;
         }
-        char tjbuf[8];
-        if (GetEnvironmentVariableA("TALON_OEPBP", tjbuf, sizeof(tjbuf)) > 0)
+        if (!AnalysisModeIs("full"))
         {
-            PhaseTailJump();
-            Log("###### TAIL-JUMP probe complete ######");
-            return 0;
-        }
-        char espbuf[8];
-        if (GetEnvironmentVariableA("TALON_ESP", espbuf, sizeof(espbuf)) > 0)
-        {
-            PhaseEspTrick();
-            Log("###### ESP-trick probe complete ######");
-            return 0;
+            char mode[32] = {};
+            GetEnvironmentVariableA("TALON_RECON_ANALYSIS", mode, sizeof(mode));
+            Log("unknown TALON_RECON_ANALYSIS mode '%s'; no invasive probes run", mode);
+            return 1;
         }
 
         // Phase 0: arm a HW WRITE breakpoint at target[0] on every existing thread BEFORE the
-        // packer runs, so we catch the exact instruction that unpacks Vfs_LoadResource into place
+        // packer runs, so we catch the exact instruction that unpacks the target into place
         // — an event-driven alternative to polling, which also identifies the unpacker.
         Log("=== Phase 0: catch the unpack write (HW write BP at target[0]) ===");
         InterlockedExchange(&g_writeHit, 0);
@@ -981,7 +799,7 @@ namespace
         }
 
         // Phase T runs the dense sampling that both characterises the unpack (bulk vs
-        // incremental) and tells us whether Vfs_LoadResource ended up present. If the packer
+        // incremental) and tells us whether the configured target ended up present. If the packer
         // was unusually slow and it isn't present yet, fall back to the coarse poll.
         bool unpacked = TextUnpackTrajectory();
         if (!unpacked) unpacked = WaitForUnpack(52);
@@ -1008,12 +826,12 @@ namespace
         if (unpacked)
         {
             const uint8_t* p = (const uint8_t*)g_target;
-            Log("Vfs_LoadResource prologue present at %08X: %02X %02X %02X %02X %02X %02X %02X %02X",
+            Log("target code present at %08X: %02X %02X %02X %02X %02X %02X %02X %02X",
                 (unsigned)g_target, p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7]);
         }
         else
         {
-            Log("Vfs_LoadResource prologue NOT found within 60s (packer slow, or address moved).");
+            Log("target code NOT found within 60s (packer slow, RVA moved, or default signature changed).");
             Log("Phase 2/3 need the real function; running Phase 1 only.");
         }
 
@@ -1026,23 +844,38 @@ namespace
     }
 }
 
-extern "C" __declspec(dllexport) void TalonInit() { /* probes self-arm from DllMain */ }
-
-BOOL APIENTRY DllMain(HMODULE mod, DWORD reason, LPVOID)
+void StartDynamicAnalysis()
 {
-    if (reason == DLL_PROCESS_ATTACH)
+    g_base = (uintptr_t)GetModuleHandleW(nullptr);
+    auto dos = (PIMAGE_DOS_HEADER)g_base;
+    auto nt = (PIMAGE_NT_HEADERS)((uint8_t*)g_base + dos->e_lfanew);
+    g_size = nt->OptionalHeader.SizeOfImage;
+    g_entryRva = nt->OptionalHeader.AddressOfEntryPoint;
+    g_entryTarget = g_base + g_entryRva;
+
+    // Install this for every Recon run. Besides serving the optional probes, it consumes
+    // the Injector's entrypoint rendezvous so Recon is safe to use as --boot-dll.
+    if (InterlockedCompareExchange(&g_vehInstalled, 1, 0) == 0)
+        AddVectoredExceptionHandler(1, Veh);
+
+    if (AnalysisModeIs("protect"))
     {
-        DisableThreadLibraryCalls(mod);
-        char protectBuf[8];
-        if (GetEnvironmentVariableA("TALON_PROTECTBP",protectBuf,sizeof(protectBuf))>0) {
-            g_base=(uintptr_t)GetModuleHandleW(nullptr); auto dos=(PIMAGE_DOS_HEADER)g_base; auto nt=(PIMAGE_NT_HEADERS)((uint8_t*)g_base+dos->e_lfanew); g_size=nt->OptionalHeader.SizeOfImage;
-            auto sec=IMAGE_FIRST_SECTION(nt); for(int i=0;i<nt->FileHeader.NumberOfSections;i++) if(memcmp(sec[i].Name,".text",6)==0){g_textStart=g_base+sec[i].VirtualAddress;g_textSize=sec[i].Misc.VirtualSize;break;}
-            g_stage2Target=g_base+kStage2EntryRva; HMODULE ntdll=GetModuleHandleW(L"ntdll.dll"); g_ntProtectTarget=(uintptr_t)GetProcAddress(ntdll,"NtProtectVirtualMemory");
-            InterlockedExchange(&g_protectWatch,1); InterlockedExchange(&g_protectStage,0); AddVectoredExceptionHandler(1,Veh); InterlockedExchange(&g_vehInstalled,1);
-        }
-        // All work (waiting, suspending threads, VEH) happens off the loader lock.
-        HANDLE h = CreateThread(nullptr, 0, ProbeThread, nullptr, 0, nullptr);
-        if (h) CloseHandle(h);
+        auto sec = IMAGE_FIRST_SECTION(nt);
+        for (int i = 0; i < nt->FileHeader.NumberOfSections; ++i)
+            if (memcmp(sec[i].Name, ".text", 6) == 0)
+            {
+                g_textStart = g_base + sec[i].VirtualAddress;
+                g_textSize = sec[i].Misc.VirtualSize;
+                break;
+            }
+        HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+        g_ntProtectTarget = (uintptr_t)GetProcAddress(ntdll, "NtProtectVirtualMemory");
+        InterlockedExchange(&g_protectWatch, 1);
+        InterlockedExchange(&g_protectStage, 0);
     }
-    return TRUE;
+
+    if (!AnalysisWorkerRequested()) return;
+    // Waiting, sampling, and thread-context work must happen outside the loader lock.
+    HANDLE thread = CreateThread(nullptr, 0, ProbeThread, nullptr, 0, nullptr);
+    if (thread) CloseHandle(thread);
 }

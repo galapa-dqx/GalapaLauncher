@@ -19,6 +19,7 @@
 // Outputs (both next to %TEMP%):
 //   talon-recon-opens.log   text, every file the game opens
 //   talon-recon-stacks.bin  binary, raw stack dumps for .dat/.idx reads
+// Optional patch-analysis probes write talon-recon-analysis.log; see README.md.
 //
 // RESULT (8.0.1): it worked — 197 stack records over 61 .dat/.idx opens produced a call
 // chain that was stable across reads, and RtlCaptureStackBackTrace turned out to give
@@ -34,6 +35,7 @@
 #include <cstdio>
 #include <cstdint>
 #include "MinHook.h"
+#include "dynamic_analysis.h"
 
 namespace
 {
@@ -492,6 +494,7 @@ BOOL APIENTRY DllMain(HMODULE mod, DWORD reason, LPVOID)
     if (reason == DLL_PROCESS_ATTACH)
     {
         DisableThreadLibraryCalls(mod);
+        StartDynamicAnalysis();
         // Armed inline, under loader lock, ON PURPOSE: we are injected pre-entry-point, so
         // deferring to a worker thread would race the game's first .dat reads — the exact
         // reads we exist to observe. At this moment the process is effectively
