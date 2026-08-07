@@ -25,4 +25,12 @@
         <ProjectReference Include="..\Galapa.TestUtilities\Galapa.TestUtilities.csproj"/>
     </ItemGroup>
 
+    <!-- Remove Avalonia 12 version of DiagnosticsSupport, keep v11 subfolder version -->
+    <Target Name="RemoveDuplicateDiagnosticsSupport" AfterTargets="ResolveAssemblyReferences">
+        <ItemGroup>
+            <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)"
+                                     Condition="$([System.String]::Copy('%(FullPath)').Contains('net10.0\AvaloniaUI.DiagnosticsSupport')) AND !$([System.String]::Copy('%(FullPath)').Contains('v11'))"/>
+        </ItemGroup>
+    </Target>
+
 </Project>
