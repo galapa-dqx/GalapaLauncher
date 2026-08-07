@@ -152,8 +152,11 @@ static DWORD WINAPI barrier_worker(LPVOID) {
     DWORD result = g_barrier_event
         ? WaitForSingleObject(g_barrier_event, kBarrierTimeoutMs) : WAIT_FAILED;
     if (result != WAIT_OBJECT_0) {
-        InterlockedExchange(&g_armed, 0);
+        // Keep the VEH armed while removing DR0. If g_armed were cleared first,
+        // another thread could hit the still-live breakpoint during this sweep and
+        // have its EXCEPTION_SINGLE_STEP propagated as unhandled.
         clear_barrier_dr0_all_threads(GetCurrentThreadId());
+        InterlockedExchange(&g_armed, 0);
         dbg("[barrier] no exact bulk-unpack transition in %lu ms; "
             "Talon DR0 cleared, no hooks installed\n", kBarrierTimeoutMs);
         return 0;

@@ -116,7 +116,12 @@ public partial class GameProcess(Settings settings)
         if (this._suspendedThreadHandle == nint.Zero)
             throw new InvalidOperationException("No suspended thread to resume. Did you call StartSuspended?");
 
-        ResumeThread(this._suspendedThreadHandle);
+        if (ResumeThread(this._suspendedThreadHandle) == uint.MaxValue)
+        {
+            var error = Marshal.GetLastWin32Error();
+            throw new InvalidOperationException($"Failed to resume suspended process. Error code: {error}");
+        }
+
         CloseHandle(this._suspendedThreadHandle);
         this._suspendedThreadHandle = nint.Zero;
     }
@@ -146,7 +151,7 @@ public partial class GameProcess(Settings settings)
         ref STARTUPINFO lpStartupInfo,
         out PROCESS_INFORMATION lpProcessInformation);
 
-    [LibraryImport("kernel32.dll")]
+    [LibraryImport("kernel32.dll", SetLastError = true)]
     private static partial uint ResumeThread(nint hThread);
 
     [LibraryImport("kernel32.dll")]

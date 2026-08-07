@@ -48,11 +48,49 @@ static const LONG         kCensusCap = 400;
 
 void vfs_set_override_dir(const char* dir) {
     if (!dir) { g_override_dir[0] = '\0'; return; }
-    strncpy(g_override_dir, dir, sizeof(g_override_dir) - 1);
+    char canonical[MAX_PATH];
+    DWORD n = GetFullPathNameA(dir, sizeof(canonical), canonical, nullptr);
+    if (n == 0 || n >= sizeof(canonical)) {
+        g_override_dir[0] = '\0';
+        dbg("[vfs] invalid or overlong override directory; overrides disabled\n");
+        return;
+    }
+    for (char* p = canonical; *p; ++p)
+        if (*p == '/') *p = '\\';
+    strncpy(g_override_dir, canonical, sizeof(g_override_dir) - 1);
     g_override_dir[sizeof(g_override_dir) - 1] = '\0';
 }
 
 void vfs_set_census(bool enabled) { g_census = enabled; }
+
+static bool build_override_path(const char* path, char* output, size_t output_size) {
+    // VFS paths are archive-relative. Reject rooted/device/drive-qualified paths up
+    // front, then canonicalize to collapse any '.' or '..' components.
+    if (!path || !*path || path[0] == '\\' || path[0] == '/' || strchr(path, ':'))
+        return false;
+
+    char candidate[MAX_PATH];
+    int written = snprintf(candidate, sizeof(candidate), "%s\\%s", g_override_dir, path);
+    if (written <= 0 || written >= (int)sizeof(candidate)) return false;
+    for (char* p = candidate; *p; ++p)
+        if (*p == '/') *p = '\\';
+
+    char canonical[MAX_PATH];
+    DWORD n = GetFullPathNameA(candidate, sizeof(canonical), canonical, nullptr);
+    if (n == 0 || n >= sizeof(canonical)) return false;
+
+    size_t root_len = strlen(g_override_dir);
+    bool root_has_separator = root_len > 0 && g_override_dir[root_len - 1] == '\\';
+    if (_strnicmp(canonical, g_override_dir, root_len) != 0 ||
+        (!root_has_separator && canonical[root_len] != '\\')) {
+        dbg("[vfs] rejected override path outside root: %s\n", path);
+        return false;
+    }
+
+    if (strlen(canonical) + 1 > output_size) return false;
+    strcpy(output, canonical);
+    return true;
+}
 
 // Our replacement. Declared __fastcall so we capture the incoming ecx (`this`);
 // edx is unused (the game's __thiscall never sets it) and the remaining four
@@ -72,11 +110,7 @@ static void* __fastcall hook_VfsLoadResource(void* thisPtr, void* /*edx*/,
 
     if (thisPtr && path && g_override_dir[0]) {
         char fs[MAX_PATH];
-        int n = snprintf(fs, sizeof(fs), "%s\\%s", g_override_dir, path);
-        if (n > 0 && n < (int)sizeof(fs)) {
-            for (char* p = fs; *p; ++p)
-                if (*p == '/') *p = '\\';
-
+        if (build_override_path(path, fs, sizeof(fs))) {
             HANDLE h = CreateFileA(fs, GENERIC_READ, FILE_SHARE_READ, nullptr,
                                    OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
             if (h != INVALID_HANDLE_VALUE) {

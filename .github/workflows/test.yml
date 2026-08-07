@@ -25,10 +25,19 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      - name: 🧰 Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: 🛠 Build native Talon projects
+        run: |
+          msbuild Talon.Boot\Talon.Boot.vcxproj /m /p:Configuration=Debug /p:Platform=Win32
+          msbuild Talon.Boot\Talon.Boot.vcxproj /m /p:Configuration=Release /p:Platform=Win32
+          msbuild Talon.Recon\Talon.Recon.vcxproj /m /p:Configuration=Debug /p:Platform=Win32
+          msbuild Talon.Recon\Talon.Recon.vcxproj /m /p:Configuration=Release /p:Platform=Win32
+
       # Galapa.slnf is Galapa.sln minus the native C++ project (Talon.Boot.vcxproj),
-      # which the .NET SDK cannot build. The boot DLL is built separately with MSBuild
-      # + the C++ workload (follow-up CI job); Talon.Injector's copy of it is guarded by
-      # an Exists() condition so this managed build stays green without it.
+      # which the .NET SDK cannot build. Both native projects were built with MSBuild
+      # above; this managed build copies Talon.Boot.dll into the Injector and Toolbox.
       - name: 📦 Install dependencies
         run: dotnet restore Galapa.slnf
 

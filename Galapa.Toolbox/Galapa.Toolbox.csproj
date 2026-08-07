@@ -30,8 +30,9 @@
              SPAWNS (it can't inject from this x64 process); we copy its output ourselves in
              the target below rather than referencing its assembly. -->
         <ProjectReference Include="..\Talon.Injector\Talon.Injector.csproj"
-                          ReferenceOutputAssembly="false"
-                          Private="false"/>
+                           ReferenceOutputAssembly="false"
+                           Private="false"
+                           GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained"/>
     </ItemGroup>
 
     <!-- Bundle the built Talon.Injector output (exe + runtime config + Talon.Boot.dll) into a
@@ -44,6 +45,18 @@
         </ItemGroup>
         <Copy SourceFiles="@(TalonInjectorOutput)"
               DestinationFiles="@(TalonInjectorOutput->'$(OutDir)Talon\%(RecursiveDir)%(Filename)%(Extension)')"
+              SkipUnchangedFiles="true"/>
+    </Target>
+
+    <!-- Files copied only to OutDir are not automatically part of publish output. Copy
+         the completed Talon bundle to PublishDir so packaged Toolbox builds remain usable. -->
+    <Target Name="PublishTalonBundle" AfterTargets="Publish"
+            DependsOnTargets="BundleTalonInjector">
+        <ItemGroup>
+            <TalonPublishFile Include="$(OutDir)Talon\**\*"/>
+        </ItemGroup>
+        <Copy SourceFiles="@(TalonPublishFile)"
+              DestinationFiles="@(TalonPublishFile->'$(PublishDir)Talon\%(RecursiveDir)%(Filename)%(Extension)')"
               SkipUnchangedFiles="true"/>
     </Target>
 </Project>

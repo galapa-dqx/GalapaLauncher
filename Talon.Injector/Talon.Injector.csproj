@@ -13,16 +13,15 @@
         <AssemblyName>Talon.Injector</AssemblyName>
     </PropertyGroup>
 
-    <!-- The native boot DLL is consumed as a build output copied next to the
-         injector exe, NOT as a ProjectReference: a .NET SDK project cannot build
-         or reference a C++ .vcxproj across the SDK/VC toolchain divide. Build
-         Talon.Boot separately (msbuild) before/alongside this project. -->
-    <ItemGroup>
-        <Content Include="..\Talon.Boot\bin\x86\$(Configuration)\Talon.Boot.dll"
-                 Condition="Exists('..\Talon.Boot\bin\x86\$(Configuration)\Talon.Boot.dll')">
-            <Link>Talon.Boot.dll</Link>
-            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-        </Content>
-    </ItemGroup>
+    <!-- Galapa.sln declares Talon.Boot as this project's build dependency. Copy in a
+         target (rather than an evaluation-time Exists-conditioned Content item) so a
+         clean full MSBuild sees the DLL produced earlier in the same solution build.
+         Galapa.slnf intentionally excludes the native project; CI builds it explicitly. -->
+    <Target Name="CopyTalonBootPayload" AfterTargets="Build"
+            Condition="Exists('..\Talon.Boot\bin\x86\$(Configuration)\Talon.Boot.dll')">
+        <Copy SourceFiles="..\Talon.Boot\bin\x86\$(Configuration)\Talon.Boot.dll"
+              DestinationFolder="$(OutDir)"
+              SkipUnchangedFiles="true"/>
+    </Target>
 
 </Project>

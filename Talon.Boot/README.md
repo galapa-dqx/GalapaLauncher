@@ -35,8 +35,9 @@ that moves when the game is patched. That's an explicit, documented cost (see
 ```text
 Injector (suspended process)                   Talon.Boot
 -----------------------------------------      --------------------------------
-read mapped PE entrypoint
-arm DR0 at packed entrypoint
+if an override is configured:
+  read mapped PE entrypoint
+  arm DR0 at packed entrypoint
 queue early LoadLibrary APC                ->  install VEH synchronously
 resume primary thread                          launch scan/install worker
 packed entrypoint executes                 ->  #DB: retarget DR0 to NtProtect
@@ -54,9 +55,10 @@ The game is launched **suspended**, an APC that calls `LoadLibraryW(<boot dll pa
 is queued onto its primary thread, and the thread is resumed. The APC drains during
 the loader's early alertable wait, so **Talon.Boot is mapped before the game's own
 entry point runs** ("early-bird" APC injection). Both the injector and this DLL must
-be x86 to inject the 32-bit game. Before resuming, the Injector reads the mapped PE's
-validated `AddressOfEntryPoint` and arms DR0 there as a generic post-APC rendezvous.
-See `Talon.Injector/Injector.cs`.
+be x86 to inject the 32-bit game. When `TALON_OVERRIDE_DIR` is set, the Injector reads
+the mapped PE's validated `AddressOfEntryPoint` and arms DR0 there as a generic post-APC
+rendezvous. With no override configured, it deliberately leaves DR0 untouched because
+Boot installs no VEH on that documented no-op path. See `Talon.Injector/Injector.cs`.
 
 ### 2. Boot orchestration (`dllmain.cpp`)
 
@@ -105,8 +107,9 @@ atomic patching, and thread safety, so Talon no longer hand-rolls any of it.
 The hook (`hook_VfsLoadResource`) is the heart of Talon. For each requested resource
 path it:
 
-1. maps the archive-relative VFS `path` onto the override dir
-   (`<TALON_OVERRIDE_DIR>\<path>`, `/` → `\`),
+1. canonicalizes the archive-relative VFS `path` under the override dir, rejects rooted,
+   drive-qualified, or `..`-escaping paths, and maps accepted paths to
+   `<TALON_OVERRIDE_DIR>\<path>` (`/` → `\`),
 2. if a loose file exists there, allocates a buffer **with the game's own allocator**,
    reads the file's raw bytes into it, and calls the game's `construct` callback to
    build a resource from that buffer,

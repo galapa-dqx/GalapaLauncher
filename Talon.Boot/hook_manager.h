@@ -43,9 +43,10 @@ struct HookGuard {
 };
 
 // Safe teardown: disable (MinHook restores the bytes, so no NEW detour entries), wait
-// for in-flight detour calls to drain, then remove (frees the trampoline). Safe to call
-// while the game runs — but never from inside the detour being removed (self-drain would
-// deadlock). No-op on an unknown/already-removed hook.
+// for in-flight detour calls to drain, then remove (frees the trampoline). If the bounded
+// drain expires, removal is deferred and the disabled trampoline remains valid; call
+// hook_remove again later. Safe to call while the game runs, but never from inside the
+// detour being removed. No-op on an unknown/already-removed hook.
 void hook_remove(TalonHook* h);
 
 // Disable all hooks and shut MinHook down. Call on unload.

@@ -100,7 +100,7 @@ try
         Console.WriteLine($"[talon] override   : {overrideDir}");
     Console.WriteLine($"[talon] launching  : {gameCommandLine}");
 
-    var result = Injector.LaunchAndInject(gameCommandLine, workingDir, bootDll);
+    using var result = Injector.LaunchAndInject(gameCommandLine, workingDir, bootDll);
 
     Console.WriteLine($"[talon] injected. pid={result.ProcessId}. APC queued; process resumed.");
     Console.WriteLine($"[talon] check %TEMP%\\talon-boot.log for the boot proof-of-life line.");

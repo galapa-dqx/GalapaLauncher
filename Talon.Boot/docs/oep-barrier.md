@@ -7,7 +7,9 @@ Status: **implemented and verified end to end on DQX 8.0 (2026-07-19).**
 Talon no longer waits for the first `Vfs_LoadResource` call and does not need the
 true game OEP. The reliable barrier is the packer's final page-protection request:
 
-1. The Injector reads the suspended process's mapped PE entrypoint and arms DR0 there.
+1. For a configured VFS override, the Injector reads the suspended process's mapped PE
+   entrypoint and arms DR0 there. With no override, it leaves DR0 untouched and Boot is
+   the documented no-op.
 2. The early LoadLibrary APC installs Talon.Boot's VEH and scan/install worker.
 3. After the APC returns, the entrypoint breakpoint fires before the first packed
    instruction; Boot retargets DR0 to `NtProtectVirtualMemory`.
@@ -144,9 +146,9 @@ Talon.Injector\bin\Debug\net8.0-windows\Talon.Injector.exe `
   "-StartupToken=$token" -USE_APARTMENTTHREADED
 ```
 
-The Injector's only barrier-adjacent responsibility is the generic mapped-entrypoint
-rendezvous. It contains no KONN, packer-stage, `.text`, scanner, or hook knowledge;
-all unpack semantics remain in Talon.Boot.
+When an override is configured, the Injector's only barrier-adjacent responsibility is
+the generic mapped-entrypoint rendezvous. It contains no KONN, packer-stage, `.text`,
+scanner, or hook knowledge; all unpack semantics remain in Talon.Boot.
 
 ## Verification evidence
 

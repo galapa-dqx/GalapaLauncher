@@ -13,7 +13,14 @@ namespace Talon.Injector;
 public static partial class Injector
 {
     /// <summary>Result of a launch + inject operation.</summary>
-    public readonly record struct InjectResult(int ProcessId, nint ProcessHandle, nint ThreadHandle);
+    public readonly record struct InjectResult(int ProcessId, nint ProcessHandle, nint ThreadHandle) : IDisposable
+    {
+        public void Dispose()
+        {
+            if (ThreadHandle != nint.Zero) CloseHandle(ThreadHandle);
+            if (ProcessHandle != nint.Zero) CloseHandle(ProcessHandle);
+        }
+    }
 
     /// <summary>
     /// Launches <paramref name="gameCommandLine"/> suspended, queues an APC that loads
@@ -81,10 +88,12 @@ public static partial class Injector
             if (loadLibraryW == nint.Zero)
                 throw new InvalidOperationException("GetProcAddress(LoadLibraryW) returned null.");
 
-            // 3. Arm a deterministic post-APC rendezvous at the mapped PE entrypoint.
-            //    The saved thread context restores this DR0 after LoadLibraryW returns;
-            //    Talon.Boot's VEH then retargets it to NtProtectVirtualMemory.
-            ArmEntrypointRendezvous(pi.hProcess, pi.hThread);
+            // 3. Arm a deterministic post-APC rendezvous only when Boot has VFS work.
+            //    Without TALON_OVERRIDE_DIR, Boot intentionally installs no VEH; leaving DR0
+            //    armed in that mode would turn the documented no-op into an unhandled #DB.
+            var overrideDirectory = Environment.GetEnvironmentVariable("TALON_OVERRIDE_DIR");
+            if (overrideDirectory is { Length: > 0 and < MAX_PATH })
+                ArmEntrypointRendezvous(pi.hProcess, pi.hThread);
 
             // 4. Queue the APC onto the (still suspended) primary thread, then resume.
             //    The APC calls LoadLibraryW(remotePath) during the loader's early
@@ -189,6 +198,7 @@ public static partial class Injector
     private const uint MEM_RESERVE = 0x2000;
     private const uint PAGE_READWRITE = 0x04;
     private const ushort IMAGE_FILE_MACHINE_I386 = 0x014C;
+    private const int MAX_PATH = 260;
 
     [LibraryImport("kernel32.dll", EntryPoint = "CreateProcessW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
     [return: MarshalAs(UnmanagedType.Bool)]

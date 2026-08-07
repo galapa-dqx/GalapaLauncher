@@ -123,8 +123,15 @@ void hook_remove(TalonHook* h) {
     // Drain calls already inside the detour before MinHook frees the trampoline they
     // may still be executing in. Bounded so a wedged thread can't hang teardown forever.
     for (int spins = 0; h->inflight > 0 && spins < 100000; spins++) Sleep(0);
-    if (h->inflight > 0)
-        dbg("[hookmgr] '%s' WARNING: removing with %ld call(s) still in flight\n", h->name, h->inflight);
+    if (h->inflight > 0) {
+        // The target bytes are already restored, so no new calls can enter. Keep
+        // the disabled hook (and its trampoline) alive for the slow calls that are
+        // still using it; a later hook_remove call can finish the removal.
+        dbg("[hookmgr] '%s' removal deferred with %ld call(s) still in flight\n",
+            h->name, h->inflight);
+        LeaveCriticalSection(&g_cs);
+        return;
+    }
 
     if (h->created) {
         MH_RemoveHook(h->target);

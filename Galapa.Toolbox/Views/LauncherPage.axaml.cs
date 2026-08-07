@@ -27,6 +27,13 @@ public partial class LauncherPage : UserControl
         // 56 hex chars placeholder - server will reject but game should boot
         const string placeholderSessionId = "00000000000000000000000000000000000000000000000000000000";
 
+        if (this._quickLaunchProcess is { IsSuspended: true })
+        {
+            this.StatusText.Text = "A quick-launch game is already paused. Resume it before launching another.";
+            this.StatusText.Foreground = Brushes.Red;
+            return;
+        }
+
         if (this.InjectTalonCheckBox.IsChecked == true)
         {
             await this.LaunchWithTalonAsync(placeholderSessionId, 1, this.StatusText, this.ResumeButton);
@@ -51,6 +58,13 @@ public partial class LauncherPage : UserControl
     {
         var sessionId = this.CustomSessionId.Text?.Trim() ?? "";
         var playerNumber = (int)(this.CustomPlayerNumber.Value ?? 1);
+
+        if (this._customLaunchProcess is { IsSuspended: true })
+        {
+            this.CustomStatusText.Text = "A custom-session game is already paused. Resume it before launching another.";
+            this.CustomStatusText.Foreground = Brushes.Red;
+            return;
+        }
 
         if (sessionId.Length != 56)
         {
@@ -164,7 +178,7 @@ public partial class LauncherPage : UserControl
             statusText.Text = "Launching via Talon injector…";
             statusText.Foreground = Brushes.Orange;
 
-            var (exitCode, output) = await Task.Run(() => RunInjector(injectorPath, workingDir, commandLine));
+            var (exitCode, output) = await RunInjectorAsync(injectorPath, workingDir, commandLine);
 
             if (exitCode == 0)
             {
@@ -184,7 +198,7 @@ public partial class LauncherPage : UserControl
         }
     }
 
-    private static (int ExitCode, string Output) RunInjector(string injectorPath, string workingDir,
+    private static async Task<(int ExitCode, string Output)> RunInjectorAsync(string injectorPath, string workingDir,
         string gameCommandLine)
     {
         var psi = new ProcessStartInfo
@@ -203,16 +217,42 @@ public partial class LauncherPage : UserControl
 
         using var proc = Process.Start(psi)
                          ?? throw new InvalidOperationException("Failed to start Talon.Injector.");
-        var stdout = proc.StandardOutput.ReadToEnd();
-        var stderr = proc.StandardError.ReadToEnd();
-        proc.WaitForExit(15000);
+        var stdoutTask = proc.StandardOutput.ReadToEndAsync();
+        var stderrTask = proc.StandardError.ReadToEndAsync();
+        var timedOut = false;
+
+        try
+        {
+            await proc.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(15));
+        }
+        catch (TimeoutException)
+        {
+            timedOut = true;
+            try
+            {
+                if (!proc.HasExited) proc.Kill(entireProcessTree: true);
+            }
+            catch (InvalidOperationException)
+            {
+                // The process exited between HasExited and Kill.
+            }
+
+            await proc.WaitForExitAsync();
+        }
+
+        var stdout = await stdoutTask;
+        var stderr = await stderrTask;
 
         var output = string.Join(" ", (stdout + " " + stderr)
             .Split('\r', '\n')
             .Select(line => line.Trim())
             .Where(line => line.Length > 0));
 
-        return (proc.HasExited ? proc.ExitCode : -1, output);
+        if (timedOut)
+            output = string.IsNullOrEmpty(output) ? "Injector timed out after 15 seconds." :
+                $"Injector timed out after 15 seconds. {output}";
+
+        return (timedOut ? -1 : proc.ExitCode, output);
     }
 
     private void ResumeProcess(GameProcess? process, TextBlock statusText, Button resumeButton)
