@@ -28,14 +28,16 @@ static const int        kMaxHooks   = 32;
 static TalonHook        g_hooks[kMaxHooks];
 static int              g_count     = 0;
 static CRITICAL_SECTION g_cs;
-static volatile LONG    g_cs_ready  = 0;   // g_cs initialized
+static INIT_ONCE        g_cs_once   = INIT_ONCE_STATIC_INIT;
 static volatile LONG    g_mh_ready  = 0;   // MH_Initialize done
 
+static BOOL CALLBACK initialize_cs(PINIT_ONCE, PVOID, PVOID*) {
+    InitializeCriticalSection(&g_cs);
+    return TRUE;
+}
+
 static void ensure_cs() {
-    // Double-checked one-time init. Registration happens single-threaded at boot, but
-    // enable/remove can race later, so the critical section must exist before any use.
-    if (InterlockedCompareExchange(&g_cs_ready, 1, 0) == 0)
-        InitializeCriticalSection(&g_cs);
+    InitOnceExecuteOnce(&g_cs_once, initialize_cs, nullptr, nullptr);
 }
 
 static bool ensure_mh() {
@@ -144,7 +146,7 @@ void hook_remove(TalonHook* h) {
 }
 
 void hook_shutdown() {
-    if (!g_cs_ready) return;
+    ensure_cs();
     EnterCriticalSection(&g_cs);
     if (g_mh_ready) {
         MH_DisableHook(MH_ALL_HOOKS);
