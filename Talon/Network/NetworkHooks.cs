@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using Reloaded.Hooks.Definitions.X86;
 using Talon.Hooking;
 using Talon.Interop;
 
@@ -124,9 +125,11 @@ internal sealed class NetworkHooks(
         return destructorHook!.Original(session, flags);
     }
 
-    private nint PollerDetour()
+    private nint PollerDetour(nint poller)
     {
-        var result = pollerHook!.Original();
+        // NormalSelectPoller is a member function. Preserve ECX when the
+        // detour calls the original implementation.
+        var result = pollerHook!.Original(poller);
         // Drain completed work on VCE's own thread. Completion order is deliberate:
         // a slow packet does not block a later packet that is ready to replay.
         var stopwatch = Stopwatch.StartNew();
@@ -238,15 +241,19 @@ internal sealed class NetworkHooks(
         address >= scanner.TextSectionBase &&
         address < scanner.TextSectionBase + scanner.TextSectionSize;
 
+    [Function(CallingConventions.MicrosoftThiscall)]
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate int FrameParserDelegate(nint session, nint frame, int length);
 
+    [Function(CallingConventions.MicrosoftThiscall)]
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate void ProcessPayloadDelegate(nint session, nint payload, int length);
 
+    [Function(CallingConventions.MicrosoftThiscall)]
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate nint SessionDestructorDelegate(nint session, uint flags);
 
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private delegate nint PollerDelegate();
+    [Function(CallingConventions.MicrosoftThiscall)]
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    private delegate nint PollerDelegate(nint poller);
 }

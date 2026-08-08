@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Reloaded.Hooks.Definitions.X86;
 using Talon.Hooking;
 using Talon.Interop;
 
@@ -101,6 +102,7 @@ internal sealed class VfsHooks(
         }
     }
 
+    [Function(CallingConventions.MicrosoftThiscall)]
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate nint VfsLoadResourceDelegate(
         nint self,
