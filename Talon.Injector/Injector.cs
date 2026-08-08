@@ -1,4 +1,6 @@
+using System.Buffers.Binary;
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace Talon.Injector;
 
@@ -34,7 +36,11 @@ public static partial class Injector
     /// </param>
     /// <param name="workingDir">Working directory for the target process.</param>
     /// <param name="bootDllPath">Absolute path to the native x86 boot DLL to inject.</param>
-    public static InjectResult LaunchAndInject(string gameCommandLine, string workingDir, string bootDllPath)
+    public static InjectResult LaunchAndInject(
+        string gameCommandLine,
+        string workingDir,
+        string bootDllPath,
+        string startInfoJson)
     {
         if (string.IsNullOrWhiteSpace(gameCommandLine))
             throw new ArgumentException("Game command line is empty.", nameof(gameCommandLine));
@@ -67,18 +73,8 @@ public static partial class Injector
 
         try
         {
-            // 1. Allocate a buffer in the target and write the UTF-16 DLL path into it.
-            //    LoadLibraryW will read the path from here when the APC fires.
-            var pathBytes = System.Text.Encoding.Unicode.GetBytes(bootDllPath + '\0');
-            var remotePath = VirtualAllocEx(pi.hProcess, nint.Zero, (nuint)pathBytes.Length,
-                MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-            if (remotePath == nint.Zero)
-                throw new InvalidOperationException($"VirtualAllocEx failed (Win32 error {Marshal.GetLastWin32Error()}).");
-
-            if (!WriteProcessMemory(pi.hProcess, remotePath, pathBytes, (nuint)pathBytes.Length, out _))
-                throw new InvalidOperationException($"WriteProcessMemory failed (Win32 error {Marshal.GetLastWin32Error()}).");
-
-            // 2. Resolve LoadLibraryW. kernel32 is ASLR-randomized once per boot with a
+            // 1. Resolve the functions used by the target-side bootstrap thunk.
+            // kernel32 is ASLR-randomized once per boot with a
             //    base shared across same-bitness processes, so this address is valid in
             //    the target too — which is why the injector must be x86.
             var kernel32 = GetModuleHandle("kernel32.dll");
@@ -87,25 +83,65 @@ public static partial class Injector
             var loadLibraryW = GetProcAddress(kernel32, "LoadLibraryW");
             if (loadLibraryW == nint.Zero)
                 throw new InvalidOperationException("GetProcAddress(LoadLibraryW) returned null.");
+            var getProcAddress = GetProcAddress(kernel32, "GetProcAddress");
+            if (getProcAddress == nint.Zero)
+                throw new InvalidOperationException("GetProcAddress(GetProcAddress) returned null.");
 
-            // 3. Arm a deterministic post-APC rendezvous only when Boot has VFS work.
-            //    Without TALON_OVERRIDE_DIR, Boot intentionally installs no VEH; leaving DR0
-            //    armed in that mode would turn the documented no-op into an unhandled #DB.
-            var overrideDirectory = Environment.GetEnvironmentVariable("TALON_OVERRIDE_DIR");
-            if (overrideDirectory is { Length: > 0 and < MAX_PATH })
-                ArmEntrypointRendezvous(pi.hProcess, pi.hThread);
+            // Keep all Talon startup state in one remote allocation. Data occupies RW
+            // pages and the generated x86 thunk occupies its own RX page.
+            var pathBytes = Encoding.Unicode.GetBytes(bootDllPath + '\0');
+            var jsonBytes = Encoding.UTF8.GetBytes(startInfoJson + '\0');
+            var exportBytes = Encoding.ASCII.GetBytes("TalonInitialize\0");
+            var jsonOffset = Align(pathBytes.Length, 4);
+            var exportOffset = Align(jsonOffset + jsonBytes.Length, 4);
+            var codeOffset = Align(exportOffset + exportBytes.Length, 0x1000);
+            const int thunkLength = 50;
+            var allocationLength = codeOffset + thunkLength;
 
-            // 4. Queue the APC onto the (still suspended) primary thread, then resume.
-            //    The APC calls LoadLibraryW(remotePath) during the loader's early
-            //    alertable wait — before the game's entry point executes.
-            if (QueueUserAPC(loadLibraryW, pi.hThread, remotePath) == 0)
+            var remoteBase = VirtualAllocEx(pi.hProcess, nint.Zero, (nuint)allocationLength,
+                MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+            if (remoteBase == nint.Zero)
+                throw new InvalidOperationException($"VirtualAllocEx failed (Win32 error {Marshal.GetLastWin32Error()}).");
+            if ((ulong)remoteBase.ToInt64() > uint.MaxValue)
+                throw new InvalidOperationException("Remote bootstrap allocation is outside the x86 address space.");
+
+            var block = new byte[allocationLength];
+            pathBytes.CopyTo(block, 0);
+            jsonBytes.CopyTo(block, jsonOffset);
+            exportBytes.CopyTo(block, exportOffset);
+
+            var baseAddress = checked((uint)remoteBase.ToInt64());
+            var thunk = BuildBootstrapThunk(
+                baseAddress,
+                checked(baseAddress + (uint)jsonOffset),
+                checked(baseAddress + (uint)exportOffset),
+                checked((uint)loadLibraryW.ToInt64()),
+                checked((uint)getProcAddress.ToInt64()));
+            thunk.CopyTo(block, codeOffset);
+
+            if (!WriteProcessMemory(pi.hProcess, remoteBase, block, (nuint)block.Length, out var written) ||
+                written != (nuint)block.Length)
+                throw new InvalidOperationException($"WriteProcessMemory failed (Win32 error {Marshal.GetLastWin32Error()}).");
+
+            var remoteThunk = remoteBase + codeOffset;
+            if (!VirtualProtectEx(pi.hProcess, remoteThunk, (nuint)thunkLength,
+                    PAGE_EXECUTE_READ, out _))
+                throw new InvalidOperationException($"VirtualProtectEx failed (Win32 error {Marshal.GetLastWin32Error()}).");
+
+            // 3. Arm the deterministic post-APC rendezvous for every Talon launch.
+            //    Managed VFS and network hooks both initialize after unpacking, so an
+            //    empty override directory is no longer a no-op launch.
+            ArmEntrypointRendezvous(pi.hProcess, pi.hThread);
+
+            // 4. Queue the target-side thunk onto the primary thread, then resume.
+            if (QueueUserAPC(remoteThunk, pi.hThread, nint.Zero) == 0)
                 throw new InvalidOperationException($"QueueUserAPC failed (Win32 error {Marshal.GetLastWin32Error()}).");
 
             if (ResumeThread(pi.hThread) == unchecked((uint)-1))
                 throw new InvalidOperationException($"ResumeThread failed (Win32 error {Marshal.GetLastWin32Error()}).");
 
-            // Note: remotePath is intentionally not freed — the target reads it
-            // asynchronously after we return. It is a small, one-shot leak in the target.
+            // The allocation intentionally remains valid because Boot retains the JSON
+            // pointer for its asynchronous managed-runtime worker.
             return new InjectResult((int)pi.dwProcessId, pi.hProcess, pi.hThread);
         }
         catch
@@ -117,6 +153,50 @@ public static partial class Injector
             throw;
         }
     }
+
+    internal static byte[] BuildBootstrapThunk(
+        uint remoteDllPath,
+        uint remoteStartInfoJson,
+        uint remoteExportName,
+        uint loadLibraryW,
+        uint getProcAddress)
+    {
+        var code = new byte[50];
+        var i = 0;
+
+        void Byte(byte value) => code[i++] = value;
+        void UInt32(uint value)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(code.AsSpan(i, sizeof(uint)), value);
+            i += sizeof(uint);
+        }
+
+        Byte(0x55);
+        Byte(0x8B); Byte(0xEC);
+        Byte(0x68); UInt32(remoteDllPath);
+        Byte(0xB8); UInt32(loadLibraryW);
+        Byte(0xFF); Byte(0xD0);
+        Byte(0x85); Byte(0xC0);
+        Byte(0x74); Byte(0x1B);
+        Byte(0x68); UInt32(remoteExportName);
+        Byte(0x50);
+        Byte(0xB8); UInt32(getProcAddress);
+        Byte(0xFF); Byte(0xD0);
+        Byte(0x85); Byte(0xC0);
+        Byte(0x74); Byte(0x0A);
+        Byte(0x68); UInt32(remoteStartInfoJson);
+        Byte(0xFF); Byte(0xD0);
+        Byte(0x83); Byte(0xC4); Byte(0x04);
+        Byte(0x5D);
+        Byte(0xC2); Byte(0x04); Byte(0x00);
+
+        if (i != code.Length)
+            throw new InvalidOperationException($"Internal bootstrap thunk length mismatch: {i}.");
+        return code;
+    }
+
+    private static int Align(int value, int alignment) =>
+        checked((value + alignment - 1) & ~(alignment - 1));
 
     /// <summary>Reads the COFF machine field from a PE file on disk (0x14C == x86).</summary>
     private static ushort ReadPeMachine(string path)
@@ -197,8 +277,8 @@ public static partial class Injector
     private const uint MEM_COMMIT = 0x1000;
     private const uint MEM_RESERVE = 0x2000;
     private const uint PAGE_READWRITE = 0x04;
+    private const uint PAGE_EXECUTE_READ = 0x20;
     private const ushort IMAGE_FILE_MACHINE_I386 = 0x014C;
-    private const int MAX_PATH = 260;
 
     [LibraryImport("kernel32.dll", EntryPoint = "CreateProcessW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -216,6 +296,15 @@ public static partial class Injector
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
     private static partial nint VirtualAllocEx(nint hProcess, nint lpAddress, nuint dwSize, uint flAllocationType, uint flProtect);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool VirtualProtectEx(
+        nint hProcess,
+        nint lpAddress,
+        nuint dwSize,
+        uint flNewProtect,
+        out uint lpflOldProtect);
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

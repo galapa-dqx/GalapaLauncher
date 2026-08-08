@@ -7,8 +7,6 @@
 // a normal worker resolves and installs hooks.
 
 #include "unpack_trigger.h"
-#include "vfs_hook.h"
-#include "hook_manager.h"
 #include "log.h"
 
 #define WIN32_LEAN_AND_MEAN
@@ -28,8 +26,8 @@ static uintptr_t g_entrypoint_va = 0;
 static uintptr_t g_ntprotect_va = 0;
 static uintptr_t g_text_begin = 0;
 static uintptr_t g_text_end = 0;
-static HANDLE g_barrier_event = nullptr;
-static HANDLE g_barrier_done = nullptr;
+static HANDLE g_unpack_complete = nullptr;
+static HANDLE g_managed_ready = nullptr;
 
 static bool find_text_range(uint8_t* base) {
     auto dos = (PIMAGE_DOS_HEADER)base;
@@ -109,12 +107,12 @@ static LONG CALLBACK unpack_veh(EXCEPTION_POINTERS* ep) {
         "parking unpacker\n", requested_base, requested_size);
     clear_dr0(ep->ContextRecord);
     InterlockedExchange(&g_armed, 0);
-    if (g_barrier_event) SetEvent(g_barrier_event);
+    if (g_unpack_complete) SetEvent(g_unpack_complete);
 
-    DWORD result = g_barrier_done
-        ? WaitForSingleObject(g_barrier_done, kBarrierTimeoutMs) : WAIT_FAILED;
+    DWORD result = g_managed_ready
+        ? WaitForSingleObject(g_managed_ready, kBarrierTimeoutMs) : WAIT_FAILED;
     if (result != WAIT_OBJECT_0)
-        dbg("[barrier] hook worker did not finish in %lu ms; resuming without hooks\n",
+        dbg("[barrier] managed hook initialization did not finish in %lu ms; resuming\n",
             kBarrierTimeoutMs);
     return EXCEPTION_CONTINUE_EXECUTION;
 }
@@ -148,65 +146,41 @@ static void clear_barrier_dr0_all_threads(DWORD self_tid) {
     CloseHandle(snap);
 }
 
-static DWORD WINAPI barrier_worker(LPVOID) {
-    DWORD result = g_barrier_event
-        ? WaitForSingleObject(g_barrier_event, kBarrierTimeoutMs) : WAIT_FAILED;
-    if (result != WAIT_OBJECT_0) {
-        // Keep the VEH armed while removing DR0. If g_armed were cleared first,
-        // another thread could hit the still-live breakpoint during this sweep and
-        // have its EXCEPTION_SINGLE_STEP propagated as unhandled.
-        clear_barrier_dr0_all_threads(GetCurrentThreadId());
-        InterlockedExchange(&g_armed, 0);
-        dbg("[barrier] no exact bulk-unpack transition in %lu ms; "
-            "Talon DR0 cleared, no hooks installed\n", kBarrierTimeoutMs);
-        return 0;
-    }
-
-    bool resolved = vfs_resolve_and_register();
-    int installed = resolved ? hook_install_all() : 0;
-    dbg("[barrier] bulk unpack complete; scanner resolved=%d, hooks installed=%d\n",
-        resolved ? 1 : 0, installed);
-    if (g_barrier_done) SetEvent(g_barrier_done);
-    return 0;
-}
-
-void start_unpack_barrier() {
+bool start_unpack_barrier(HANDLE unpack_complete, HANDLE managed_ready) {
     uint8_t* base = (uint8_t*)GetModuleHandleA(nullptr);
     HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
     g_ntprotect_va = ntdll
         ? (uintptr_t)GetProcAddress(ntdll, "NtProtectVirtualMemory") : 0;
     if (!base || !g_ntprotect_va || !find_text_range(base)) {
         dbg("[barrier] could not resolve NtProtectVirtualMemory or .text; no hooks installed\n");
-        return;
+        return false;
     }
 
-    g_barrier_event = CreateEventA(nullptr, FALSE, FALSE, nullptr);
-    g_barrier_done = CreateEventA(nullptr, FALSE, FALSE, nullptr);
-    if (!g_barrier_event || !g_barrier_done) {
-        dbg("[barrier] CreateEvent failed (err=%lu)\n", GetLastError());
-        if (g_barrier_event) { CloseHandle(g_barrier_event); g_barrier_event = nullptr; }
-        if (g_barrier_done) { CloseHandle(g_barrier_done); g_barrier_done = nullptr; }
-        return;
-    }
+    if (!unpack_complete || !managed_ready) return false;
+    g_unpack_complete = unpack_complete;
+    g_managed_ready = managed_ready;
 
     PVOID veh_handle = AddVectoredExceptionHandler(1, unpack_veh);
     if (!veh_handle) {
         dbg("[barrier] AddVectoredExceptionHandler failed (err=%lu)\n", GetLastError());
-        return;
+        return false;
     }
     InterlockedExchange(&g_stage, 1);
     InterlockedExchange(&g_armed, 1);
 
-    HANDLE thread = CreateThread(nullptr, 0, barrier_worker, nullptr, 0, nullptr);
-    if (!thread) {
-        dbg("[barrier] CreateThread(worker) failed (err=%lu)\n", GetLastError());
-        return;
-    }
-    CloseHandle(thread);
     InterlockedExchange(&g_worker_ready, 1);
 
     dbg("[barrier] awaiting injector entrypoint rendezvous=%p; "
         "NtProtectVirtualMemory=%p; .text=[%p,%p)\n",
         (void*)g_entrypoint_va, (void*)g_ntprotect_va,
         (void*)g_text_begin, (void*)g_text_end);
+    return true;
+}
+
+void cancel_unpack_barrier() {
+    // Keep the VEH armed while removing DR0. If g_armed were cleared first,
+    // another thread could hit the still-live breakpoint during this sweep and
+    // have its EXCEPTION_SINGLE_STEP propagated as unhandled.
+    clear_barrier_dr0_all_threads(GetCurrentThreadId());
+    InterlockedExchange(&g_armed, 0);
 }

@@ -1,77 +1,95 @@
-// Talon.Boot — DQX loose-file override payload (VFS-semantic hook).
-//
-// Injected into the 32-bit DQX game process by Talon.Injector via an early-bird
-// APC (see Talon.Injector/Injector.cs). Once the game has unpacked itself, this
-// DLL inline-hooks the game's own resource loader, Vfs_LoadResource, so that a
-// loose file living under an override directory is served in place of the asset
-// the game would otherwise decompress out of its packed .dat archives.
-//
-// Why the VFS layer instead of dragonhook's file-I/O layer:
-//   dragonhook hooks CreateFile/ReadFile and re-encodes loose files back into the
-//   game's on-disk block format (IDX relocation + type-2 deflate). Hooking the
-//   semantic loader instead means the game does its own archive I/O and we only
-//   intercept the (path -> resource) call. No IDX parsing, no re-compression, no
-//   knowledge of the .dat format, and no --data-dir: the game reads Content\Data
-//   itself. The trade-off is that this binds to a game-internal address, so it is
-//   version-specific (see vfs_hook.cpp's re-anchoring notes) whereas dragonhook is not.
-//
-// Source layout:
-//   log.*            diagnostics to %TEMP%\\talon-boot.log + OutputDebugString
-//   hook_manager.*   MinHook-backed hook registry
-//   vfs_hook.*       VFS override and post-unpack signature scanner
-//   unpack_trigger.* in-process bulk-unpack barrier
-//   dllmain.cpp      boot orchestration and entrypoints
-
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
+#include "coreclr_host.h"
 #include "log.h"
-#include "vfs_hook.h"
 #include "unpack_trigger.h"
 
-static volatile LONG g_booted = 0;
+static constexpr DWORD kInitializationTimeoutMs = 30000;
 
-// Reads configuration and starts the bulk-unpack barrier. Idempotent.
-static void talon_boot() {
-    if (InterlockedCompareExchange(&g_booted, 1, 0) != 0) return;
+static HMODULE g_boot_module = nullptr;
+static HANDLE g_unpack_complete = nullptr;
+static HANDLE g_managed_ready = nullptr;
+static volatile LONG g_started = 0;
+
+struct bootstrap_state {
+    const char* start_info_json;
+};
+
+static DWORD WINAPI managed_worker(LPVOID parameter) {
+    bootstrap_state* state = static_cast<bootstrap_state*>(parameter);
+    talon_managed_init_fn entry = nullptr;
+
+    if (!load_managed_entry(g_boot_module, &entry)) {
+        dbg("[boot] managed runtime bootstrap failed; releasing game thread\n");
+        SetEvent(g_managed_ready);
+        delete state;
+        return 0;
+    }
+
+    DWORD result = WaitForSingleObject(g_unpack_complete, kInitializationTimeoutMs);
+    if (result != WAIT_OBJECT_0) {
+        dbg("[boot] unpack barrier timed out; managed hooks were not installed\n");
+        cancel_unpack_barrier();
+        SetEvent(g_managed_ready);
+        delete state;
+        return 0;
+    }
+
+    __try {
+        entry((void*)state->start_info_json, g_managed_ready);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        dbg("[boot] managed entry raised SEH 0x%08lX; releasing game thread\n",
+            GetExceptionCode());
+        SetEvent(g_managed_ready);
+    }
+
+    delete state;
+    return 0;
+}
+
+// Called by the injector's target-side APC thunk after LoadLibraryW. This remains
+// a tiny native handoff: C++ owns only CLR startup and the unpack-complete barrier.
+extern "C" __declspec(dllexport) DWORD __cdecl TalonInitialize(
+    const char* start_info_json) {
+    if (InterlockedCompareExchange(&g_started, 1, 0) != 0) return ERROR_ALREADY_EXISTS;
 
     open_log();
+    dbg("[boot] Talon.Boot loaded (pid=%lu)\n", GetCurrentProcessId());
 
-    SYSTEMTIME st;
-    GetSystemTime(&st);
-    dbg("[boot] Talon.Boot loaded (pid=%lu) at %04u-%02u-%02u %02u:%02u:%02u.%03uZ\n",
-        GetCurrentProcessId(), st.wYear, st.wMonth, st.wDay,
-        st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
-
-
-    char overrideDir[MAX_PATH];
-    DWORD n = GetEnvironmentVariableA("TALON_OVERRIDE_DIR", overrideDir, sizeof(overrideDir));
-    if (n == 0 || n >= sizeof(overrideDir)) {
-        dbg("[boot] TALON_OVERRIDE_DIR not set — Talon.Boot is a no-op this launch\n");
-        return;
-    }
-    vfs_set_override_dir(overrideDir);
-    dbg("[boot] override dir = %s\n", overrideDir);
-
-    char censusBuf[8];
-    if (GetEnvironmentVariableA("TALON_VFS_CENSUS", censusBuf, sizeof(censusBuf)) > 0) {
-        vfs_set_census(true);
-        dbg("[boot] VFS census logging ENABLED\n");
+    g_unpack_complete = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    g_managed_ready = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    if (!g_unpack_complete || !g_managed_ready) {
+        dbg("[boot] CreateEvent failed (err=%lu)\n", GetLastError());
+        if (g_managed_ready) SetEvent(g_managed_ready);
+        return GetLastError();
     }
 
-    // Boot observes the packer's final bulk .text protection transition itself.
-    start_unpack_barrier();
+    if (!start_unpack_barrier(g_unpack_complete, g_managed_ready)) {
+        dbg("[boot] unpack barrier initialization failed\n");
+        SetEvent(g_managed_ready);
+        return ERROR_INVALID_STATE;
+    }
+
+    auto state = new bootstrap_state{start_info_json};
+    HANDLE thread = CreateThread(nullptr, 0, managed_worker, state, 0, nullptr);
+    if (!thread) {
+        DWORD error = GetLastError();
+        dbg("[boot] managed worker creation failed (err=%lu)\n", error);
+        delete state;
+        cancel_unpack_barrier();
+        SetEvent(g_managed_ready);
+        return error;
+    }
+
+    CloseHandle(thread);
+    return ERROR_SUCCESS;
 }
 
-// Explicit hand-off entrypoint for the entrypoint-rewrite / CLR bootstrap paths.
-// talon_boot() is idempotent, so a later call after DllMain already ran is a no-op.
-extern "C" __declspec(dllexport) void TalonInit() {
-    talon_boot();
-}
-
-BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID) {
-    if (reason != DLL_PROCESS_ATTACH) return TRUE;
-    DisableThreadLibraryCalls(inst);
-    talon_boot();
+BOOL WINAPI DllMain(HMODULE module, DWORD reason, LPVOID) {
+    if (reason == DLL_PROCESS_ATTACH) {
+        g_boot_module = module;
+        DisableThreadLibraryCalls(module);
+    }
     return TRUE;
 }
