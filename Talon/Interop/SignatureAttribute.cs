@@ -1,7 +1,6 @@
 namespace Talon.Interop;
 
-/// <summary>Describes how a signature-bound member is used.</summary>
-[Flags]
+/// <summary>Selects how a signature result initializes a member.</summary>
 public enum SignatureUseFlags
 {
     /// <summary>Infers the use from the member type.</summary>
@@ -10,8 +9,8 @@ public enum SignatureUseFlags
     Pointer = 1,
     /// <summary>Creates a hook for the resolved function.</summary>
     Hook = 2,
-    /// <summary>Applies the configured offset.</summary>
-    Offset = 4,
+    /// <summary>Reads a primitive value at the configured offset.</summary>
+    Offset,
 }
 
 /// <summary>Selects how a signature match is resolved.</summary>
@@ -35,7 +34,7 @@ public sealed class SignatureAttribute(string signature) : Attribute
     public SignatureScanType ScanType { get; init; } = SignatureScanType.Text;
     /// <summary>Gets the detour method name for a hook member.</summary>
     public string? DetourName { get; init; }
-    /// <summary>Gets the byte offset applied to the match.</summary>
+    /// <summary>Gets the byte offset used when <see cref="UseFlags"/> is <see cref="SignatureUseFlags.Offset"/>.</summary>
     public int Offset { get; init; }
     /// <summary>Gets whether a failed scan leaves the member uninitialized.</summary>
     public bool Fallibility { get; init; }

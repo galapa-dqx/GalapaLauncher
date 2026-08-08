@@ -30,7 +30,7 @@ public interface ISigScanner
     /// <summary>Gets the scanned process module.</summary>
     ProcessModule Module { get; }
 
-    /// <summary>Resolves the static address referenced by a matching x86 instruction.</summary>
+    /// <summary>Resolves the static address referenced by a matching x86 instruction. Direct calls and jumps are followed before <paramref name="offset"/> is applied.</summary>
     nint GetStaticAddressFromSig(string signature, int offset = 0);
     /// <summary>Tries to resolve the static address referenced by a matching instruction.</summary>
     bool TryGetStaticAddressFromSig(string signature, out nint result, int offset = 0);
@@ -44,9 +44,9 @@ public interface ISigScanner
     bool TryScanModule(string signature, out nint result);
     /// <summary>Applies a relative displacement to the next-instruction address.</summary>
     nint ResolveRelativeAddress(nint nextInstAddr, int relOffset);
-    /// <summary>Finds a signature in <c>.text</c> and resolves direct calls or jumps.</summary>
+    /// <summary>Finds a signature in <c>.text</c>. A match beginning with a direct <c>call</c> or <c>jmp</c> resolves to its branch target.</summary>
     nint ScanText(string signature);
-    /// <summary>Tries to find a signature in <c>.text</c>.</summary>
+    /// <summary>Tries to find a signature in <c>.text</c> and applies the same direct-branch resolution as <see cref="ScanText"/>.</summary>
     bool TryScanText(string signature, out nint result);
     /// <summary>Finds every matching address in <c>.text</c>.</summary>
     nint[] ScanAllText(string signature);

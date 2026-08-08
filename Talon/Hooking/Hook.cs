@@ -14,7 +14,7 @@ public abstract class Hook<T> : IDisposable where T : Delegate
     public abstract T Original { get; }
 
     /// <summary>Gets an original-function delegate that remains safe after disposal.</summary>
-    public T OriginalDisposeSafe =>
+    public virtual T OriginalDisposeSafe =>
         IsDisposed ? Marshal.GetDelegateForFunctionPointer<T>(Address) : Original;
 
     /// <summary>Gets whether the hook is enabled.</summary>

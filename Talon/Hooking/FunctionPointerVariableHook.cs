@@ -19,7 +19,16 @@ internal sealed class FunctionPointerVariableHook<T> : Hook<T> where T : Delegat
         detourAddress = Marshal.GetFunctionPointerForDelegate(detour);
     }
 
-    public override T Original => original;
+    public override T Original
+    {
+        get
+        {
+            CheckDisposed();
+            return original;
+        }
+    }
+
+    public override T OriginalDisposeSafe => original;
     public override bool IsEnabled => enabled;
     public override string BackendName => "Function pointer";
 

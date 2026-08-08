@@ -102,8 +102,8 @@ public sealed partial class GameInteropProvider(ISigScanner scanner) : IGameInte
         SignatureAttribute attribute)
     {
         var address = attribute.ScanType == SignatureScanType.StaticAddress
-            ? scanner.GetStaticAddressFromSig(attribute.Signature, attribute.Offset)
-            : scanner.ScanText(attribute.Signature) + attribute.Offset;
+            ? scanner.GetStaticAddressFromSig(attribute.Signature)
+            : scanner.ScanText(attribute.Signature);
         var memberType = member switch
         {
             FieldInfo field => field.FieldType,
@@ -111,36 +111,82 @@ public sealed partial class GameInteropProvider(ISigScanner scanner) : IGameInte
             _ => throw new NotSupportedException($"Unsupported signature member {member.Name}."),
         };
 
-        object value;
-        if (memberType == typeof(nint) || memberType == typeof(IntPtr))
-            value = address;
-        else if (typeof(Delegate).IsAssignableFrom(memberType))
-            value = Marshal.GetDelegateForFunctionPointer(address, memberType);
-        else if (memberType.IsGenericType &&
-                 memberType.GetGenericTypeDefinition() == typeof(Hook<>))
+        var use = attribute.UseFlags == SignatureUseFlags.Auto
+            ? InferUse(memberType)
+            : attribute.UseFlags;
+
+        object value = use switch
         {
-            var delegateType = memberType.GenericTypeArguments[0];
-            var detourName = attribute.DetourName ?? $"{member.Name}Detour";
-            var detourMethod = target.GetType().GetMethod(
-                detourName,
-                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-                ?? throw new MissingMethodException(target.GetType().FullName, detourName);
-            var detour = detourMethod.CreateDelegate(delegateType, target);
-            var hookMethod = GetType().GetMethods()
-                .Single(method => method.Name == nameof(HookFromAddress) &&
-                                  method.IsGenericMethodDefinition &&
-                                  method.GetParameters()[0].ParameterType == typeof(nint));
-            value = hookMethod.MakeGenericMethod(delegateType)
-                .Invoke(this, [address, detour, HookBackend.Automatic])!;
-        }
-        else
-        {
-            throw new NotSupportedException(
-                $"Signature member {member.Name} has unsupported type {memberType}.");
-        }
+            SignatureUseFlags.Pointer => CreatePointer(memberType, address),
+            SignatureUseFlags.Hook => CreateHook(target, member, memberType, address, attribute),
+            SignatureUseFlags.Offset => ReadOffset(memberType, address, attribute.Offset),
+            _ => throw new NotSupportedException(
+                $"Signature member {member.Name} has unsupported type {memberType}."),
+        };
 
         if (member is FieldInfo fieldInfo) fieldInfo.SetValue(target, value);
         else ((PropertyInfo)member).SetValue(target, value);
+    }
+
+    private static SignatureUseFlags InferUse(Type memberType)
+    {
+        if (memberType == typeof(nint) || memberType == typeof(IntPtr) ||
+            typeof(Delegate).IsAssignableFrom(memberType))
+            return SignatureUseFlags.Pointer;
+        if (memberType.IsGenericType &&
+            memberType.GetGenericTypeDefinition() == typeof(Hook<>))
+            return SignatureUseFlags.Hook;
+        if (memberType.IsPrimitive)
+            return SignatureUseFlags.Offset;
+        throw new NotSupportedException(
+            $"Cannot infer signature use for member type {memberType}.");
+    }
+
+    private static object CreatePointer(Type memberType, nint address)
+    {
+        if (memberType == typeof(nint) || memberType == typeof(IntPtr))
+            return address;
+        if (typeof(Delegate).IsAssignableFrom(memberType))
+            return Marshal.GetDelegateForFunctionPointer(address, memberType);
+        throw new NotSupportedException(
+            $"Signature pointer use does not support member type {memberType}.");
+    }
+
+    private object CreateHook(
+        object target,
+        MemberInfo member,
+        Type memberType,
+        nint address,
+        SignatureAttribute attribute)
+    {
+        if (!memberType.IsGenericType ||
+            memberType.GetGenericTypeDefinition() != typeof(Hook<>))
+            throw new NotSupportedException(
+                $"Signature hook use requires Hook<T>, not {memberType}.");
+
+        var delegateType = memberType.GenericTypeArguments[0];
+        var detourName = attribute.DetourName ?? $"{member.Name}Detour";
+        var detourMethod = target.GetType().GetMethod(
+            detourName,
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+            ?? throw new MissingMethodException(target.GetType().FullName, detourName);
+        var detour = detourMethod.CreateDelegate(delegateType, target);
+        var hookMethod = GetType().GetMethods()
+            .Single(method => method.Name == nameof(HookFromAddress) &&
+                              method.IsGenericMethodDefinition &&
+                              method.GetParameters()[0].ParameterType == typeof(nint));
+        return hookMethod.MakeGenericMethod(delegateType)
+            .Invoke(this, [address, detour, HookBackend.Automatic])!;
+    }
+
+    private static object ReadOffset(Type memberType, nint address, int offset)
+    {
+        if (!memberType.IsPrimitive)
+            throw new NotSupportedException(
+                $"Signature offset use requires a primitive member, not {memberType}.");
+        return Marshal.PtrToStructure(address + offset, memberType)
+            ?? throw new InvalidOperationException(
+                $"Could not read {memberType} at 0x{address + offset:X8}.");
     }
 
     private static unsafe nint FindImport(
