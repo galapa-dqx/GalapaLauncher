@@ -14,7 +14,6 @@
     <GenerateRuntimeConfigurationFiles>true</GenerateRuntimeConfigurationFiles>
     <RootNamespace>Talon</RootNamespace>
     <AssemblyName>Talon</AssemblyName>
-    <TalonRuntimePackVersion>10.0.1</TalonRuntimePackVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -22,10 +21,23 @@
     <PackageReference Include="MinSharp" Version="1.0.4" />
   </ItemGroup>
 
-  <ItemGroup>
-    <None Include="$(NetCoreTargetingPackRoot)\Microsoft.NETCore.App.Host.win-x86\$(TalonRuntimePackVersion)\runtimes\win-x86\native\nethost.dll"
-          Link="nethost.dll"
-          CopyToOutputDirectory="PreserveNewest" />
-  </ItemGroup>
+  <Target Name="CopyTalonNetHost"
+          BeforeTargets="CopyFilesToOutputDirectory"
+          DependsOnTargets="ResolveFrameworkReferences">
+    <ItemGroup>
+      <TalonAppHostPack Include="@(KnownAppHostPack)"
+                        Condition="'%(KnownAppHostPack.TargetFramework)' == 'net$(_TargetFrameworkVersionWithoutV)'" />
+      <TalonNetHost Include="@(TalonAppHostPack->'$(NetCoreTargetingPackRoot)\Microsoft.NETCore.App.Host.$(RuntimeIdentifier)\%(AppHostPackVersion)\runtimes\$(RuntimeIdentifier)\native\nethost.dll')" />
+    </ItemGroup>
+    <Error Condition="'@(TalonAppHostPack)' == ''"
+           Text="The active .NET SDK does not define an app-host pack for $(TargetFramework)." />
+    <Error Condition="'@(TalonNetHost)' == ''"
+           Text="The Talon nethost path could not be resolved for $(RuntimeIdentifier)." />
+    <Error Condition="'@(TalonNetHost)' != '' and !Exists('%(TalonNetHost.Identity)')"
+           Text="The resolved Talon nethost file does not exist: %(TalonNetHost.Identity)" />
+    <Copy SourceFiles="@(TalonNetHost)"
+          DestinationFolder="$(OutDir)"
+          SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>
