@@ -15,7 +15,7 @@ public sealed class CoreClrLayoutTests
         {
             Assert.True(NativeLibrary.TryGetExport(
                 hostFxr,
-                "hostfxr_initialize_for_runtime_config",
+                "hostfxr_initialize_for_dotnet_command_line",
                 out _));
             Assert.True(NativeLibrary.TryGetExport(
                 hostFxr,

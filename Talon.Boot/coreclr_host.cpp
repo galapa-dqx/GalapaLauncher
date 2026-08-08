@@ -18,8 +18,8 @@ struct get_hostfxr_parameters {
 using get_hostfxr_path_fn =
     int32_t(__cdecl*)(char_t*, size_t*, const get_hostfxr_parameters*);
 using hostfxr_handle = void*;
-using hostfxr_initialize_for_runtime_config_fn =
-    int32_t(__cdecl*)(const char_t*, const void*, hostfxr_handle*);
+using hostfxr_initialize_for_dotnet_command_line_fn =
+    int32_t(__cdecl*)(int, const char_t**, const void*, hostfxr_handle*);
 using hostfxr_get_runtime_delegate_fn =
     int32_t(__cdecl*)(hostfxr_handle, int32_t, void**);
 using hostfxr_close_fn = int32_t(__cdecl*)(hostfxr_handle);
@@ -27,7 +27,9 @@ using load_assembly_and_get_function_pointer_fn =
     int32_t(__stdcall*)(const char_t*, const char_t*, const char_t*,
                         const char_t*, void*, void**);
 
-static constexpr int32_t hdt_load_assembly_and_get_function_pointer = 3;
+// hostfxr_delegate_type::hdt_load_assembly_and_get_function_pointer. Keep this
+// value aligned with the .NET hostfxr.h enum when updating the bundled runtime.
+static constexpr int32_t hdt_load_assembly_and_get_function_pointer = 5;
 
 static std::wstring module_directory(HMODULE module) {
     std::vector<wchar_t> path(32768);
@@ -87,18 +89,19 @@ bool load_managed_entry(HMODULE boot_module, talon_managed_init_fn* entry) {
     }
 
     std::wstring assembly_path = join(directory, L"Talon.dll");
-    std::wstring runtime_config = join(directory, L"Talon.runtimeconfig.json");
-
-    // hostfxr reads the runtime config and selects the matching CoreCLR runtime.
+    // hostfxr reads Talon's runtime config and dependency manifest from the
+    // assembly path, then selects the co-located self-contained CoreCLR.
     HMODULE hostfxr = load_hostfxr(directory, assembly_path);
     if (!hostfxr) {
         dbg("[coreclr] LoadLibraryW(hostfxr) failed (err=%lu)\n", GetLastError());
         return false;
     }
 
-    // Resolve only the hostfxr API needed for component hosting.
-    auto initialize = reinterpret_cast<hostfxr_initialize_for_runtime_config_fn>(
-        GetProcAddress(hostfxr, "hostfxr_initialize_for_runtime_config"));
+    // A self-contained runtime config cannot be passed to
+    // hostfxr_initialize_for_runtime_config. Initialize Talon as the application
+    // command line instead; this also processes Talon.deps.json.
+    auto initialize = reinterpret_cast<hostfxr_initialize_for_dotnet_command_line_fn>(
+        GetProcAddress(hostfxr, "hostfxr_initialize_for_dotnet_command_line"));
     auto get_delegate = reinterpret_cast<hostfxr_get_runtime_delegate_fn>(
         GetProcAddress(hostfxr, "hostfxr_get_runtime_delegate"));
     auto close = reinterpret_cast<hostfxr_close_fn>(
@@ -109,8 +112,9 @@ bool load_managed_entry(HMODULE boot_module, talon_managed_init_fn* entry) {
     }
 
     hostfxr_handle context = nullptr;
-    int32_t rc = initialize(runtime_config.c_str(), nullptr, &context);
-    if (rc != 0 || !context) {
+    const char_t* arguments[] = { assembly_path.c_str() };
+    int32_t rc = initialize(1, arguments, nullptr, &context);
+    if (rc < 0 || !context) {
         dbg("[coreclr] runtime initialization failed (0x%08lX)\n", (DWORD)rc);
         return false;
     }
