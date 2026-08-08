@@ -86,6 +86,9 @@ public static partial class Injector
             var getProcAddress = GetProcAddress(kernel32, "GetProcAddress");
             if (getProcAddress == nint.Zero)
                 throw new InvalidOperationException("GetProcAddress(GetProcAddress) returned null.");
+            var exitProcess = GetProcAddress(kernel32, "ExitProcess");
+            if (exitProcess == nint.Zero)
+                throw new InvalidOperationException("GetProcAddress(ExitProcess) returned null.");
 
             // Keep all Talon startup state in one remote allocation. Data occupies RW
             // pages and the generated x86 thunk occupies its own RX page.
@@ -95,7 +98,7 @@ public static partial class Injector
             var jsonOffset = Align(pathBytes.Length, 4);
             var exportOffset = Align(jsonOffset + jsonBytes.Length, 4);
             var codeOffset = Align(exportOffset + exportBytes.Length, 0x1000);
-            const int thunkLength = 50;
+            const int thunkLength = 68;
             var allocationLength = codeOffset + thunkLength;
 
             var remoteBase = VirtualAllocEx(pi.hProcess, nint.Zero, (nuint)allocationLength,
@@ -116,7 +119,8 @@ public static partial class Injector
                 checked(baseAddress + (uint)jsonOffset),
                 checked(baseAddress + (uint)exportOffset),
                 checked((uint)loadLibraryW.ToInt64()),
-                checked((uint)getProcAddress.ToInt64()));
+                checked((uint)getProcAddress.ToInt64()),
+                checked((uint)exitProcess.ToInt64()));
             thunk.CopyTo(block, codeOffset);
 
             if (!WriteProcessMemory(pi.hProcess, remoteBase, block, (nuint)block.Length, out var written) ||
@@ -127,6 +131,8 @@ public static partial class Injector
             if (!VirtualProtectEx(pi.hProcess, remoteThunk, (nuint)thunkLength,
                     PAGE_EXECUTE_READ, out _))
                 throw new InvalidOperationException($"VirtualProtectEx failed (Win32 error {Marshal.GetLastWin32Error()}).");
+            if (!FlushInstructionCache(pi.hProcess, remoteThunk, (nuint)thunkLength))
+                throw new InvalidOperationException($"FlushInstructionCache failed (Win32 error {Marshal.GetLastWin32Error()}).");
 
             // 3. Arm the deterministic post-APC rendezvous for every Talon launch.
             //    Managed VFS and network hooks both initialize after unpacking, so an
@@ -159,9 +165,10 @@ public static partial class Injector
         uint remoteStartInfoJson,
         uint remoteExportName,
         uint loadLibraryW,
-        uint getProcAddress)
+        uint getProcAddress,
+        uint exitProcess)
     {
-        var code = new byte[50];
+        var code = new byte[68];
         var i = 0;
 
         void Byte(byte value) => code[i++] = value;
@@ -177,22 +184,45 @@ public static partial class Injector
         Byte(0xB8); UInt32(loadLibraryW);
         Byte(0xFF); Byte(0xD0);
         Byte(0x85); Byte(0xC0);
-        Byte(0x74); Byte(0x1B);
+        Byte(0x74); var loadFailureBranch = i; Byte(0x00);
         Byte(0x68); UInt32(remoteExportName);
         Byte(0x50);
         Byte(0xB8); UInt32(getProcAddress);
         Byte(0xFF); Byte(0xD0);
         Byte(0x85); Byte(0xC0);
-        Byte(0x74); Byte(0x0A);
+        Byte(0x74); var exportFailureBranch = i; Byte(0x00);
         Byte(0x68); UInt32(remoteStartInfoJson);
         Byte(0xFF); Byte(0xD0);
         Byte(0x83); Byte(0xC4); Byte(0x04);
+        Byte(0x85); Byte(0xC0);
+        Byte(0x75); var initializeFailureBranch = i; Byte(0x00);
         Byte(0x5D);
         Byte(0xC2); Byte(0x04); Byte(0x00);
+
+        var failure = i;
+        // TalonInitialize returns a Win32 status. Earlier failures leave EAX at
+        // zero, so turn that into a nonzero process exit code before failing shut.
+        Byte(0x85); Byte(0xC0);
+        Byte(0x75); Byte(0x01);
+        Byte(0x40);
+        Byte(0x50);
+        Byte(0xB8); UInt32(exitProcess);
+        Byte(0xFF); Byte(0xD0);
+        Byte(0xCC);
+
+        PatchShortForwardBranch(loadFailureBranch, failure);
+        PatchShortForwardBranch(exportFailureBranch, failure);
+        PatchShortForwardBranch(initializeFailureBranch, failure);
 
         if (i != code.Length)
             throw new InvalidOperationException($"Internal bootstrap thunk length mismatch: {i}.");
         return code;
+
+        void PatchShortForwardBranch(int operand, int target)
+        {
+            var displacement = target - (operand + 1);
+            code[operand] = checked((byte)displacement);
+        }
     }
 
     private static int Align(int value, int alignment) =>
@@ -309,6 +339,13 @@ public static partial class Injector
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool WriteProcessMemory(nint hProcess, nint lpBaseAddress, byte[] lpBuffer, nuint nSize, out nuint lpNumberOfBytesWritten);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool FlushInstructionCache(
+        nint hProcess,
+        nint lpBaseAddress,
+        nuint dwSize);
 
     [LibraryImport("kernel32.dll", EntryPoint = "GetModuleHandleW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
     private static partial nint GetModuleHandle(string lpModuleName);
