@@ -44,7 +44,7 @@ jobs:
         run: dotnet restore Galapa.slnf
 
       - name: 🛠 Build solution
-        run: dotnet build Galapa.slnf --no-restore --configuration Release
+        run: dotnet build Galapa.slnf --no-restore --configuration Release /p:TalonRequireNativePayload=true
 
       - name: 🧪 Run tests with coverage
         run: dotnet test Galapa.slnf --no-build --configuration Release --collect:"XPlat Code Coverage"

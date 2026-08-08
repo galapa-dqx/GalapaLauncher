@@ -14,6 +14,7 @@
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <RootNamespace>Talon.Injector</RootNamespace>
         <AssemblyName>Talon.Injector</AssemblyName>
+        <TalonRequireNativePayload Condition="'$(TalonRequireNativePayload)' == ''">false</TalonRequireNativePayload>
     </PropertyGroup>
 
     <!-- Galapa.sln declares Talon.Boot as this project's build dependency. Copy in a
@@ -42,8 +43,15 @@
         <Copy SourceFiles="@(TalonRuntimeFiles)"
               DestinationFiles="@(TalonRuntimeFiles->'$(OutDir)%(RecursiveDir)%(Filename)%(Extension)')"
               SkipUnchangedFiles="true" />
-        <Error Condition="!Exists('$(OutDir)Talon.Boot.dll')"
+        <Warning Condition="!Exists('$(OutDir)Talon.Boot.dll') and '$(TalonRequireNativePayload)' != 'true'"
+                 Text="Talon.Boot.dll is missing. The managed-only injector output cannot launch DQX." />
+        <Error Condition="!Exists('$(OutDir)Talon.Boot.dll') and '$(TalonRequireNativePayload)' == 'true'"
                Text="Talon.Boot.dll is missing. Build Talon.Boot Win32 $(Configuration) before Talon.Injector." />
+    </Target>
+
+    <Target Name="RequireTalonBootForPublish" BeforeTargets="Publish">
+        <Error Condition="!Exists('$(OutDir)Talon.Boot.dll')"
+               Text="Talon.Boot.dll is missing. Build Talon.Boot Win32 $(Configuration) before publishing Talon.Injector." />
     </Target>
 
 </Project>
