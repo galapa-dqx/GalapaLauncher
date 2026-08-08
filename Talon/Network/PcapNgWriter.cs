@@ -31,6 +31,14 @@ internal sealed class PcapNgWriter : IInboundPacketObserver, IDisposable
         var fullPath = Path.GetFullPath(path);
         Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
         writerTask = Task.Run(() => RunAsync(fullPath, cancellation.Token));
+        _ = writerTask.ContinueWith(
+            task => Log.Error(
+                "packet capture writer failed",
+                task.Exception?.GetBaseException()),
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted |
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
         Log.Info($"packet capture enabled: {fullPath}");
     }
 
@@ -60,8 +68,15 @@ internal sealed class PcapNgWriter : IInboundPacketObserver, IDisposable
     public void Dispose()
     {
         channel.Writer.TryComplete();
-        if (!writerTask.Wait(TimeSpan.FromSeconds(2)))
-            cancellation.Cancel();
+        try
+        {
+            if (!writerTask.Wait(TimeSpan.FromSeconds(2)))
+                cancellation.Cancel();
+        }
+        catch (AggregateException)
+        {
+            // The fault-logging continuation records the underlying exception.
+        }
         cancellation.Dispose();
     }
 
@@ -123,6 +138,7 @@ internal sealed class PcapNgWriter : IInboundPacketObserver, IDisposable
         writer.Write((uint)capturedLength);
 
         Span<byte> header = stackalloc byte[TalonHeaderSize];
+        header.Clear();
         BinaryPrimitives.WriteUInt32LittleEndian(header, 0x314E4C54); // TLN1
         BinaryPrimitives.WriteUInt16LittleEndian(header[4..], 1);
         BinaryPrimitives.WriteUInt16LittleEndian(header[6..], TalonHeaderSize);
