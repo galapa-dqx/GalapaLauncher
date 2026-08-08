@@ -53,7 +53,7 @@ jobs:
         run: New-Item -ItemType Directory -Force artifacts
 
       - name: 📦 Package Talon
-        run: Compress-Archive -Path Talon.Injector/bin/Release/net10.0-windows/* -DestinationPath artifacts/Talon-win-x86.zip
+        run: Compress-Archive -Path Talon.Injector/bin/Release/net10.0-windows/win-x86/* -DestinationPath artifacts/Talon-win-x86.zip
 
       - name: 🛠 Publish Galapa.Launcher for x64
         run: dotnet publish Galapa.Launcher --configuration Release -r win-x64 --self-contained false -o artifacts/Galapa.Launcher-x64

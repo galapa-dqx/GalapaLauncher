@@ -1,4 +1,5 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk"
+         TreatAsLocalProperty="RuntimeIdentifier;SelfContained">
 
     <PropertyGroup>
         <OutputType>Exe</OutputType>
@@ -8,6 +9,8 @@
         <!-- Must match the 32-bit game process: kernel32 base parity (for the
              LoadLibraryW address) and 32-bit pointer width both require x86. -->
         <PlatformTarget>x86</PlatformTarget>
+        <RuntimeIdentifier>win-x86</RuntimeIdentifier>
+        <SelfContained>true</SelfContained>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <RootNamespace>Talon.Injector</RootNamespace>
         <AssemblyName>Talon.Injector</AssemblyName>
