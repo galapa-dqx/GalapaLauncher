@@ -7,6 +7,10 @@ public sealed class TalonStartInfo
     public int Version { get; init; }
     /// <summary>Gets the root directory for loose VFS replacements.</summary>
     public string? OverrideDirectory { get; init; }
+    /// <summary>Gets the output path for passive PCAPNG capture.</summary>
+    public string? PacketCapturePath { get; init; }
+    /// <summary>Gets whether the packet hold-and-replay smoke test is enabled.</summary>
+    public bool NetworkSmokeTest { get; init; }
     /// <summary>Gets whether VFS path census logging is enabled.</summary>
     public bool VfsCensus { get; init; }
 }
