@@ -45,7 +45,7 @@ vtable, it hooks the `ProcessPayload` slot (`+0x5c`) and destructor. Only normal
 type-0 payloads can be held. Control frames continue unchanged.
 
 Managed interceptors register a `PacketSelector` with an opcode and optional
-marker. Marker-specific registrations take precedence over opcode-only
+marker plus byte offset. Marker-specific registrations take precedence over opcode-only
 registrations. Duplicate selectors are rejected. A matching registration copies
 and holds the packet while its asynchronous handler runs. Passive observers do
 not hold traffic.
@@ -58,9 +58,9 @@ and 60 seconds per handler. Failures replay the original bytes. Session
 destruction increments a generation and prevents replay of stale completions.
 
 For the current DQX payload contract, the opcode is byte zero. An optional marker
-matches its little-endian 16-bit representation anywhere after the opcode. This
-keeps selection policy in managed handlers while packet capture preserves the
-complete payload for further protocol work.
+matches its little-endian 16-bit representation at a fixed byte offset, which
+defaults to byte one. This keeps selection policy in managed handlers while packet
+capture preserves the complete payload for further protocol work.
 
 ## Diagnostics
 

@@ -12,7 +12,7 @@ internal sealed class PacketHandlerService
 
     private readonly object registrationLock = new();
     private readonly Dictionary<byte, IInboundPacketInterceptor> opcodeHandlers = [];
-    private readonly Dictionary<(byte Opcode, ushort Marker), IInboundPacketInterceptor>
+    private readonly Dictionary<(byte Opcode, ushort Marker, int Offset), IInboundPacketInterceptor>
         markerHandlers = [];
     private readonly List<IInboundPacketObserver> observers = [];
     private readonly ConcurrentQueue<CompletedPacket> completed = new();
@@ -26,9 +26,16 @@ internal sealed class PacketHandlerService
         {
             if (interceptor.Selector.Marker is { } marker)
             {
-                if (!markerHandlers.TryAdd((interceptor.Selector.Opcode, marker), interceptor))
+                if (interceptor.Selector.MarkerOffset < 0)
+                    throw new ArgumentOutOfRangeException(
+                        nameof(interceptor),
+                        "Packet marker offsets cannot be negative.");
+                if (!markerHandlers.TryAdd(
+                        (interceptor.Selector.Opcode, marker, interceptor.Selector.MarkerOffset),
+                        interceptor))
                     throw new InvalidOperationException(
-                        $"Duplicate packet selector opcode=0x{interceptor.Selector.Opcode:X2}, marker=0x{marker:X4}.");
+                        $"Duplicate packet selector opcode=0x{interceptor.Selector.Opcode:X2}, " +
+                        $"marker=0x{marker:X4}, offset={interceptor.Selector.MarkerOffset}.");
             }
             else if (!opcodeHandlers.TryAdd(interceptor.Selector.Opcode, interceptor))
             {
@@ -86,7 +93,13 @@ internal sealed class PacketHandlerService
         return true;
     }
 
-    public bool TryDequeue(out CompletedPacket packet) => completed.TryDequeue(out packet);
+    public bool TryDequeue(out CompletedPacket packet)
+    {
+        if (!completed.TryDequeue(out packet)) return false;
+        Interlocked.Decrement(ref heldPacketCount);
+        Interlocked.Add(ref heldByteCount, -packet.ReservedBytes);
+        return true;
+    }
 
     private (IInboundPacketInterceptor? Handler, ushort? Marker) FindHandler(
         byte opcode,
@@ -96,7 +109,8 @@ internal sealed class PacketHandlerService
         {
             foreach (var pair in markerHandlers)
             {
-                if (pair.Key.Opcode == opcode && ContainsMarker(data, pair.Key.Marker))
+                if (pair.Key.Opcode == opcode &&
+                    MatchesMarker(data, pair.Key.Marker, pair.Key.Offset))
                     return (pair.Value, pair.Key.Marker);
             }
             return opcodeHandlers.TryGetValue(opcode, out var handler)
@@ -124,31 +138,33 @@ internal sealed class PacketHandlerService
             Log.Error($"packet {packet.PacketId} handler failed; replaying original", exception);
             decision = PacketDecision.Original;
         }
-        finally
-        {
-            Interlocked.Decrement(ref heldPacketCount);
-            Interlocked.Add(ref heldByteCount, -packet.Data.Length);
-        }
-
         var replay = decision.Replace ? decision.Data.ToArray() : packet.Data.ToArray();
         if (replay.Length == 0 || replay.Length > MaximumHeldBytes)
             replay = packet.Data.ToArray();
+        var reservationDelta = replay.Length - packet.Data.Length;
+        if (reservationDelta > 0 &&
+            Interlocked.Add(ref heldByteCount, reservationDelta) > MaximumHeldBytes)
+        {
+            Interlocked.Add(ref heldByteCount, -reservationDelta);
+            replay = packet.Data.ToArray();
+        }
+        else if (reservationDelta < 0)
+        {
+            Interlocked.Add(ref heldByteCount, reservationDelta);
+        }
         completed.Enqueue(new CompletedPacket(
             packet.PacketId,
             session,
             packet.ConnectionGeneration,
             packet.Opcode,
             packet.Marker,
+            replay.Length,
             replay));
     }
 
-    private static bool ContainsMarker(ReadOnlySpan<byte> data, ushort marker)
-    {
-        for (var i = 1; i + sizeof(ushort) <= data.Length; i++)
-            if (BinaryPrimitives.ReadUInt16LittleEndian(data[i..]) == marker)
-                return true;
-        return false;
-    }
+    private static bool MatchesMarker(ReadOnlySpan<byte> data, ushort marker, int offset) =>
+        offset <= data.Length - sizeof(ushort) &&
+        BinaryPrimitives.ReadUInt16LittleEndian(data[offset..]) == marker;
 
     internal readonly record struct CompletedPacket(
         ulong PacketId,
@@ -156,5 +172,6 @@ internal sealed class PacketHandlerService
         long Generation,
         byte Opcode,
         ushort? Marker,
+        int ReservedBytes,
         byte[] Data);
 }

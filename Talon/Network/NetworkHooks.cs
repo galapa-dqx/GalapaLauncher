@@ -28,6 +28,9 @@ internal sealed class NetworkHooks(
     [ThreadStatic]
     private static byte currentFrameType;
 
+    [ThreadStatic]
+    private static bool parsingFrame;
+
     // Reinjected packets call ProcessPayload directly and must not be held again.
     [ThreadStatic]
     private static bool replaying;
@@ -71,6 +74,8 @@ internal sealed class NetworkHooks(
         // The parser supplies the live session object and calls its payload slot.
         QueueSessionHookInstall(session);
         var previous = currentFrameType;
+        var wasParsing = parsingFrame;
+        parsingFrame = true;
         currentFrameType = frame != 0 && length > 0
             ? (byte)(Marshal.ReadByte(frame) >> 4)
             : byte.MaxValue;
@@ -81,6 +86,7 @@ internal sealed class NetworkHooks(
         finally
         {
             currentFrameType = previous;
+            parsingFrame = wasParsing;
         }
     }
 
@@ -88,7 +94,7 @@ internal sealed class NetworkHooks(
     {
         // Only normal type-0 data frames enter the translation path. VCE control
         // traffic and recursive replay remain synchronous.
-        if (replaying || currentFrameType != 0 || payload == 0 || length <= 0)
+        if (replaying || !parsingFrame || currentFrameType != 0 || payload == 0 || length <= 0)
         {
             processPayloadHook!.Original(session, payload, length);
             return;

@@ -1,7 +1,10 @@
 namespace Talon.Network;
 
-/// <summary>Selects inbound packets by opcode and optional payload marker.</summary>
-public readonly record struct PacketSelector(byte Opcode, ushort? Marker = null);
+/// <summary>Selects inbound packets by opcode and an optional 16-bit marker at a fixed byte offset.</summary>
+public readonly record struct PacketSelector(
+    byte Opcode,
+    ushort? Marker = null,
+    int MarkerOffset = 1);
 
 /// <summary>Contains a copied inbound payload and its connection identity.</summary>
 public sealed record InboundPacket(

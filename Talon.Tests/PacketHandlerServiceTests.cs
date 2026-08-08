@@ -32,6 +32,20 @@ public sealed class PacketHandlerServiceTests
     }
 
     [Fact]
+    public async Task MarkerSelectorOnlyMatchesItsConfiguredOffset()
+    {
+        var service = new PacketHandlerService();
+        service.Register(new ReplacementInterceptor(new(0x47), [0x01]));
+        service.Register(new ReplacementInterceptor(new(0x47, 0x3CA8, 1), [0x02]));
+
+        Assert.True(service.TryHold(0x1234, 1, [0x47, 0x00, 0xA8, 0x3C]));
+        var completed = await WaitForPacket(service);
+
+        Assert.Equal([0x01], completed.Data);
+        Assert.Null(completed.Marker);
+    }
+
+    [Fact]
     public async Task CompletedPacketsAreDequeuedByCompletionNotArrival()
     {
         var service = new PacketHandlerService();
@@ -56,6 +70,21 @@ public sealed class PacketHandlerServiceTests
 
         Assert.Throws<InvalidOperationException>(() =>
             service.Register(new ReplacementInterceptor(new(0x47), [0x02])));
+    }
+
+    [Fact]
+    public void CompletedPacketsRemainInsideHoldLimitUntilDequeued()
+    {
+        var service = new PacketHandlerService();
+        service.Register(new ReplacementInterceptor(new(0x50), [0x50]));
+
+        var held = Enumerable.Range(0, 300)
+            .Count(_ => service.TryHold(0x1234, 1, [0x50]));
+
+        Assert.Equal(256, held);
+        for (var i = 0; i < held; i++)
+            Assert.True(service.TryDequeue(out _));
+        Assert.True(service.TryHold(0x1234, 1, [0x50]));
     }
 
     private static async Task<PacketHandlerService.CompletedPacket> WaitForPacket(
