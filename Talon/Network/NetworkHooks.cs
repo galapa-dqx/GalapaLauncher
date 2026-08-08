@@ -18,10 +18,10 @@ internal sealed class NetworkHooks(
     private readonly Dictionary<nint, long> generations = [];
     private Hook<FrameParserDelegate>? parserHook;
     private Hook<PollerDelegate>? pollerHook;
-    private Hook<ProcessPayloadDelegate>? processPayloadHook;
-    private Hook<SessionDestructorDelegate>? destructorHook;
+    private volatile Hook<ProcessPayloadDelegate>? processPayloadHook;
+    private volatile Hook<SessionDestructorDelegate>? destructorHook;
     private PcapNgWriter? capture;
-    private bool sessionHookInstallQueued;
+    private volatile bool sessionHookInstallQueued;
 
     // ProcessPayload runs inside the parser call. TLS carries that frame's type
     // without sharing state between VCE threads.
@@ -117,7 +117,8 @@ internal sealed class NetworkHooks(
     private nint SessionDestructorDetour(nint session, uint flags)
     {
         // A reused session address gets a new generation. Late completions from
-        // the old connection can then be discarded safely.
+        // the old connection can then be discarded safely. Keep the entry after
+        // destruction so a later session at the same address gets a new identity.
         lock (generations)
             generations[session] = generations.GetValueOrDefault(session) + 1;
         return destructorHook!.Original(session, flags);
@@ -204,8 +205,10 @@ internal sealed class NetworkHooks(
                 destructorHook = interop.HookFromAddress(
                     destructor,
                     (SessionDestructorDelegate)SessionDestructorDetour);
-                processPayloadHook.Enable();
+                // Publish both hook objects before either detour can run. Enable
+                // the payload hook last because it is the active traffic path.
                 destructorHook.Enable();
+                processPayloadHook.Enable();
             }
             lock (generations) generations[session] = 1;
             Log.Info(
@@ -213,9 +216,22 @@ internal sealed class NetworkHooks(
         }
         catch (Exception exception)
         {
-            lock (sessionHookLock) sessionHookInstallQueued = false;
+            lock (sessionHookLock)
+            {
+                DisposeFailedHook(processPayloadHook, "VCE payload");
+                DisposeFailedHook(destructorHook, "VCE destructor");
+                processPayloadHook = null;
+                destructorHook = null;
+                sessionHookInstallQueued = false;
+            }
             Log.Error("VCE session hook installation failed", exception);
         }
+    }
+
+    private static void DisposeFailedHook<T>(Hook<T>? hook, string name) where T : Delegate
+    {
+        try { hook?.Dispose(); }
+        catch (Exception exception) { Log.Error($"{name} hook cleanup failed", exception); }
     }
 
     private bool IsInText(nint address) =>

@@ -15,14 +15,43 @@ internal static class RuntimeHost
         var scanner = new SigScanner();
         var interop = new GameInteropProvider(scanner);
 
-        var vfs = new VfsHooks(scanner, interop, startInfo);
-        vfs.Initialize();
-        Lifetime.Add(vfs);
+        var initialized = 0;
+        if (TryInitialize(
+                "VFS",
+                () => new VfsHooks(scanner, interop, startInfo),
+                hooks => hooks.Initialize()))
+            initialized++;
+        if (TryInitialize(
+                "network",
+                () => new NetworkHooks(scanner, interop, startInfo),
+                hooks => hooks.Initialize()))
+            initialized++;
 
-        var network = new NetworkHooks(scanner, interop, startInfo);
-        network.Initialize();
-        Lifetime.Add(network);
+        Log.Info($"managed hook initialization complete ({initialized}/2 subsystems active)");
+    }
 
-        Log.Info("managed hook initialization complete");
+    private static bool TryInitialize<T>(
+        string name,
+        Func<T> create,
+        Action<T> initialize) where T : IDisposable
+    {
+        T? subsystem = default;
+        try
+        {
+            subsystem = create();
+            initialize(subsystem);
+            Lifetime.Add(subsystem);
+            return true;
+        }
+        catch (Exception exception)
+        {
+            try { subsystem?.Dispose(); }
+            catch (Exception disposeException)
+            {
+                Log.Error($"managed {name} cleanup failed", disposeException);
+            }
+            Log.Error($"managed {name} initialization failed; continuing without it", exception);
+            return false;
+        }
     }
 }
