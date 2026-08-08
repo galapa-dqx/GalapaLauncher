@@ -9,7 +9,9 @@
       "Galapa.Launcher\\Galapa.Launcher.csproj",
       "Galapa.Launcher.Tests\\Galapa.Launcher.Tests.csproj",
       "Galapa.UI\\Galapa.UI.csproj",
-      "Talon.Injector\\Talon.Injector.csproj"
+      "Talon.Injector\\Talon.Injector.csproj",
+      "Talon\\Talon.csproj",
+      "Talon.Tests\\Talon.Tests.csproj"
     ]
   }
 }

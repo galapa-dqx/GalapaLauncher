@@ -30,18 +30,19 @@
              SPAWNS (it can't inject from this x64 process); we copy its output ourselves in
              the target below rather than referencing its assembly. -->
         <ProjectReference Include="..\Talon.Injector\Talon.Injector.csproj"
-                           ReferenceOutputAssembly="false"
-                           Private="false"
-                           GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained"/>
+                          ReferenceOutputAssembly="false"
+                          SkipGetTargetFrameworkProperties="true"
+                          Private="false"
+                          GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained"/>
     </ItemGroup>
 
-    <!-- Bundle the built Talon.Injector output (exe + runtime config + Talon.Boot.dll) into a
-         Talon\ subfolder next to the Toolbox exe. NOTE: Talon.Boot.dll is only present when the
+    <!-- Bundle the self-contained Talon.Injector output into a Talon\ subfolder next to the
+         Toolbox exe. NOTE: Talon.Boot.dll is only present when the
          solution is built with MSBuild/Visual Studio (the .NET SDK cannot build the C++ project);
          a plain `dotnet build` bundles the injector without its native payload. -->
     <Target Name="BundleTalonInjector" AfterTargets="Build">
         <ItemGroup>
-            <TalonInjectorOutput Include="..\Talon.Injector\bin\$(Configuration)\net8.0-windows\**\*"/>
+            <TalonInjectorOutput Include="..\Talon.Injector\bin\$(Configuration)\net10.0-windows\win-x86\**\*"/>
         </ItemGroup>
         <Copy SourceFiles="@(TalonInjectorOutput)"
               DestinationFiles="@(TalonInjectorOutput->'$(OutDir)Talon\%(RecursiveDir)%(Filename)%(Extension)')"

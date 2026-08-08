@@ -1,13 +1,16 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk"
+         TreatAsLocalProperty="RuntimeIdentifier;SelfContained">
 
     <PropertyGroup>
         <OutputType>Exe</OutputType>
-        <TargetFramework>net8.0-windows</TargetFramework>
+        <TargetFramework>net10.0-windows</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <!-- Must match the 32-bit game process: kernel32 base parity (for the
              LoadLibraryW address) and 32-bit pointer width both require x86. -->
         <PlatformTarget>x86</PlatformTarget>
+        <RuntimeIdentifier>win-x86</RuntimeIdentifier>
+        <SelfContained>true</SelfContained>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <RootNamespace>Talon.Injector</RootNamespace>
         <AssemblyName>Talon.Injector</AssemblyName>
@@ -17,11 +20,30 @@
          target (rather than an evaluation-time Exists-conditioned Content item) so a
          clean full MSBuild sees the DLL produced earlier in the same solution build.
          Galapa.slnf intentionally excludes the native project; CI builds it explicitly. -->
+    <ItemGroup>
+        <ProjectReference Include="..\Talon\Talon.csproj"
+                          ReferenceOutputAssembly="false"
+                          GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained" />
+    </ItemGroup>
+
     <Target Name="CopyTalonBootPayload" AfterTargets="Build"
+            BeforeTargets="CopyTalonRuntime"
             Condition="Exists('..\Talon.Boot\bin\x86\$(Configuration)\Talon.Boot.dll')">
         <Copy SourceFiles="..\Talon.Boot\bin\x86\$(Configuration)\Talon.Boot.dll"
               DestinationFolder="$(OutDir)"
               SkipUnchangedFiles="true"/>
+    </Target>
+
+    <Target Name="CopyTalonRuntime" AfterTargets="Build"
+            DependsOnTargets="CopyTalonBootPayload">
+        <ItemGroup>
+            <TalonRuntimeFiles Include="..\Talon\bin\$(Configuration)\net10.0-windows\win-x86\**\*" />
+        </ItemGroup>
+        <Copy SourceFiles="@(TalonRuntimeFiles)"
+              DestinationFiles="@(TalonRuntimeFiles->'$(OutDir)%(RecursiveDir)%(Filename)%(Extension)')"
+              SkipUnchangedFiles="true" />
+        <Error Condition="!Exists('$(OutDir)Talon.Boot.dll')"
+               Text="Talon.Boot.dll is missing. Build Talon.Boot Win32 $(Configuration) before Talon.Injector." />
     </Target>
 
 </Project>
