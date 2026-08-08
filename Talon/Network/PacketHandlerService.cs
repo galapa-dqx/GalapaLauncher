@@ -12,7 +12,7 @@ internal sealed class PacketHandlerService
 
     private readonly object registrationLock = new();
     private readonly Dictionary<byte, IInboundPacketInterceptor> opcodeHandlers = [];
-    private readonly Dictionary<(byte Opcode, ushort Marker, int Offset), IInboundPacketInterceptor>
+    private readonly SortedDictionary<(byte Opcode, int Offset, ushort Marker), IInboundPacketInterceptor>
         markerHandlers = [];
     private readonly List<IInboundPacketObserver> observers = [];
     private readonly ConcurrentQueue<CompletedPacket> completed = new();
@@ -31,7 +31,7 @@ internal sealed class PacketHandlerService
                         nameof(interceptor),
                         "Packet marker offsets cannot be negative.");
                 if (!markerHandlers.TryAdd(
-                        (interceptor.Selector.Opcode, marker, interceptor.Selector.MarkerOffset),
+                        (interceptor.Selector.Opcode, interceptor.Selector.MarkerOffset, marker),
                         interceptor))
                     throw new InvalidOperationException(
                         $"Duplicate packet selector opcode=0x{interceptor.Selector.Opcode:X2}, " +

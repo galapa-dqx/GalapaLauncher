@@ -1,6 +1,9 @@
 namespace Talon.Network;
 
-/// <summary>Selects inbound packets by opcode and an optional 16-bit marker at a fixed byte offset.</summary>
+/// <summary>
+/// Selects inbound packets by opcode and an optional 16-bit marker at a fixed byte offset.
+/// Matching marker selectors use the lowest byte offset first.
+/// </summary>
 public readonly record struct PacketSelector(
     byte Opcode,
     ushort? Marker = null,

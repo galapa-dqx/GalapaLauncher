@@ -46,6 +46,20 @@ public sealed class PacketHandlerServiceTests
     }
 
     [Fact]
+    public async Task LowestMatchingMarkerOffsetWinsRegardlessOfRegistrationOrder()
+    {
+        var service = new PacketHandlerService();
+        service.Register(new ReplacementInterceptor(new(0x47, 0x5678, 3), [0x03]));
+        service.Register(new ReplacementInterceptor(new(0x47, 0x1234, 1), [0x01]));
+
+        Assert.True(service.TryHold(0x1234, 1, [0x47, 0x34, 0x12, 0x78, 0x56]));
+        var completed = await WaitForPacket(service);
+
+        Assert.Equal([0x01], completed.Data);
+        Assert.Equal((ushort)0x1234, completed.Marker);
+    }
+
+    [Fact]
     public async Task CompletedPacketsAreDequeuedByCompletionNotArrival()
     {
         var service = new PacketHandlerService();
@@ -84,6 +98,18 @@ public sealed class PacketHandlerServiceTests
         Assert.Equal(256, held);
         for (var i = 0; i < held; i++)
             Assert.True(service.TryDequeue(out _));
+        Assert.True(service.TryHold(0x1234, 1, [0x50]));
+    }
+
+    [Fact]
+    public void PacketLargerThanHeldByteLimitPassesThroughWithoutConsumingCapacity()
+    {
+        var service = new PacketHandlerService();
+        service.Register(new ReplacementInterceptor(new(0x50), [0x50]));
+        var oversized = new byte[8 * 1024 * 1024 + 1];
+        oversized[0] = 0x50;
+
+        Assert.False(service.TryHold(0x1234, 1, oversized));
         Assert.True(service.TryHold(0x1234, 1, [0x50]));
     }
 
