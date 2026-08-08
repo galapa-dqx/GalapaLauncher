@@ -23,7 +23,9 @@ jobs:
       - name: 🧰 Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: |
+            8.0.x
+            10.0.x
 
       - name: 🧰 Setup MSBuild
         uses: microsoft/setup-msbuild@v2
@@ -47,6 +49,12 @@ jobs:
       - name: 🧪 Run tests with coverage
         run: dotnet test Galapa.slnf --no-build --configuration Release --collect:"XPlat Code Coverage"
 
+      - name: 📦 Create artifact directory
+        run: New-Item -ItemType Directory -Force artifacts
+
+      - name: 📦 Package Talon
+        run: Compress-Archive -Path Talon.Injector/bin/Release/net10.0-windows/* -DestinationPath artifacts/Talon-win-x86.zip
+
       - name: 🛠 Publish Galapa.Launcher for x64
         run: dotnet publish Galapa.Launcher --configuration Release -r win-x64 --self-contained false -o artifacts/Galapa.Launcher-x64
 
@@ -69,3 +77,9 @@ jobs:
         with:
           name: Galapa.Toolbox-x64
           path: artifacts/Galapa.Toolbox-x64.zip
+
+      - name: 📤 Upload Talon artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Talon-win-x86
+          path: artifacts/Talon-win-x86.zip
