@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk"
+         TreatAsLocalProperty="RuntimeIdentifier;SelfContained">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <OutputType>Library</OutputType>
+    <PlatformTarget>x86</PlatformTarget>
+    <RuntimeIdentifier>win-x86</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <GenerateRuntimeConfigurationFiles>true</GenerateRuntimeConfigurationFiles>
+    <RootNamespace>Talon</RootNamespace>
+    <AssemblyName>Talon</AssemblyName>
+    <TalonRuntimePackVersion>10.0.1</TalonRuntimePackVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="goatcorp.Reloaded.Hooks" Version="4.2.0-goatcorp8" />
+    <PackageReference Include="MinSharp" Version="1.0.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="$(NetCoreTargetingPackRoot)\Microsoft.NETCore.App.Host.win-x86\$(TalonRuntimePackVersion)\runtimes\win-x86\native\nethost.dll"
+          Link="nethost.dll"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
