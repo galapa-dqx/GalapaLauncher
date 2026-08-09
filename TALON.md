@@ -19,10 +19,13 @@ hardware-breakpoint unpack barrier.
    entrypoint/`NtProtectVirtualMemory` barrier, and waits for the final
    `.text -> PAGE_EXECUTE_READ` transition.
 4. After unpacking, Boot calls `Talon.EntryPoint.Initialize`. Managed code runs
-   one batch scan for the built-in signatures, installs the game hooks, and then
-   signals the native continue event. Every bootstrap and subsystem failure is
-   fail-open: Talon reports the first failure, then DQX continues with the
-   unaffected hooks or with no Talon hooks.
+   one batch scan for the built-in signatures and prepares the game hooks. Core
+   startup commits as one transaction before its 30-second deadline. A timeout
+   cancels preparation and rolls back its hooks before Boot releases DQX. VFS
+   and network are independent first-party subsystems: either can fail while the
+   other remains active. Every failure is fail-open to the game itself; Talon
+   reports the first failure, then DQX continues with the unaffected hooks or
+   with no Talon hooks.
 
 Managed development builds do not require a native payload:
 
@@ -58,7 +61,10 @@ The VFS hook uses the game's allocator and constructor callbacks. A successfully
 constructed resource owns its buffer. Talon opens a loose file once, resolves
 the final handle path, verifies it remains below the final override root, and
 reads from that same handle. This rejects junction and symbolic-link escapes as
-well as lexical traversal. Overrides are keyed by logical VFS path rather than
+well as lexical traversal, alternate data streams, and reserved DOS device
+names before Win32 opens them. Containment comparisons are ordinal so a
+case-sensitive directory cannot redirect `root` to a distinct `ROOT` sibling.
+Overrides are keyed by logical VFS path rather than
 expansion/mount, so one loose translation replaces that path in every archive
 layer.
 
@@ -98,6 +104,11 @@ A later completion for the destroyed connection is recorded as
 `ConnectionClosed`; calling its native payload method would use freed memory.
 Pointer reuse cannot send that stale packet to a new connection.
 
+DQX 8.0 uses one continuous encrypted TCP session and one observed dynamic VCE
+vtable. Talon hooks that vtable. If a later connection uses a different vtable,
+Talon logs one warning and lets that connection pass through; a future
+per-vtable registry can extend interception without guessing object liveness.
+
 For the current DQX payload contract, the opcode is byte zero. An optional marker
 matches its little-endian 16-bit representation at a fixed byte offset, which
 defaults to byte one. This keeps selection policy in managed handlers while packet
@@ -113,6 +124,10 @@ protocol work. Capture records can be dropped if disk I/O falls behind the
 - `--network-smoke-test` registers a one-shot selector for opcode `0x47`, marker
   `0x3CA8`. The first match per connection generation is held for 250 ms and
   replayed unchanged.
+
+PCAPNG capture contains raw decrypted game payloads. It can include account,
+character, chat, and activity data. Treat capture files as sensitive and redact
+or encrypt them before sharing.
 
 The 32-byte little-endian Talon pseudo-header in each PCAPNG enhanced packet is:
 

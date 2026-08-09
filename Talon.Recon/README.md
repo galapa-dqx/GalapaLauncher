@@ -33,7 +33,7 @@ PowerShell example:
 
 ```powershell
 $env:TALON_RECON_ANALYSIS = 'trajectory'
-Talon.Injector\bin\Debug\net8.0-windows\Talon.Injector.exe `
+Talon.Injector\bin\Debug\net10.0-windows\win-x86\Talon.Injector.exe `
   --boot-dll Talon.Recon\bin\x86\Debug\Talon.Recon.dll `
   -- "D:\Program Files (x86)\SquareEnix\DRAGON QUEST X\Game\DQXGame.exe" ...
 ```
