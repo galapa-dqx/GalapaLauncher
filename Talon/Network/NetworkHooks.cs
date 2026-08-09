@@ -15,8 +15,8 @@ internal sealed class NetworkHooks(
     private const int MaximumPumpPackets = 32;
     private static readonly TimeSpan MaximumPumpTime = TimeSpan.FromMilliseconds(1);
     private readonly PacketHandlerService handlers = new();
+    private readonly SessionLifetimeRegistry sessionLifetimes = new();
     private readonly object sessionHookLock = new();
-    private readonly Dictionary<nint, long> generations = [];
     private Hook<FrameParserDelegate>? parserHook;
     private Hook<PollerDelegate>? pollerHook;
     private volatile Hook<ProcessPayloadDelegate>? processPayloadHook;
@@ -101,12 +101,7 @@ internal sealed class NetworkHooks(
             return;
         }
 
-        long generation;
-        lock (generations)
-        {
-            if (!generations.TryGetValue(session, out generation))
-                generations[session] = generation = 1;
-        }
+        var generation = sessionLifetimes.GetGeneration(session);
 
         unsafe
         {
@@ -117,11 +112,9 @@ internal sealed class NetworkHooks(
 
     private nint SessionDestructorDetour(nint session, uint flags)
     {
-        // A reused session address gets a new generation. Late completions from
-        // the old connection can then be discarded safely. Keep the entry after
-        // destruction so a later session at the same address gets a new identity.
-        lock (generations)
-            generations[session] = generations.GetValueOrDefault(session) + 1;
+        // Increment the generation before destruction and keep the session gate
+        // until native teardown completes. An active replay holds the same gate.
+        using var destruction = sessionLifetimes.AcquireDestruction(session);
         return destructorHook!.Original(session, flags);
     }
 
@@ -138,9 +131,10 @@ internal sealed class NetworkHooks(
              handlers.TryDequeue(out var packet);
              count++)
         {
-            long generation;
-            lock (generations) generation = generations.GetValueOrDefault(packet.Session);
-            if (generation != packet.Generation)
+            using var replayLease = sessionLifetimes.TryAcquireReplay(
+                packet.Session,
+                packet.Generation);
+            if (replayLease is null)
             {
                 capture?.Write(packet, PacketCaptureEvent.Cancelled);
                 continue;
@@ -213,7 +207,7 @@ internal sealed class NetworkHooks(
                 destructorHook.Enable();
                 processPayloadHook.Enable();
             }
-            lock (generations) generations[session] = 1;
+            _ = sessionLifetimes.GetGeneration(session);
             Log.Info(
                 $"VCE session hooks enabled: payload=0x{processPayload:X8}, destructor=0x{destructor:X8}");
         }
