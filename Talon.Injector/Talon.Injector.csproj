@@ -54,4 +54,16 @@
                Text="Talon.Boot.dll is missing. Build Talon.Boot Win32 $(Configuration) before publishing Talon.Injector." />
     </Target>
 
+    <!-- Build output is assembled after normal SDK item resolution, so explicitly
+         copy the Talon payload into the final publish directory as well. -->
+    <Target Name="PublishTalonPayload" AfterTargets="Publish"
+            DependsOnTargets="CopyTalonRuntime;RequireTalonBootForPublish">
+        <Copy SourceFiles="@(TalonRuntimeFiles)"
+              DestinationFiles="@(TalonRuntimeFiles->'$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)')"
+              SkipUnchangedFiles="true" />
+        <Copy SourceFiles="$(OutDir)Talon.Boot.dll"
+              DestinationFolder="$(PublishDir)"
+              SkipUnchangedFiles="true" />
+    </Target>
+
 </Project>
