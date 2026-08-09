@@ -184,12 +184,18 @@ internal sealed class NetworkHooks(
             var vtable = Marshal.ReadIntPtr(session);
             // DQX's VCE iSession has its destructor at slot 0 and ProcessPayload
             // at byte offset 0x5C. Reject pointers outside game code before hooking.
-            var destructor = Marshal.ReadIntPtr(vtable);
-            var processPayload = Marshal.ReadIntPtr(vtable + 0x5C);
+            var destructorSlot = vtable;
+            var processPayloadSlot = vtable + 0x5C;
+            var destructor = Marshal.ReadIntPtr(destructorSlot);
+            var processPayload = Marshal.ReadIntPtr(processPayloadSlot);
             if (!IsInText(destructor) || !IsInText(processPayload))
                 throw new InvalidOperationException("VCE session vtable targets are outside .text.");
-            // Patch from a worker instead of modifying the active parser stack.
-            _ = Task.Run(() => InstallSessionHooks(session, processPayload, destructor));
+            InstallSessionHooks(
+                session,
+                processPayloadSlot,
+                processPayload,
+                destructorSlot,
+                destructor);
         }
         catch (Exception exception)
         {
@@ -198,18 +204,26 @@ internal sealed class NetworkHooks(
         }
     }
 
-    private void InstallSessionHooks(nint session, nint processPayload, nint destructor)
+    private void InstallSessionHooks(
+        nint session,
+        nint processPayloadSlot,
+        nint processPayload,
+        nint destructorSlot,
+        nint destructor)
     {
         try
         {
             lock (sessionHookLock)
             {
                 if (disposed) return;
-                processPayloadHook = interop.HookFromAddress(
-                    processPayload,
+                // VCE dispatches both methods through this shared vtable. Replace
+                // each aligned x86 pointer atomically instead of patching code that
+                // another parser thread may currently be executing.
+                processPayloadHook = interop.HookFromFunctionPointerVariable(
+                    processPayloadSlot,
                     (ProcessPayloadDelegate)ProcessPayloadDetour);
-                destructorHook = interop.HookFromAddress(
-                    destructor,
+                destructorHook = interop.HookFromFunctionPointerVariable(
+                    destructorSlot,
                     (SessionDestructorDelegate)SessionDestructorDetour);
                 // Publish both hook objects before either detour can run. Enable
                 // the payload hook last because it is the active traffic path.
