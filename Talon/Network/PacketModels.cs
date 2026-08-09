@@ -48,3 +48,10 @@ public interface IInboundPacketObserver
     /// <summary>Observes one inbound packet before any asynchronous transformation.</summary>
     void Observe(InboundPacket packet);
 }
+
+// Internal lifecycle events let diagnostics record a hold without expanding the
+// public passive-observer contract.
+internal interface IInboundPacketLifecycleObserver : IInboundPacketObserver
+{
+    void Held(InboundPacket packet);
+}

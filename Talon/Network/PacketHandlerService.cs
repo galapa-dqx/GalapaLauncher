@@ -94,7 +94,16 @@ internal sealed class PacketHandlerService
             return false;
         }
 
-        _ = CompleteAsync(session, packet, bytes, selection.Handler);
+        foreach (var observer in observerSnapshot)
+        {
+            if (observer is not IInboundPacketLifecycleObserver lifecycleObserver) continue;
+            try { lifecycleObserver.Held(packet); }
+            catch (Exception exception) { Log.Error("packet lifecycle observer failed", exception); }
+        }
+
+        // CompleteAsync invokes extension code before its first await. Queue the
+        // whole operation so that synchronous setup cannot block VCE's thread.
+        _ = Task.Run(() => CompleteAsync(session, packet, bytes, selection.Handler));
         return true;
     }
 

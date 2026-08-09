@@ -129,6 +129,41 @@ public sealed class PacketHandlerServiceTests
         _ = await WaitForPacket(service);
     }
 
+    [Fact]
+    public async Task TryHoldReturnsBeforeInterceptorSetupCompletes()
+    {
+        var service = new PacketHandlerService();
+        var interceptor = new BlockingSetupInterceptor();
+        service.Register(interceptor);
+        using var returned = new ManualResetEventSlim();
+        var held = false;
+        var caller = new Thread(() =>
+        {
+            held = service.TryHold(0x1234, 1, [0x50]);
+            returned.Set();
+        })
+        {
+            IsBackground = true,
+        };
+
+        caller.Start();
+        try
+        {
+            Assert.True(
+                returned.Wait(TimeSpan.FromSeconds(2)),
+                "TryHold blocked while the interceptor performed synchronous setup.");
+            Assert.True(held);
+            Assert.True(interceptor.Started.Wait(TimeSpan.FromSeconds(2)));
+        }
+        finally
+        {
+            interceptor.Release.Set();
+            Assert.True(caller.Join(TimeSpan.FromSeconds(2)));
+        }
+
+        _ = await WaitForPacket(service);
+    }
+
     private static async Task<PacketHandlerService.CompletedPacket> WaitForPacket(
         PacketHandlerService service)
     {
@@ -179,6 +214,22 @@ public sealed class PacketHandlerServiceTests
             InboundPacket packet,
             CancellationToken cancellationToken) =>
             ValueTask.FromResult(PacketDecision.Replacement(memory.CreateMemory()));
+    }
+
+    private sealed class BlockingSetupInterceptor : IInboundPacketInterceptor
+    {
+        public ManualResetEventSlim Started { get; } = new();
+        public ManualResetEventSlim Release { get; } = new();
+        public PacketSelector Selector => new(0x50);
+
+        public ValueTask<PacketDecision> InterceptAsync(
+            InboundPacket packet,
+            CancellationToken cancellationToken)
+        {
+            Started.Set();
+            Release.Wait(cancellationToken);
+            return ValueTask.FromResult(PacketDecision.Original);
+        }
     }
 
     private sealed class FaultingMemoryManager : MemoryManager<byte>

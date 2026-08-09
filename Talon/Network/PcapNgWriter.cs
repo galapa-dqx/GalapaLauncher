@@ -12,7 +12,7 @@ internal enum PacketCaptureEvent : byte
 }
 
 // Writes packet lifecycle records without blocking the VCE thread on file I/O.
-internal sealed class PcapNgWriter : IInboundPacketObserver, IDisposable
+internal sealed class PcapNgWriter : IInboundPacketLifecycleObserver, IDisposable
 {
     private const ushort LinkTypeUser0 = 147;
     private const int TalonHeaderSize = 32;
@@ -45,6 +45,9 @@ internal sealed class PcapNgWriter : IInboundPacketObserver, IDisposable
 
     public void Observe(InboundPacket packet) =>
         Write(packet, PacketCaptureEvent.Observed);
+
+    public void Held(InboundPacket packet) =>
+        Write(packet, PacketCaptureEvent.Held);
 
     public void Write(InboundPacket packet, PacketCaptureEvent captureEvent) =>
         channel.Writer.TryWrite(new CaptureRecord(
