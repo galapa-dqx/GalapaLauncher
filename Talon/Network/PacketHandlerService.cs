@@ -13,7 +13,7 @@ internal sealed class PacketHandlerService
     private const long MaximumHeldBytes = 8 * 1024 * 1024;
     // A handler that does not finish must fail open so the original packet can
     // return to the live connection.
-    private static readonly TimeSpan HandlerTimeout = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan DefaultHandlerTimeout = TimeSpan.FromSeconds(60);
 
     private readonly object registrationLock = new();
     private readonly Dictionary<byte, IInboundPacketInterceptor> opcodeHandlers = [];
@@ -21,9 +21,21 @@ internal sealed class PacketHandlerService
         markerHandlers = [];
     private readonly List<IInboundPacketObserver> observers = [];
     private readonly ConcurrentQueue<CompletedPacket> completed = new();
+    private readonly TimeSpan handlerTimeout;
     private long nextPacketId;
     private int heldPacketCount;
     private long heldByteCount;
+
+    public PacketHandlerService() : this(DefaultHandlerTimeout)
+    {
+    }
+
+    internal PacketHandlerService(TimeSpan handlerTimeout)
+    {
+        if (handlerTimeout <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(handlerTimeout));
+        this.handlerTimeout = handlerTimeout;
+    }
 
     public void Register(IInboundPacketInterceptor interceptor)
     {
@@ -93,6 +105,7 @@ internal sealed class PacketHandlerService
             Log.Warning("packet hold byte limit reached; passing packet through");
             return false;
         }
+        var reservation = new HoldReservation(this, bytes.Length);
 
         foreach (var observer in observerSnapshot)
         {
@@ -103,15 +116,19 @@ internal sealed class PacketHandlerService
 
         // CompleteAsync invokes extension code before its first await. Queue the
         // whole operation so that synchronous setup cannot block VCE's thread.
-        _ = Task.Run(() => CompleteAsync(session, packet, bytes, selection.Handler));
+        _ = Task.Run(() => CompleteAsync(
+            session,
+            packet,
+            bytes,
+            selection.Handler,
+            reservation));
         return true;
     }
 
     public bool TryDequeue(out CompletedPacket packet)
     {
         if (!completed.TryDequeue(out packet)) return false;
-        Interlocked.Decrement(ref heldPacketCount);
-        Interlocked.Add(ref heldByteCount, -packet.ReservedBytes);
+        packet.Reservation.Release();
         return true;
     }
 
@@ -137,21 +154,40 @@ internal sealed class PacketHandlerService
         nint session,
         InboundPacket packet,
         byte[] original,
-        IInboundPacketInterceptor handler)
+        IInboundPacketInterceptor handler,
+        HoldReservation reservation)
     {
+        Task<PacketDecision>? handlerTask = null;
         PacketDecision decision;
         try
         {
-            using var timeout = new CancellationTokenSource(HandlerTimeout);
-            decision = await handler.InterceptAsync(packet, timeout.Token)
-                .AsTask()
-                .WaitAsync(HandlerTimeout)
+            using var timeout = new CancellationTokenSource(handlerTimeout);
+            handlerTask = handler.InterceptAsync(packet, timeout.Token).AsTask();
+            decision = await handlerTask
+                .WaitAsync(timeout.Token)
                 .ConfigureAwait(false);
         }
         catch (Exception exception)
         {
             Log.Error($"packet {packet.PacketId} handler failed; replaying original", exception);
             decision = PacketDecision.Original;
+            if (handlerTask is { IsCompleted: false })
+            {
+                // The replay queue and unfinished handler share the copied packet.
+                // Keep one reservation reference for each owner so capacity is not
+                // released until both have stopped retaining it.
+                reservation.Retain();
+                _ = handlerTask.ContinueWith(
+                    static (task, state) =>
+                    {
+                        _ = task.Exception;
+                        ((HoldReservation)state!).Release();
+                    },
+                    reservation,
+                    CancellationToken.None,
+                    TaskContinuationOptions.ExecuteSynchronously,
+                    TaskScheduler.Default);
+            }
         }
         byte[] replay;
         try
@@ -170,24 +206,14 @@ internal sealed class PacketHandlerService
         }
         if (replay.Length == 0 || replay.Length > MaximumHeldBytes)
             replay = original;
-        var reservationDelta = replay.Length - original.Length;
-        if (reservationDelta > 0 &&
-            Interlocked.Add(ref heldByteCount, reservationDelta) > MaximumHeldBytes)
-        {
-            Interlocked.Add(ref heldByteCount, -reservationDelta);
-            replay = original;
-        }
-        else if (reservationDelta < 0)
-        {
-            Interlocked.Add(ref heldByteCount, reservationDelta);
-        }
+        if (!reservation.TryResize(replay.Length)) replay = original;
         completed.Enqueue(new CompletedPacket(
             packet.PacketId,
             session,
             packet.ConnectionGeneration,
             packet.Opcode,
             packet.Marker,
-            replay.Length,
+            reservation,
             replay));
     }
 
@@ -201,6 +227,42 @@ internal sealed class PacketHandlerService
         long Generation,
         byte Opcode,
         ushort? Marker,
-        int ReservedBytes,
+        HoldReservation Reservation,
         byte[] Data);
+
+    internal sealed class HoldReservation
+    {
+        private readonly PacketHandlerService owner;
+        private int byteCount;
+        private int references = 1;
+
+        public HoldReservation(PacketHandlerService owner, int byteCount)
+        {
+            this.owner = owner;
+            this.byteCount = byteCount;
+        }
+
+        public void Retain() => Interlocked.Increment(ref references);
+
+        public bool TryResize(int newByteCount)
+        {
+            var delta = newByteCount - byteCount;
+            if (delta > 0 &&
+                Interlocked.Add(ref owner.heldByteCount, delta) > MaximumHeldBytes)
+            {
+                Interlocked.Add(ref owner.heldByteCount, -delta);
+                return false;
+            }
+            if (delta < 0) Interlocked.Add(ref owner.heldByteCount, delta);
+            byteCount = newByteCount;
+            return true;
+        }
+
+        public void Release()
+        {
+            if (Interlocked.Decrement(ref references) != 0) return;
+            Interlocked.Decrement(ref owner.heldPacketCount);
+            Interlocked.Add(ref owner.heldByteCount, -byteCount);
+        }
+    }
 }

@@ -74,6 +74,8 @@ instead of arrival order. There is no head-of-line wait: a later translation can
 be reinjected before an earlier one. Limits are 256 held packets, 8 MiB total,
 and 60 seconds per handler. They bound the managed copies retained if a
 translator stalls; traffic that cannot be held passes through synchronously.
+If a handler ignores cancellation after its deadline, its packet remains charged
+to both limits until the underlying task finishes.
 
 Every held packet is reinjected with translated or original bytes while its
 connection remains valid. Handler failure and timeout replay the original. VCE

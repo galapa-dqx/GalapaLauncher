@@ -164,6 +164,34 @@ public sealed class PacketHandlerServiceTests
         _ = await WaitForPacket(service);
     }
 
+    [Fact]
+    public async Task TimedOutHandlerRetainsCapacityUntilItsTaskSettles()
+    {
+        var service = new PacketHandlerService(TimeSpan.FromMilliseconds(25));
+        var interceptor = new ManuallyCompletedInterceptor();
+        service.Register(interceptor);
+        var admitted = 0;
+
+        try
+        {
+            Assert.True(service.TryHold(0x1234, 1, [0x50]));
+            _ = await WaitForPacket(service);
+
+            admitted = Enumerable.Range(0, 256)
+                .Count(_ => service.TryHold(0x1234, 1, [0x50]));
+
+            Assert.Equal(255, admitted);
+        }
+        finally
+        {
+            interceptor.Complete();
+        }
+
+        for (var i = 0; i < admitted; i++) _ = await WaitForPacket(service);
+        Assert.True(service.TryHold(0x1234, 1, [0x50]));
+        _ = await WaitForPacket(service);
+    }
+
     private static async Task<PacketHandlerService.CompletedPacket> WaitForPacket(
         PacketHandlerService service)
     {
@@ -230,6 +258,21 @@ public sealed class PacketHandlerServiceTests
             Release.Wait(cancellationToken);
             return ValueTask.FromResult(PacketDecision.Original);
         }
+    }
+
+    private sealed class ManuallyCompletedInterceptor : IInboundPacketInterceptor
+    {
+        private readonly TaskCompletionSource<PacketDecision> completion =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public PacketSelector Selector => new(0x50);
+
+        public ValueTask<PacketDecision> InterceptAsync(
+            InboundPacket packet,
+            CancellationToken cancellationToken) =>
+            new(completion.Task);
+
+        public void Complete() => completion.TrySetResult(PacketDecision.Original);
     }
 
     private sealed class FaultingMemoryManager : MemoryManager<byte>
