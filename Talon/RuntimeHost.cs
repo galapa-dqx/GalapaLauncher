@@ -32,6 +32,8 @@ internal static class RuntimeHost
         Log.Info($"managed hook initialization complete ({initialized}/2 subsystems active)");
     }
 
+    // Talon currently lives until DQX exits, so no production path calls this.
+    // Keep teardown available for a future unloadable extension/runtime host.
     public static void Shutdown()
     {
         for (var index = Lifetime.Count - 1; index >= 0; index--)
@@ -66,6 +68,7 @@ internal static class RuntimeHost
                 Log.Error($"managed {name} cleanup failed", disposeException);
             }
             Log.Error($"managed {name} initialization failed; continuing without it", exception);
+            FailureNotifier.ShowOnce(name, exception);
             return false;
         }
     }

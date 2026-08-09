@@ -21,13 +21,13 @@ static const DWORD kBarrierTimeoutMs = 30000;
 
 static volatile LONG g_armed = 0;
 static volatile LONG g_stage = 0;
-static volatile LONG g_worker_ready = 0;
 static uintptr_t g_entrypoint_va = 0;
 static uintptr_t g_ntprotect_va = 0;
 static uintptr_t g_text_begin = 0;
 static uintptr_t g_text_end = 0;
 static HANDLE g_unpack_complete = nullptr;
 static HANDLE g_managed_ready = nullptr;
+static PVOID g_veh_handle = nullptr;
 
 static bool find_text_range(uint8_t* base) {
     auto dos = (PIMAGE_DOS_HEADER)base;
@@ -35,7 +35,9 @@ static bool find_text_range(uint8_t* base) {
     g_entrypoint_va = (uintptr_t)base + nt->OptionalHeader.AddressOfEntryPoint;
     auto section = IMAGE_FIRST_SECTION(nt);
     for (WORD i = 0; i < nt->FileHeader.NumberOfSections; ++i) {
-        if (memcmp(section[i].Name, ".text", 5) != 0) continue;
+        static const BYTE text_name[IMAGE_SIZEOF_SHORT_NAME] =
+            {'.', 't', 'e', 'x', 't', 0, 0, 0};
+        if (memcmp(section[i].Name, text_name, sizeof(text_name)) != 0) continue;
         uintptr_t begin = (uintptr_t)base + section[i].VirtualAddress;
         uintptr_t end = begin + section[i].Misc.VirtualSize;
         g_text_begin = begin & ~(uintptr_t)0xFFF;
@@ -57,6 +59,11 @@ static void clear_dr0(CONTEXT* context) {
     context->Dr6 = 0;
 }
 
+static void remove_veh() {
+    PVOID handle = InterlockedExchangePointer(&g_veh_handle, nullptr);
+    if (handle) RemoveVectoredExceptionHandler(handle);
+}
+
 static LONG CALLBACK unpack_veh(EXCEPTION_POINTERS* ep) {
     if (!g_armed || ep->ExceptionRecord->ExceptionCode != EXCEPTION_SINGLE_STEP ||
         !(ep->ContextRecord->Dr6 & 1))
@@ -64,16 +71,11 @@ static LONG CALLBACK unpack_veh(EXCEPTION_POINTERS* ep) {
 
     uintptr_t address = (uintptr_t)ep->ExceptionRecord->ExceptionAddress;
     if (g_stage == 1 && address == g_entrypoint_va) {
-        if (g_worker_ready) {
-            set_dr0(ep->ContextRecord, g_ntprotect_va);
-            InterlockedExchange(&g_stage, 2);
-            dbg("[barrier] entrypoint rendezvous hit at %p; DR0 -> NtProtectVirtualMemory\n",
-                (void*)address);
-        } else {
-            clear_dr0(ep->ContextRecord);
-            InterlockedExchange(&g_armed, 0);
-            dbg("[barrier] entrypoint rendezvous hit without a worker; DR0 cleared\n");
-        }
+        // start_unpack_barrier publishes every target before setting g_armed.
+        set_dr0(ep->ContextRecord, g_ntprotect_va);
+        InterlockedExchange(&g_stage, 2);
+        dbg("[barrier] entrypoint rendezvous hit at %p; DR0 -> NtProtectVirtualMemory\n",
+            (void*)address);
         return EXCEPTION_CONTINUE_EXECUTION;
     }
 
@@ -114,6 +116,7 @@ static LONG CALLBACK unpack_veh(EXCEPTION_POINTERS* ep) {
     if (result != WAIT_OBJECT_0)
         dbg("[barrier] managed hook initialization did not finish in %lu ms; resuming\n",
             kBarrierTimeoutMs);
+    remove_veh();
     return EXCEPTION_CONTINUE_EXECUTION;
 }
 
@@ -160,15 +163,13 @@ bool start_unpack_barrier(HANDLE unpack_complete, HANDLE managed_ready) {
     g_unpack_complete = unpack_complete;
     g_managed_ready = managed_ready;
 
-    PVOID veh_handle = AddVectoredExceptionHandler(1, unpack_veh);
-    if (!veh_handle) {
+    g_veh_handle = AddVectoredExceptionHandler(1, unpack_veh);
+    if (!g_veh_handle) {
         dbg("[barrier] AddVectoredExceptionHandler failed (err=%lu)\n", GetLastError());
         return false;
     }
     InterlockedExchange(&g_stage, 1);
     InterlockedExchange(&g_armed, 1);
-
-    InterlockedExchange(&g_worker_ready, 1);
 
     dbg("[barrier] awaiting injector entrypoint rendezvous=%p; "
         "NtProtectVirtualMemory=%p; .text=[%p,%p)\n",
@@ -183,4 +184,5 @@ void cancel_unpack_barrier() {
     // have its EXCEPTION_SINGLE_STEP propagated as unhandled.
     clear_barrier_dr0_all_threads(GetCurrentThreadId());
     InterlockedExchange(&g_armed, 0);
+    remove_veh();
 }

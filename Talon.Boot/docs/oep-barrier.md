@@ -49,8 +49,10 @@ unrelated protection changes.
   Clearing DR6 alone can repeat the single-step exception.
 - Hook installation never runs in the exception handler. The handler parks the
   unpacking thread while the worker starts CoreCLR and installs managed hooks.
-- A 30-second timeout fails open for game startup. Boot clears debug registers
-  and releases the game without partially installing native game hooks.
+- Startup is fail-open. CLR load failures, unpack timeouts, stale managed
+  signatures, and individual subsystem failures are logged and reported once;
+  Boot clears its debug register and releases DQX. Managed VFS and network hooks
+  initialize independently, so either, both, or neither can remain active.
 
 ## Update behavior
 

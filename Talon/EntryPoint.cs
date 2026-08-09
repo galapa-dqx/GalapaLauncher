@@ -31,6 +31,7 @@ public static partial class EntryPoint
         catch (Exception exception)
         {
             Log.Error("managed initialization failed", exception);
+            FailureNotifier.ShowOnce("the managed runtime", exception);
         }
         finally
         {

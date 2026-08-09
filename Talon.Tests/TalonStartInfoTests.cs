@@ -16,4 +16,29 @@ public sealed class TalonStartInfoTests
 
         Assert.Equal(runtimeProperties, injectorProperties);
     }
+
+    [Fact]
+    public void InjectorAndRuntimeSerializeTheSameWireKeys()
+    {
+        var runtime = new Talon.TalonStartInfo
+        {
+            Version = 1,
+            OverrideDirectory = "override",
+            PacketCapturePath = "capture.pcapng",
+            NetworkSmokeTest = true,
+            VfsCensus = true,
+        };
+        var injector = new Talon.Injector.TalonStartInfo
+        {
+            Version = 1,
+            OverrideDirectory = "override",
+            PacketCapturePath = "capture.pcapng",
+            NetworkSmokeTest = true,
+            VfsCensus = true,
+        };
+
+        Assert.Equal(
+            System.Text.Json.JsonSerializer.Serialize(runtime),
+            System.Text.Json.JsonSerializer.Serialize(injector));
+    }
 }

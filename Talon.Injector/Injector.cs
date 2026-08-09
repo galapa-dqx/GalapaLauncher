@@ -86,10 +86,6 @@ public static partial class Injector
             var getProcAddress = GetProcAddress(kernel32, "GetProcAddress");
             if (getProcAddress == nint.Zero)
                 throw new InvalidOperationException("GetProcAddress(GetProcAddress) returned null.");
-            var exitProcess = GetProcAddress(kernel32, "ExitProcess");
-            if (exitProcess == nint.Zero)
-                throw new InvalidOperationException("GetProcAddress(ExitProcess) returned null.");
-
             // Keep all Talon startup state in one remote allocation. Data occupies RW
             // pages and the generated x86 thunk occupies its own RX page.
             var pathBytes = Encoding.Unicode.GetBytes(bootDllPath + '\0');
@@ -98,14 +94,14 @@ public static partial class Injector
             var jsonOffset = Align(pathBytes.Length, 4);
             var exportOffset = Align(jsonOffset + jsonBytes.Length, 4);
             var codeOffset = Align(exportOffset + exportBytes.Length, 0x1000);
-            const int thunkLength = 68;
+            const int thunkLength = 50;
             var allocationLength = codeOffset + thunkLength;
 
             var remoteBase = VirtualAllocEx(pi.hProcess, nint.Zero, (nuint)allocationLength,
                 MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
             if (remoteBase == nint.Zero)
                 throw new InvalidOperationException($"VirtualAllocEx failed (Win32 error {Marshal.GetLastWin32Error()}).");
-            if ((ulong)remoteBase.ToInt64() > uint.MaxValue)
+            if ((ulong)(nuint)remoteBase > uint.MaxValue)
                 throw new InvalidOperationException("Remote bootstrap allocation is outside the x86 address space.");
 
             var block = new byte[allocationLength];
@@ -113,14 +109,13 @@ public static partial class Injector
             jsonBytes.CopyTo(block, jsonOffset);
             exportBytes.CopyTo(block, exportOffset);
 
-            var baseAddress = checked((uint)remoteBase.ToInt64());
+            var baseAddress = checked((uint)(nuint)remoteBase);
             var thunk = BuildBootstrapThunk(
                 baseAddress,
                 checked(baseAddress + (uint)jsonOffset),
                 checked(baseAddress + (uint)exportOffset),
-                checked((uint)loadLibraryW.ToInt64()),
-                checked((uint)getProcAddress.ToInt64()),
-                checked((uint)exitProcess.ToInt64()));
+                checked((uint)(nuint)loadLibraryW),
+                checked((uint)(nuint)getProcAddress));
             thunk.CopyTo(block, codeOffset);
 
             if (!WriteProcessMemory(pi.hProcess, remoteBase, block, (nuint)block.Length, out var written) ||
@@ -165,10 +160,9 @@ public static partial class Injector
         uint remoteStartInfoJson,
         uint remoteExportName,
         uint loadLibraryW,
-        uint getProcAddress,
-        uint exitProcess)
+        uint getProcAddress)
     {
-        var code = new byte[68];
+        var code = new byte[50];
         var i = 0;
 
         void Byte(byte value) => code[i++] = value;
@@ -194,25 +188,15 @@ public static partial class Injector
         Byte(0x68); UInt32(remoteStartInfoJson);
         Byte(0xFF); Byte(0xD0);
         Byte(0x83); Byte(0xC4); Byte(0x04);
-        Byte(0x85); Byte(0xC0);
-        Byte(0x75); var initializeFailureBranch = i; Byte(0x00);
+
+        // Talon is an optional enhancement. Load/export/initialization failures
+        // return from the APC and let DQX continue without managed hooks.
+        var finish = i;
         Byte(0x5D);
         Byte(0xC2); Byte(0x04); Byte(0x00);
 
-        var failure = i;
-        // TalonInitialize returns a Win32 status. Earlier failures leave EAX at
-        // zero, so turn that into a nonzero process exit code before failing shut.
-        Byte(0x85); Byte(0xC0);
-        Byte(0x75); Byte(0x01);
-        Byte(0x40);
-        Byte(0x50);
-        Byte(0xB8); UInt32(exitProcess);
-        Byte(0xFF); Byte(0xD0);
-        Byte(0xCC);
-
-        PatchShortForwardBranch(loadFailureBranch, failure);
-        PatchShortForwardBranch(exportFailureBranch, failure);
-        PatchShortForwardBranch(initializeFailureBranch, failure);
+        PatchShortForwardBranch(loadFailureBranch, finish);
+        PatchShortForwardBranch(exportFailureBranch, finish);
 
         if (i != code.Length)
             throw new InvalidOperationException($"Internal bootstrap thunk length mismatch: {i}.");
