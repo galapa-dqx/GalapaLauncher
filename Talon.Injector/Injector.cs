@@ -14,6 +14,10 @@ namespace Talon.Injector;
 /// </summary>
 public static partial class Injector
 {
+    internal const int BootstrapThunkLength = 84;
+    internal const int BootstrapGuardLength = 85;
+    internal const int BootstrapCodeLength = BootstrapThunkLength + BootstrapGuardLength;
+
     /// <summary>Result of a launch + inject operation.</summary>
     public readonly record struct InjectResult(int ProcessId, nint ProcessHandle, nint ThreadHandle) : IDisposable
     {
@@ -86,6 +90,17 @@ public static partial class Injector
             var getProcAddress = GetProcAddress(kernel32, "GetProcAddress");
             if (getProcAddress == nint.Zero)
                 throw new InvalidOperationException("GetProcAddress(GetProcAddress) returned null.");
+            var addVectoredExceptionHandler = GetProcAddress(kernel32, "AddVectoredExceptionHandler");
+            if (addVectoredExceptionHandler == nint.Zero)
+                throw new InvalidOperationException(
+                    "GetProcAddress(AddVectoredExceptionHandler) returned null.");
+            var removeVectoredExceptionHandler = GetProcAddress(kernel32, "RemoveVectoredExceptionHandler");
+            if (removeVectoredExceptionHandler == nint.Zero)
+                throw new InvalidOperationException(
+                    "GetProcAddress(RemoveVectoredExceptionHandler) returned null.");
+
+            var entrypoint = ResolveEntrypointAddress(pi.hProcess);
+
             // Keep all Talon startup state in one remote allocation. Data occupies RW
             // pages and the generated x86 thunk occupies its own RX page.
             var pathBytes = Encoding.Unicode.GetBytes(bootDllPath + '\0');
@@ -94,8 +109,7 @@ public static partial class Injector
             var jsonOffset = Align(pathBytes.Length, 4);
             var exportOffset = Align(jsonOffset + jsonBytes.Length, 4);
             var codeOffset = Align(exportOffset + exportBytes.Length, 0x1000);
-            const int thunkLength = 50;
-            var allocationLength = codeOffset + thunkLength;
+            var allocationLength = codeOffset + BootstrapCodeLength;
 
             var remoteBase = VirtualAllocEx(pi.hProcess, nint.Zero, (nuint)allocationLength,
                 MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
@@ -110,12 +124,17 @@ public static partial class Injector
             exportBytes.CopyTo(block, exportOffset);
 
             var baseAddress = checked((uint)(nuint)remoteBase);
+            var codeAddress = checked(baseAddress + (uint)codeOffset);
             var thunk = BuildBootstrapThunk(
                 baseAddress,
                 checked(baseAddress + (uint)jsonOffset),
                 checked(baseAddress + (uint)exportOffset),
+                codeAddress,
+                entrypoint,
                 checked((uint)(nuint)loadLibraryW),
-                checked((uint)(nuint)getProcAddress));
+                checked((uint)(nuint)getProcAddress),
+                checked((uint)(nuint)addVectoredExceptionHandler),
+                checked((uint)(nuint)removeVectoredExceptionHandler));
             thunk.CopyTo(block, codeOffset);
 
             if (!WriteProcessMemory(pi.hProcess, remoteBase, block, (nuint)block.Length, out var written) ||
@@ -123,16 +142,16 @@ public static partial class Injector
                 throw new InvalidOperationException($"WriteProcessMemory failed (Win32 error {Marshal.GetLastWin32Error()}).");
 
             var remoteThunk = remoteBase + codeOffset;
-            if (!VirtualProtectEx(pi.hProcess, remoteThunk, (nuint)thunkLength,
+            if (!VirtualProtectEx(pi.hProcess, remoteThunk, (nuint)BootstrapCodeLength,
                     PAGE_EXECUTE_READ, out _))
                 throw new InvalidOperationException($"VirtualProtectEx failed (Win32 error {Marshal.GetLastWin32Error()}).");
-            if (!FlushInstructionCache(pi.hProcess, remoteThunk, (nuint)thunkLength))
+            if (!FlushInstructionCache(pi.hProcess, remoteThunk, (nuint)BootstrapCodeLength))
                 throw new InvalidOperationException($"FlushInstructionCache failed (Win32 error {Marshal.GetLastWin32Error()}).");
 
             // 3. Arm the deterministic post-APC rendezvous for every Talon launch.
             //    Managed VFS and network hooks both initialize after unpacking, so an
             //    empty override directory is no longer a no-op launch.
-            ArmEntrypointRendezvous(pi.hProcess, pi.hThread);
+            ArmEntrypointRendezvous(pi.hThread, entrypoint);
 
             // 4. Queue the target-side thunk onto the primary thread, then resume.
             if (QueueUserAPC(remoteThunk, pi.hThread, nint.Zero) == 0)
@@ -159,10 +178,14 @@ public static partial class Injector
         uint remoteDllPath,
         uint remoteStartInfoJson,
         uint remoteExportName,
+        uint remoteCode,
+        uint entrypoint,
         uint loadLibraryW,
-        uint getProcAddress)
+        uint getProcAddress,
+        uint addVectoredExceptionHandler,
+        uint removeVectoredExceptionHandler)
     {
-        var code = new byte[50];
+        var code = new byte[BootstrapCodeLength];
         var i = 0;
 
         void Byte(byte value) => code[i++] = value;
@@ -172,34 +195,96 @@ public static partial class Injector
             i += sizeof(uint);
         }
 
-        Byte(0x55);
-        Byte(0x8B); Byte(0xEC);
+        // Install a last-chance VEH before loading Boot. Boot registers its full
+        // barrier first in the chain; this guard only runs when startup failed
+        // before that handler could take ownership of the entrypoint breakpoint.
+        Byte(0x55);                         // push ebp
+        Byte(0x8B); Byte(0xEC);             // mov ebp, esp
+        Byte(0x53);                         // push ebx
+        Byte(0x68); UInt32(checked(remoteCode + BootstrapThunkLength));
+        Byte(0x6A); Byte(0x00);             // push 0 (last handler)
+        Byte(0xB8); UInt32(addVectoredExceptionHandler);
+        Byte(0xFF); Byte(0xD0);             // call eax
+        Byte(0x8B); Byte(0xD8);             // mov ebx, eax (VEH handle)
+
         Byte(0x68); UInt32(remoteDllPath);
         Byte(0xB8); UInt32(loadLibraryW);
         Byte(0xFF); Byte(0xD0);
         Byte(0x85); Byte(0xC0);
-        Byte(0x74); var loadFailureBranch = i; Byte(0x00);
+        Byte(0x74); var loadFailureBranch = i; Byte(0);
         Byte(0x68); UInt32(remoteExportName);
         Byte(0x50);
         Byte(0xB8); UInt32(getProcAddress);
         Byte(0xFF); Byte(0xD0);
         Byte(0x85); Byte(0xC0);
-        Byte(0x74); var exportFailureBranch = i; Byte(0x00);
+        Byte(0x74); var exportFailureBranch = i; Byte(0);
         Byte(0x68); UInt32(remoteStartInfoJson);
         Byte(0xFF); Byte(0xD0);
         Byte(0x83); Byte(0xC4); Byte(0x04);
+        Byte(0x85); Byte(0xC0);
+        Byte(0x75); var initializationFailureBranch = i; Byte(0);
+        Byte(0x85); Byte(0xDB);
+        Byte(0x74); var missingGuardBranch = i; Byte(0);
+        Byte(0x53);
+        Byte(0xB8); UInt32(removeVectoredExceptionHandler);
+        Byte(0xFF); Byte(0xD0);
 
-        // Talon is an optional enhancement. Load/export/initialization failures
-        // return from the APC and let DQX continue without managed hooks.
+        // Failed startup keeps the guard registered. It clears DR0 when execution
+        // reaches the game entrypoint, preserving Talon's fail-open contract.
         var finish = i;
+        Byte(0x5B);
         Byte(0x5D);
         Byte(0xC2); Byte(0x04); Byte(0x00);
 
         PatchShortForwardBranch(loadFailureBranch, finish);
         PatchShortForwardBranch(exportFailureBranch, finish);
+        PatchShortForwardBranch(initializationFailureBranch, finish);
+        PatchShortForwardBranch(missingGuardBranch, finish);
+
+        if (i != BootstrapThunkLength)
+            throw new InvalidOperationException($"Internal APC thunk length mismatch: {i}.");
+
+        // LONG CALLBACK BootstrapGuard(EXCEPTION_POINTERS* ep). It handles only
+        // Talon's exact DR0 entrypoint trap and leaves every unrelated exception
+        // and debugger register untouched.
+        Byte(0x55);                         // push ebp
+        Byte(0x8B); Byte(0xEC);             // mov ebp, esp
+        Byte(0x8B); Byte(0x45); Byte(0x08); // mov eax, [ebp+8]
+        Byte(0x85); Byte(0xC0);             // test eax, eax
+        Byte(0x74); var nullPointersBranch = i; Byte(0);
+        Byte(0x8B); Byte(0x08);             // mov ecx, [eax] (ExceptionRecord)
+        Byte(0x85); Byte(0xC9);             // test ecx, ecx
+        Byte(0x74); var nullRecordBranch = i; Byte(0);
+        Byte(0x81); Byte(0x39); UInt32(0x80000004); // EXCEPTION_SINGLE_STEP
+        Byte(0x75); var wrongCodeBranch = i; Byte(0);
+        Byte(0x81); Byte(0x79); Byte(0x0C); UInt32(entrypoint);
+        Byte(0x75); var wrongAddressBranch = i; Byte(0);
+        Byte(0x8B); Byte(0x50); Byte(0x04); // mov edx, [eax+4] (ContextRecord)
+        Byte(0x85); Byte(0xD2);             // test edx, edx
+        Byte(0x74); var nullContextBranch = i; Byte(0);
+        Byte(0xF7); Byte(0x42); Byte(0x14); UInt32(1); // test Dr6, 1
+        Byte(0x74); var wrongSlotBranch = i; Byte(0);
+        Byte(0xC7); Byte(0x42); Byte(0x04); UInt32(0); // Dr0 = 0
+        Byte(0x81); Byte(0x62); Byte(0x18); UInt32(0xFFF0FFFC); // clear DR0 controls
+        Byte(0xC7); Byte(0x42); Byte(0x14); UInt32(0); // Dr6 = 0
+        Byte(0xB8); UInt32(0xFFFFFFFF);      // EXCEPTION_CONTINUE_EXECUTION
+        Byte(0x5D);
+        Byte(0xC2); Byte(0x04); Byte(0x00);
+
+        var continueSearch = i;
+        Byte(0x33); Byte(0xC0);             // EXCEPTION_CONTINUE_SEARCH
+        Byte(0x5D);
+        Byte(0xC2); Byte(0x04); Byte(0x00);
+
+        PatchShortForwardBranch(nullPointersBranch, continueSearch);
+        PatchShortForwardBranch(nullRecordBranch, continueSearch);
+        PatchShortForwardBranch(wrongCodeBranch, continueSearch);
+        PatchShortForwardBranch(wrongAddressBranch, continueSearch);
+        PatchShortForwardBranch(nullContextBranch, continueSearch);
+        PatchShortForwardBranch(wrongSlotBranch, continueSearch);
 
         if (i != code.Length)
-            throw new InvalidOperationException($"Internal bootstrap thunk length mismatch: {i}.");
+            throw new InvalidOperationException($"Internal bootstrap code length mismatch: {i}.");
         return code;
 
         void PatchShortForwardBranch(int operand, int target)
@@ -227,7 +312,7 @@ public static partial class Injector
         return reader.ReadUInt16(); // Machine
     }
 
-    private static void ArmEntrypointRendezvous(nint process, nint thread)
+    private static uint ResolveEntrypointAddress(nint process)
     {
         var pbi = new PROCESS_BASIC_INFORMATION();
         var status = NtQueryInformationProcess(process, 0, ref pbi,
@@ -260,6 +345,13 @@ public static partial class Injector
                 $"Target's mapped entrypoint RVA is invalid: 0x{entryRva:X}.");
 
         var target = imageBase + entryRva;
+        Console.WriteLine($"[talon] entry rendezvous: 0x{target:X8} " +
+            $"(imageBase 0x{imageBase:X8} + RVA 0x{entryRva:X})");
+        return target;
+    }
+
+    private static void ArmEntrypointRendezvous(nint thread, uint target)
+    {
         var context = new CONTEXT_X86 { ContextFlags = CONTEXT_DEBUG_REGISTERS };
         if (!GetThreadContext(thread, ref context))
             throw new InvalidOperationException(
@@ -272,8 +364,6 @@ public static partial class Injector
             throw new InvalidOperationException(
                 $"SetThreadContext failed (Win32 error {Marshal.GetLastWin32Error()}).");
 
-        Console.WriteLine($"[talon] entry rendezvous: 0x{target:X8} " +
-            $"(imageBase 0x{imageBase:X8} + RVA 0x{entryRva:X})");
     }
 
     private static byte[] ReadRemote(nint process, nint address, int size, string description)
