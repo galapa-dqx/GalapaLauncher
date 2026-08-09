@@ -1,5 +1,8 @@
 using System.Runtime.InteropServices;
 
+// Adapted from Dalamud.Hooking.Internal.FunctionPointerVariableHook<T> for x86;
+// see THIRD_PARTY_NOTICES.md.
+
 namespace Talon.Hooking;
 
 internal sealed class FunctionPointerVariableHook<T> : Hook<T> where T : Delegate
@@ -67,11 +70,24 @@ internal sealed class FunctionPointerVariableHook<T> : Hook<T> where T : Delegat
                 out var oldProtect))
             throw new InvalidOperationException(
                 $"VirtualProtect failed at 0x{Address:X8} ({Marshal.GetLastWin32Error()}).");
-        Marshal.WriteIntPtr(Address, value);
-        HookNativeMethods.VirtualProtect(Address, (nuint)nint.Size, oldProtect, out _);
-        HookNativeMethods.FlushInstructionCache(
-            HookNativeMethods.GetCurrentProcess(),
-            Address,
-            (nuint)nint.Size);
+        try
+        {
+            Marshal.WriteIntPtr(Address, value);
+            HookNativeMethods.FlushInstructionCache(
+                HookNativeMethods.GetCurrentProcess(),
+                Address,
+                (nuint)nint.Size);
+        }
+        finally
+        {
+            if (!HookNativeMethods.VirtualProtect(
+                    Address,
+                    (nuint)nint.Size,
+                    oldProtect,
+                    out _))
+                Log.Warning(
+                    $"VirtualProtect restore failed at 0x{Address:X8} " +
+                    $"({Marshal.GetLastWin32Error()}).");
+        }
     }
 }

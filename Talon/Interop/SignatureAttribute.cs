@@ -1,5 +1,7 @@
 namespace Talon.Interop;
 
+// Attribute shape adapted from Dalamud.Utility.Signatures; see THIRD_PARTY_NOTICES.md.
+
 /// <summary>Selects how a signature result initializes a member.</summary>
 public enum SignatureUseFlags
 {

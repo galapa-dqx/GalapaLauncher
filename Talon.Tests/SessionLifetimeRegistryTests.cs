@@ -5,6 +5,21 @@ namespace Talon.Tests;
 public sealed class SessionLifetimeRegistryTests
 {
     [Fact]
+    public void ConnectionRemainsReplayableUntilDestruction()
+    {
+        var registry = new SessionLifetimeRegistry();
+        const nint session = 0x1234;
+        var generation = registry.GetGeneration(session);
+
+        using var firstReplay = registry.TryAcquireReplay(session, generation);
+        Assert.NotNull(firstReplay);
+        firstReplay.Dispose();
+
+        using var secondReplay = registry.TryAcquireReplay(session, generation);
+        Assert.NotNull(secondReplay);
+    }
+
+    [Fact]
     public async Task DestructionWaitsForActiveReplayAndInvalidatesItsGeneration()
     {
         var registry = new SessionLifetimeRegistry();
@@ -29,7 +44,9 @@ public sealed class SessionLifetimeRegistryTests
         Assert.True(destroyed.Wait(TimeSpan.FromSeconds(1)));
         await destruction;
 
+        Assert.Equal(0, registry.StateCount);
         Assert.Null(registry.TryAcquireReplay(session, generation));
-        Assert.Equal(generation + 1, registry.GetGeneration(session));
+        Assert.Equal(0, registry.StateCount);
+        Assert.NotEqual(generation, registry.GetGeneration(session));
     }
 }

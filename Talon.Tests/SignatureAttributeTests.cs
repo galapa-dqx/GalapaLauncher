@@ -49,6 +49,8 @@ public sealed class SignatureAttributeTests
 
         public nint GetStaticAddressFromSig(string signature, int offset = 0) =>
             address + offset;
+        public nint GetStaticAddressFromMatch(nint match, int offset = 0) =>
+            match + offset;
         public bool TryGetStaticAddressFromSig(string signature, out nint result, int offset = 0)
         {
             result = address + offset;
@@ -82,5 +84,10 @@ public sealed class SignatureAttributeTests
             cancellationToken.ThrowIfCancellationRequested();
             yield return address;
         }
+        public SignatureScanResult ScanTextBatch(
+            IReadOnlyCollection<SignatureQuery> queries,
+            CancellationToken cancellationToken = default) =>
+            new(queries.ToDictionary(query => query.Name, _ => new[] { address }));
+        public nint ResolveTextMatch(nint match) => match;
     }
 }

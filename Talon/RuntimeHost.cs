@@ -14,20 +14,35 @@ internal static class RuntimeHost
     {
         var scanner = new SigScanner();
         var interop = new GameInteropProvider(scanner);
+        var signatures = scanner.ScanTextBatch(
+            [VfsHooks.LoadResourceSignature, .. VceResolver.Signatures]);
 
         var initialized = 0;
         if (TryInitialize(
                 "VFS",
-                () => new VfsHooks(scanner, interop, startInfo),
+                () => new VfsHooks(signatures, interop, startInfo),
                 hooks => hooks.Initialize()))
             initialized++;
         if (TryInitialize(
                 "network",
-                () => new NetworkHooks(scanner, interop, startInfo),
+                () => new NetworkHooks(scanner, signatures, interop, startInfo),
                 hooks => hooks.Initialize()))
             initialized++;
 
         Log.Info($"managed hook initialization complete ({initialized}/2 subsystems active)");
+    }
+
+    public static void Shutdown()
+    {
+        for (var index = Lifetime.Count - 1; index >= 0; index--)
+        {
+            try { Lifetime[index].Dispose(); }
+            catch (Exception exception)
+            {
+                Log.Error("managed subsystem teardown failed", exception);
+            }
+        }
+        Lifetime.Clear();
     }
 
     private static bool TryInitialize<T>(

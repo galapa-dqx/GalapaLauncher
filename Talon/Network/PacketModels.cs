@@ -23,7 +23,10 @@ public readonly record struct PacketDecision(bool Replace, ReadOnlyMemory<byte> 
 {
     /// <summary>Reinjects the original packet bytes.</summary>
     public static PacketDecision Original => new(false, ReadOnlyMemory<byte>.Empty);
-    /// <summary>Reinjects <paramref name="data"/> instead of the original bytes.</summary>
+    /// <summary>
+    /// Reinjects <paramref name="data"/> instead of the original bytes. Empty data
+    /// or data above the 8 MiB hold limit causes the original bytes to be reinjected.
+    /// </summary>
     public static PacketDecision Replacement(ReadOnlyMemory<byte> data) => new(true, data);
 }
 

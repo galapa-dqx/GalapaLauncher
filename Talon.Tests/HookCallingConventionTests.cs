@@ -20,7 +20,13 @@ public sealed class HookCallingConventionTests
             BindingFlags.NonPublic);
 
         Assert.NotNull(delegateType);
-        Assert.NotNull(delegateType.GetCustomAttribute<FunctionAttribute>());
+        var attribute = Assert.Single(
+            delegateType.GetCustomAttributesData(),
+            data => data.AttributeType == typeof(FunctionAttribute));
+        var convention = Assert.Single(attribute.ConstructorArguments);
+        Assert.Equal(
+            (int)Reloaded.Hooks.Definitions.X86.CallingConventions.MicrosoftThiscall,
+            Convert.ToInt32(convention.Value));
     }
 
     [Fact]

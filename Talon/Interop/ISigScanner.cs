@@ -1,5 +1,8 @@
 using System.Diagnostics;
 
+// API shape adapted from Dalamud.Plugin.Services.ISigScanner. Talon's batch
+// surface and scanner implementation are project-specific; see THIRD_PARTY_NOTICES.md.
+
 namespace Talon.Interop;
 
 /// <summary>Finds byte signatures and addresses in the loaded game image.</summary>
@@ -34,6 +37,8 @@ public interface ISigScanner
     nint GetStaticAddressFromSig(string signature, int offset = 0);
     /// <summary>Tries to resolve the static address referenced by a matching instruction.</summary>
     bool TryGetStaticAddressFromSig(string signature, out nint result, int offset = 0);
+    /// <summary>Resolves the static address referenced by an existing raw text match.</summary>
+    nint GetStaticAddressFromMatch(nint match, int offset = 0);
     /// <summary>Finds a signature in <c>.data</c>.</summary>
     nint ScanData(string signature);
     /// <summary>Tries to find a signature in <c>.data</c>.</summary>
@@ -52,4 +57,10 @@ public interface ISigScanner
     nint[] ScanAllText(string signature);
     /// <summary>Enumerates every matching address in <c>.text</c>.</summary>
     IEnumerable<nint> ScanAllText(string signature, CancellationToken cancellationToken);
+    /// <summary>Finds all raw candidates for several patterns in one traversal of <c>.text</c>.</summary>
+    SignatureScanResult ScanTextBatch(
+        IReadOnlyCollection<SignatureQuery> queries,
+        CancellationToken cancellationToken = default);
+    /// <summary>Follows a direct x86 <c>call</c> or <c>jmp</c> at a raw match.</summary>
+    nint ResolveTextMatch(nint match);
 }

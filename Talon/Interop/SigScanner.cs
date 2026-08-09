@@ -1,6 +1,9 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
+// Public scanner shape adapted from Dalamud.Game.SigScanner. Matching, PE32
+// decoding, and batch traversal are Talon implementations; see THIRD_PARTY_NOTICES.md.
+
 namespace Talon.Interop;
 
 /// <summary>Scans the live 32-bit game image for byte signatures.</summary>
@@ -9,7 +12,8 @@ public sealed class SigScanner : ISigScanner
     /// <summary>Creates a scanner for the current process's main module.</summary>
     public SigScanner()
     {
-        Module = Process.GetCurrentProcess().MainModule
+        using var process = Process.GetCurrentProcess();
+        Module = process.MainModule
             ?? throw new InvalidOperationException("The current process has no main module.");
         SearchBase = Module.BaseAddress;
 
@@ -53,7 +57,13 @@ public sealed class SigScanner : ISigScanner
 
     public nint GetStaticAddressFromSig(string signature, int offset = 0)
     {
-        var instruction = ScanText(signature) + offset;
+        var match = ScanRaw(TextSectionBase, TextSectionSize, signature);
+        return GetStaticAddressFromMatch(match, offset);
+    }
+
+    public nint GetStaticAddressFromMatch(nint match, int offset = 0)
+    {
+        var instruction = ResolveTextMatch(match) + offset;
         var opcode = Marshal.ReadByte(instruction);
         return opcode switch
         {
@@ -61,7 +71,7 @@ public sealed class SigScanner : ISigScanner
             0x8B when Marshal.ReadByte(instruction + 1) is 0x0D or 0x15 or 0x1D or 0x35 or 0x3D
                 => Marshal.ReadInt32(instruction + 2),
             _ => throw new KeyNotFoundException(
-                $"Signature '{signature}' did not point at a supported x86 static-address instruction."),
+                $"Match at 0x{match:X8} did not point at a supported x86 static-address instruction."),
         };
     }
 
@@ -80,11 +90,8 @@ public sealed class SigScanner : ISigScanner
 
     public nint ScanText(string signature)
     {
-        var result = Scan(TextSectionBase, TextSectionSize, signature);
-        var opcode = Marshal.ReadByte(result);
-        if (opcode is 0xE8 or 0xE9)
-            result = result + 5 + Marshal.ReadInt32(result + 1);
-        return result;
+        var result = ScanRaw(TextSectionBase, TextSectionSize, signature);
+        return ResolveTextMatch(result);
     }
 
     public bool TryScanText(string signature, out nint result) =>
@@ -96,13 +103,21 @@ public sealed class SigScanner : ISigScanner
         string signature,
         CancellationToken cancellationToken)
     {
-        var pattern = Parse(signature);
-        for (var i = 0; i <= TextSectionSize - pattern.Length; i++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (Matches(TextSectionBase + i, pattern))
-                yield return TextSectionBase + i;
-        }
+        var query = new SignatureQuery("single", signature);
+        return ScanTextBatch([query], cancellationToken).GetMatches(query.Name);
+    }
+
+    public SignatureScanResult ScanTextBatch(
+        IReadOnlyCollection<SignatureQuery> queries,
+        CancellationToken cancellationToken = default) =>
+        ScanTextBatch(TextSectionBase, TextSectionSize, queries, cancellationToken);
+
+    public nint ResolveTextMatch(nint match)
+    {
+        var opcode = Marshal.ReadByte(match);
+        return opcode is 0xE8 or 0xE9
+            ? match + 5 + Marshal.ReadInt32(match + 1)
+            : match;
     }
 
     private void AssignSection(string? name, uint offset, int size)
@@ -127,7 +142,10 @@ public sealed class SigScanner : ISigScanner
         }
     }
 
-    private static nint Scan(nint start, int length, string signature)
+    private static nint Scan(nint start, int length, string signature) =>
+        ScanRaw(start, length, signature);
+
+    private static nint ScanRaw(nint start, int length, string signature)
     {
         var pattern = Parse(signature);
         unsafe
@@ -138,6 +156,47 @@ public sealed class SigScanner : ISigScanner
                     return start + i;
         }
         throw new KeyNotFoundException($"Signature '{signature}' was not found.");
+    }
+
+    internal static SignatureScanResult ScanTextBatch(
+        nint start,
+        int length,
+        IReadOnlyCollection<SignatureQuery> queries,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(length);
+        ArgumentNullException.ThrowIfNull(queries);
+
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        var compiled = new List<(SignatureQuery Query, byte?[] Pattern, List<nint> Matches)>();
+        foreach (var query in queries)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(query.Name);
+            if (!names.Add(query.Name))
+                throw new ArgumentException(
+                    $"Signature batch contains duplicate name '{query.Name}'.",
+                    nameof(queries));
+            compiled.Add((query, Parse(query.Pattern), []));
+        }
+
+        // Keep the image offset as the outer loop. All registered patterns inspect
+        // each candidate while that part of .text is hot in the CPU cache.
+        for (var offset = 0; offset < length; offset++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            foreach (var entry in compiled)
+            {
+                if (offset <= length - entry.Pattern.Length &&
+                    Matches(start + offset, entry.Pattern))
+                    entry.Matches.Add(start + offset);
+            }
+        }
+
+        var results = compiled.ToDictionary(
+            entry => entry.Query.Name,
+            entry => entry.Matches.ToArray(),
+            StringComparer.Ordinal);
+        return new SignatureScanResult(results);
     }
 
     private static byte?[] Parse(string signature)

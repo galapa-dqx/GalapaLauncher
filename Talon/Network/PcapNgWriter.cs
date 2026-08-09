@@ -8,7 +8,7 @@ internal enum PacketCaptureEvent : byte
     Observed = 1,
     Held = 2,
     Reinject = 3,
-    Cancelled = 4,
+    ConnectionClosed = 4,
 }
 
 // Writes packet lifecycle records without blocking the VCE thread on file I/O.
@@ -29,7 +29,8 @@ internal sealed class PcapNgWriter : IInboundPacketObserver, IDisposable
     public PcapNgWriter(string path)
     {
         var fullPath = Path.GetFullPath(path);
-        Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+        var directory = Path.GetDirectoryName(fullPath);
+        if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
         writerTask = Task.Run(() => RunAsync(fullPath, cancellation.Token));
         _ = writerTask.ContinueWith(
             task => Log.Error(

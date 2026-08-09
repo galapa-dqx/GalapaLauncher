@@ -6,8 +6,13 @@ namespace Talon.Network;
 // Selects packets, runs bounded asynchronous handlers, and queues completed replay.
 internal sealed class PacketHandlerService
 {
+    // Each held packet owns a managed copy. These limits keep a stalled or broken
+    // translator from growing the in-process backlog without bound. When a limit
+    // is reached, the detour passes the packet to VCE synchronously instead.
     private const int MaximumHeldPackets = 256;
     private const long MaximumHeldBytes = 8 * 1024 * 1024;
+    // A handler that does not finish must fail open so the original packet can
+    // return to the live connection.
     private static readonly TimeSpan HandlerTimeout = TimeSpan.FromSeconds(60);
 
     private readonly object registrationLock = new();

@@ -4,26 +4,31 @@ using Talon.Interop;
 namespace Talon.Network;
 
 // Resolves VCE functions from a signature plus stable control-flow anchors.
-internal sealed class VceResolver(ISigScanner scanner)
+internal sealed class VceResolver(ISigScanner scanner, SignatureScanResult signatures)
 {
     // Binary Ninja: Vce_iSession_ParseFrame.
-    private const string FrameParserPrologue =
+    private static readonly SignatureQuery FrameParserSignature = new(
+        "vce.frame-parser",
         "55 8B EC 83 ?? ?? A1 ?? ?? ?? ?? 33 C5 89 ?? ?? 83 ?? ?? ?? " +
         "56 57 8B ?? ?? 8B F1 73 ?? 5F 33 C0 5E 8B ?? ?? 33 CD " +
         "E8 ?? ?? ?? ?? 8B E5 5D C2 ?? ?? 53 E8 ?? ?? ?? ?? " +
-        "89 ?? ?? 89 ?? ?? 0F";
+        "89 ?? ?? 89 ?? ?? 0F");
 
     // Binary Ninja: Vce_NormalSelectPoller_Poll.
-    private const string SelectPollerPrologue =
+    private static readonly SignatureQuery SelectPollerSignature = new(
+        "vce.select-poller",
         "55 8B EC B8 ?? ?? ?? ?? E8 ?? ?? ?? ?? A1 ?? ?? ?? ?? " +
         "33 C5 89 ?? ?? 8B C1 C7 85 F4 FF FE FF ?? ?? ?? ?? " +
         "53 33 DB C7 85 F8 7F FF FF ?? ?? ?? ?? 89 9D ?? ?? ?? ?? " +
-        "8B ?? ?? 89 85 ?? ?? ?? ?? 56";
+        "8B ?? ?? 89 85 ?? ?? ?? ?? 56");
+
+    internal static IReadOnlyList<SignatureQuery> Signatures { get; } =
+        [FrameParserSignature, SelectPollerSignature];
 
     public nint ResolveFrameParser()
     {
         var candidates = new HashSet<nint>();
-        foreach (var candidate in scanner.ScanAllText(FrameParserPrologue))
+        foreach (var candidate in signatures.GetMatches(FrameParserSignature.Name))
         {
             var windowStart = candidate;
             var windowEnd = Min(
@@ -45,7 +50,7 @@ internal sealed class VceResolver(ISigScanner scanner)
     public nint ResolveSelectPoller()
     {
         var candidates = new HashSet<nint>();
-        foreach (var candidate in scanner.ScanAllText(SelectPollerPrologue))
+        foreach (var candidate in signatures.GetMatches(SelectPollerSignature.Name))
         {
             var windowEnd = Min(
                 scanner.TextSectionBase + scanner.TextSectionSize,
@@ -86,7 +91,9 @@ internal sealed class VceResolver(ISigScanner scanner)
     {
         if (Marshal.ReadByte(address) != 0xFF) return false;
         var modRm = Marshal.ReadByte(address + 1);
-        return (modRm & 0xF8) == 0x50 && Marshal.ReadByte(address + 2) == displacement;
+        // r/m 100 introduces a SIB byte, so address+2 is not the displacement.
+        return (modRm & 0xF8) == 0x50 && (modRm & 0x07) != 0x04 &&
+               Marshal.ReadByte(address + 2) == displacement;
     }
 
     private static bool ContainsBytes(nint start, nint end, byte first, byte second) =>

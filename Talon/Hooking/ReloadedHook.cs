@@ -1,5 +1,7 @@
 using Reloaded.Hooks;
 
+// Adapted from Dalamud.Hooking.Internal.ReloadedHook<T>; see THIRD_PARTY_NOTICES.md.
+
 namespace Talon.Hooking;
 
 internal sealed class ReloadedHook<T> : Hook<T> where T : Delegate

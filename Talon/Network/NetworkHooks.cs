@@ -9,6 +9,7 @@ namespace Talon.Network;
 // Connects VCE frame parsing to managed packet handlers and safe replay.
 internal sealed class NetworkHooks(
     ISigScanner scanner,
+    SignatureScanResult signatures,
     IGameInteropProvider interop,
     TalonStartInfo startInfo) : IDisposable
 {
@@ -23,6 +24,7 @@ internal sealed class NetworkHooks(
     private volatile Hook<SessionDestructorDelegate>? destructorHook;
     private PcapNgWriter? capture;
     private volatile bool sessionHookInstallQueued;
+    private volatile bool disposed;
 
     // ProcessPayload runs inside the parser call. TLS carries that frame's type
     // without sharing state between VCE threads.
@@ -46,7 +48,7 @@ internal sealed class NetworkHooks(
         if (startInfo.NetworkSmokeTest)
             handlers.Register(new DialogueReplaySmokeInterceptor());
 
-        var resolver = new VceResolver(scanner);
+        var resolver = new VceResolver(scanner, signatures);
         var parser = resolver.ResolveFrameParser();
         var poller = resolver.ResolveSelectPoller();
         parserHook = interop.HookFromAddress(
@@ -63,11 +65,16 @@ internal sealed class NetworkHooks(
 
     public void Dispose()
     {
-        destructorHook?.Dispose();
-        processPayloadHook?.Dispose();
-        pollerHook?.Dispose();
-        parserHook?.Dispose();
-        capture?.Dispose();
+        lock (sessionHookLock)
+        {
+            if (disposed) return;
+            disposed = true;
+            destructorHook?.Dispose();
+            processPayloadHook?.Dispose();
+            pollerHook?.Dispose();
+            parserHook?.Dispose();
+            capture?.Dispose();
+        }
     }
 
     private int FrameParserDetour(nint session, nint frame, int length)
@@ -112,7 +119,7 @@ internal sealed class NetworkHooks(
 
     private nint SessionDestructorDetour(nint session, uint flags)
     {
-        // Increment the generation before destruction and keep the session gate
+        // Invalidate the generation before destruction and keep the session gate
         // until native teardown completes. An active replay holds the same gate.
         using var destruction = sessionLifetimes.AcquireDestruction(session);
         return destructorHook!.Original(session, flags);
@@ -136,7 +143,7 @@ internal sealed class NetworkHooks(
                 packet.Generation);
             if (replayLease is null)
             {
-                capture?.Write(packet, PacketCaptureEvent.Cancelled);
+                capture?.Write(packet, PacketCaptureEvent.ConnectionClosed);
                 continue;
             }
 
@@ -165,10 +172,11 @@ internal sealed class NetworkHooks(
 
     private void QueueSessionHookInstall(nint session)
     {
-        if (session == 0 || sessionHookInstallQueued || processPayloadHook is not null) return;
+        if (session == 0 || disposed || sessionHookInstallQueued || processPayloadHook is not null)
+            return;
         lock (sessionHookLock)
         {
-            if (sessionHookInstallQueued || processPayloadHook is not null) return;
+            if (disposed || sessionHookInstallQueued || processPayloadHook is not null) return;
             sessionHookInstallQueued = true;
         }
         try
@@ -196,6 +204,7 @@ internal sealed class NetworkHooks(
         {
             lock (sessionHookLock)
             {
+                if (disposed) return;
                 processPayloadHook = interop.HookFromAddress(
                     processPayload,
                     (ProcessPayloadDelegate)ProcessPayloadDetour);

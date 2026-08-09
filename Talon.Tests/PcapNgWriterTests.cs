@@ -5,6 +5,25 @@ namespace Talon.Tests;
 public sealed class PcapNgWriterTests
 {
     [Fact]
+    public void AcceptsBareFileName()
+    {
+        var fileName = $"talon-{Guid.NewGuid():N}.pcapng";
+        var fullPath = Path.GetFullPath(fileName);
+        try
+        {
+            using (new PcapNgWriter(fileName))
+            {
+            }
+
+            Assert.True(File.Exists(fullPath));
+        }
+        finally
+        {
+            File.Delete(fullPath);
+        }
+    }
+
+    [Fact]
     public void WritesUserZeroInterfaceAndTalonPseudoHeader()
     {
         var path = Path.Combine(Path.GetTempPath(), $"talon-{Guid.NewGuid():N}.pcapng");

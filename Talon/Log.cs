@@ -3,6 +3,9 @@ using System.Text;
 
 namespace Talon;
 
+// This bootstrap sink is static so detours can log before a service container
+// exists, and it swallows all sink failures. A future plugin logging provider can
+// adapt it to Microsoft.Extensions.Logging without making hooks depend on DI.
 internal static class Log
 {
     private static readonly object Sync = new();

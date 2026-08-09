@@ -1,6 +1,9 @@
 using System.Diagnostics;
 using Talon.Interop;
 
+// API shape adapted from Dalamud.Plugin.Services.IGameInteropProvider;
+// see THIRD_PARTY_NOTICES.md.
+
 namespace Talon.Hooking;
 
 /// <summary>Creates hooks for game code, imports, exports, and signatures.</summary>

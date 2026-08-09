@@ -13,11 +13,16 @@ public sealed class HookTests
         var slot = Marshal.AllocHGlobal(nint.Size);
         try
         {
-            Marshal.WriteIntPtr(slot, Marshal.GetFunctionPointerForDelegate(original));
+            var originalAddress = Marshal.GetFunctionPointerForDelegate(original);
+            var detourAddress = Marshal.GetFunctionPointerForDelegate(detour);
+            Marshal.WriteIntPtr(slot, originalAddress);
             var hook = new FunctionPointerVariableHook<UnaryDelegate>(slot, detour);
 
+            hook.Enable();
+            Assert.Equal(detourAddress, Marshal.ReadIntPtr(slot));
             hook.Dispose();
 
+            Assert.Equal(originalAddress, Marshal.ReadIntPtr(slot));
             Assert.Equal(42, hook.OriginalDisposeSafe(41));
             Assert.Throws<ObjectDisposedException>(() => _ = hook.Original);
             GC.KeepAlive(original);

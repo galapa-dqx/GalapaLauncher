@@ -3,6 +3,9 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using Talon.Interop;
 
+// API shape adapted from Dalamud's GameInteropProvider and SignatureHelper;
+// see THIRD_PARTY_NOTICES.md.
+
 namespace Talon.Hooking;
 
 /// <summary>Provides the public hook creation surface used by Talon extensions.</summary>
@@ -13,17 +16,35 @@ public sealed partial class GameInteropProvider(ISigScanner scanner) : IGameInte
     {
         const BindingFlags flags =
             BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
-        foreach (var member in self.GetType().GetMembers(flags))
+        var members = self.GetType().GetMembers(flags)
+            .Select(member => (Member: member, Attribute: member.GetCustomAttribute<SignatureAttribute>()))
+            .Where(entry => entry.Attribute is not null)
+            .Select((entry, index) => (
+                entry.Member,
+                Attribute: entry.Attribute!,
+                Query: new SignatureQuery(
+                    $"{self.GetType().FullName}.{entry.Member.Name}.{index}",
+                    entry.Attribute!.Signature)))
+            .ToArray();
+        var matches = scanner.ScanTextBatch(members.Select(entry => entry.Query).ToArray());
+
+        foreach (var entry in members)
         {
-            var attribute = member.GetCustomAttribute<SignatureAttribute>();
-            if (attribute is null) continue;
             try
             {
-                InitializeMember(self, member, attribute);
+                var candidates = matches.GetMatches(entry.Query.Name);
+                if (candidates.Count == 0)
+                    throw new KeyNotFoundException(
+                        $"Signature '{entry.Attribute.Signature}' was not found.");
+                var address = entry.Attribute.ScanType == SignatureScanType.StaticAddress
+                    ? scanner.GetStaticAddressFromMatch(candidates[0])
+                    : scanner.ResolveTextMatch(candidates[0]);
+                InitializeMember(self, entry.Member, entry.Attribute, address);
             }
-            catch (Exception exception) when (attribute.Fallibility)
+            catch (Exception exception) when (entry.Attribute.Fallibility)
             {
-                Log.Warning($"fallible signature '{attribute.Signature}' failed: {exception.Message}");
+                Log.Warning(
+                    $"fallible signature '{entry.Attribute.Signature}' failed: {exception.Message}");
             }
         }
     }
@@ -41,8 +62,7 @@ public sealed partial class GameInteropProvider(ISigScanner scanner) : IGameInte
         uint hintOrOrdinal,
         T detour) where T : Delegate =>
         HookFromFunctionPointerVariable(
-            FindImport(module ?? Process.GetCurrentProcess().MainModule
-                ?? throw new InvalidOperationException("No main module."),
+            FindImport(module ?? GetMainModule(),
                 moduleName,
                 functionName,
                 hintOrOrdinal),
@@ -99,11 +119,9 @@ public sealed partial class GameInteropProvider(ISigScanner scanner) : IGameInte
     private void InitializeMember(
         object target,
         MemberInfo member,
-        SignatureAttribute attribute)
+        SignatureAttribute attribute,
+        nint address)
     {
-        var address = attribute.ScanType == SignatureScanType.StaticAddress
-            ? scanner.GetStaticAddressFromSig(attribute.Signature)
-            : scanner.ScanText(attribute.Signature);
         var memberType = member switch
         {
             FieldInfo field => field.FieldType,
@@ -198,6 +216,8 @@ public sealed partial class GameInteropProvider(ISigScanner scanner) : IGameInte
         var image = (byte*)module.BaseAddress;
         var nt = image + *(int*)(image + 0x3C);
         var optional = nt + 24;
+        if (*(ushort*)optional != 0x010B)
+            throw new BadImageFormatException("Import hooking requires a PE32 image.");
         var importRva = *(uint*)(optional + 96 + 8);
         if (importRva == 0) throw new MissingMethodException("The module has no imports.");
 
@@ -225,6 +245,13 @@ public sealed partial class GameInteropProvider(ISigScanner scanner) : IGameInte
             }
         }
         throw new MissingMethodException($"{moduleName}!{functionName}");
+    }
+
+    private static ProcessModule GetMainModule()
+    {
+        using var process = Process.GetCurrentProcess();
+        return process.MainModule
+            ?? throw new InvalidOperationException("No main module.");
     }
 
     [LibraryImport("kernel32.dll", EntryPoint = "GetModuleHandleW", StringMarshalling = StringMarshalling.Utf16)]

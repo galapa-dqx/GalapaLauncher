@@ -1,5 +1,7 @@
 using System.Runtime.InteropServices;
 
+// API shape adapted from Dalamud.Hooking.Hook<T>; see THIRD_PARTY_NOTICES.md.
+
 namespace Talon.Hooking;
 
 /// <summary>Controls a hook and exposes its callable original function.</summary>

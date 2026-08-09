@@ -7,14 +7,15 @@ namespace Talon.Vfs;
 
 // Redirects matching game VFS reads to canonicalized loose files.
 internal sealed class VfsHooks(
-    ISigScanner scanner,
+    SignatureScanResult signatures,
     IGameInteropProvider interop,
     TalonStartInfo startInfo) : IDisposable
 {
-    private const string VfsSignature =
+    internal static readonly SignatureQuery LoadResourceSignature = new(
+        "vfs.load-resource",
         "53 8B DC 83 ?? ?? 83 ?? ?? 83 ?? ?? 55 8B ?? ?? 89 ?? ?? ?? " +
         "8B EC B8 ?? ?? ?? ?? E8 ?? ?? ?? ?? A1 ?? ?? ?? ?? 33 C5 89 45 FC " +
-        "8B 43 0C 8B 53 08";
+        "8B 43 0C 8B 53 08");
 
     private const int CensusCap = 400;
     private readonly LooseFileAssetProvider? provider =
@@ -26,10 +27,10 @@ internal sealed class VfsHooks(
 
     public void Initialize()
     {
-        var matches = scanner.ScanAllText(VfsSignature);
-        if (matches.Length != 1)
+        var matches = signatures.GetMatches(LoadResourceSignature.Name);
+        if (matches.Count != 1)
             throw new InvalidOperationException(
-                $"VFS signature expected one match but found {matches.Length}.");
+                $"VFS signature expected one match but found {matches.Count}.");
 
         hook = interop.HookFromAddress(
             matches[0],
@@ -58,47 +59,65 @@ internal sealed class VfsHooks(
 
         try
         {
-            var bytes = File.ReadAllBytes(overridePath);
-            if (bytes.Length == 0) return hook!.Original(
-                self, pathPointer, expansion, mount, mustBeZero);
-
-            var allocateAddress = Marshal.ReadIntPtr(self + 0x110);
-            var freeAddress = Marshal.ReadIntPtr(self + 0x114);
-            var constructAddress = Marshal.ReadIntPtr(self + 0x11C);
-            if (allocateAddress == 0 || freeAddress == 0 || constructAddress == 0)
-                return hook!.Original(self, pathPointer, expansion, mount, mustBeZero);
-
-            var allocate = Marshal.GetDelegateForFunctionPointer<VfsAllocateDelegate>(
-                allocateAddress);
-            var free = Marshal.GetDelegateForFunctionPointer<VfsFreeDelegate>(freeAddress);
-            var construct = Marshal.GetDelegateForFunctionPointer<VfsConstructDelegate>(
-                constructAddress);
-            var buffer = allocate(0, checked((uint)bytes.Length), 1);
-            if (buffer == 0)
-                return hook!.Original(self, pathPointer, expansion, mount, mustBeZero);
-
-            try
+            if (TryConstructOverride(self, pathPointer, overridePath, out var resource, out var size))
             {
-                Marshal.Copy(bytes, 0, buffer, bytes.Length);
-                var resource = construct(
-                    pathPointer,
-                    checked((uint)bytes.Length),
-                    buffer,
-                    0,
-                    0);
-                Log.Info($"VFS override {path} ({bytes.Length} bytes) -> 0x{resource:X8}");
+                Log.Info($"VFS override {path} ({size} bytes) -> 0x{resource:X8}");
                 return resource;
-            }
-            catch
-            {
-                free(0, buffer);
-                throw;
             }
         }
         catch (Exception exception)
         {
             Log.Error($"VFS override failed for '{path}', falling back", exception);
-            return hook!.Original(self, pathPointer, expansion, mount, mustBeZero);
+        }
+        return hook!.Original(self, pathPointer, expansion, mount, mustBeZero);
+    }
+
+    private static bool TryConstructOverride(
+        nint self,
+        nint pathPointer,
+        string overridePath,
+        out nint resource,
+        out int size)
+    {
+        resource = 0;
+        // Read each request so loose translated assets can be edited while DQX runs.
+        var bytes = File.ReadAllBytes(overridePath);
+        size = bytes.Length;
+        if (bytes.Length == 0) return false;
+
+        var allocateAddress = Marshal.ReadIntPtr(self + 0x110);
+        var freeAddress = Marshal.ReadIntPtr(self + 0x114);
+        var constructAddress = Marshal.ReadIntPtr(self + 0x11C);
+        if (allocateAddress == 0 || freeAddress == 0 || constructAddress == 0)
+            return false;
+
+        var allocate = Marshal.GetDelegateForFunctionPointer<VfsAllocateDelegate>(
+            allocateAddress);
+        var free = Marshal.GetDelegateForFunctionPointer<VfsFreeDelegate>(freeAddress);
+        var construct = Marshal.GetDelegateForFunctionPointer<VfsConstructDelegate>(
+            constructAddress);
+        var buffer = allocate(0, checked((uint)bytes.Length), 1);
+        if (buffer == 0) return false;
+
+        try
+        {
+            Marshal.Copy(bytes, 0, buffer, bytes.Length);
+            resource = construct(
+                pathPointer,
+                checked((uint)bytes.Length),
+                buffer,
+                0,
+                0);
+            if (resource != 0) return true;
+
+            free(0, buffer);
+            Log.Warning("VFS constructor rejected override; falling back");
+            return false;
+        }
+        catch
+        {
+            free(0, buffer);
+            throw;
         }
     }
 
