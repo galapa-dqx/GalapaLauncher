@@ -11,13 +11,15 @@ hardware-breakpoint unpack barrier.
    and a small RX x86 APC thunk.
 2. The thunk calls `LoadLibraryW`, resolves `TalonInitialize`, and passes the
    JSON pointer. Talon does not use environment variables for configuration.
-3. Boot loads the self-contained x86 runtime beside `Talon.Boot.dll`, arms the
+3. Boot loads the Injector-owned self-contained x86 runtime beside
+   `Talon.Boot.dll`, arms the
    entrypoint/`NtProtectVirtualMemory` barrier, and waits for the final
    `.text -> PAGE_EXECUTE_READ` transition.
 4. After unpacking, Boot calls `Talon.EntryPoint.Initialize`. Managed code runs
    one batch scan for the built-in signatures, installs the game hooks, and then
-   signals the native continue event. The unpacking thread has a 30-second
-   fail-open timeout.
+   signals the native continue event. Every bootstrap and subsystem failure is
+   fail-open: Talon reports the first failure, then DQX continues with the
+   unaffected hooks or with no Talon hooks.
 
 Managed development builds do not require a native payload:
 
@@ -50,8 +52,12 @@ The exact Dalamud-derived API areas and source revision are recorded in
 [third-party notices](THIRD_PARTY_NOTICES.md).
 
 The VFS hook uses the game's allocator and constructor callbacks. A successfully
-constructed resource owns its buffer. Loose-file paths are canonicalized and
-must remain below the configured override root.
+constructed resource owns its buffer. Talon opens a loose file once, resolves
+the final handle path, verifies it remains below the final override root, and
+reads from that same handle. This rejects junction and symbolic-link escapes as
+well as lexical traversal. Overrides are keyed by logical VFS path rather than
+expansion/mount, so one loose translation replaces that path in every archive
+layer.
 
 ## Network interception
 
@@ -65,17 +71,20 @@ unchanged.
 Managed interceptors register a `PacketSelector` with an opcode and optional
 marker plus byte offset. Marker-specific registrations take precedence over opcode-only
 registrations. Duplicate selectors are rejected. A matching registration copies
-and holds the packet while its asynchronous handler runs. Passive observers do
-not hold traffic.
+and holds the packet in a managed `HeldInboundPacket` lease while its asynchronous
+handler runs. The handler explicitly reinjects original or replacement bytes.
+Returning, failing, or reaching the deadline without doing so reinjects the
+original bytes. Passive observers do not hold traffic.
 
 Completed translations enter a completion queue. The VCE zero-timeout select
 poller drains at most 32 packets or one millisecond per call, in completion order
 instead of arrival order. There is no head-of-line wait: a later translation can
 be reinjected before an earlier one. Limits are 256 held packets, 8 MiB total,
-and 60 seconds per handler. They bound the managed copies retained if a
-translator stalls; traffic that cannot be held passes through synchronously.
-If a handler ignores cancellation after its deadline, its packet remains charged
-to both limits until the underlying task finishes.
+and 60 seconds per pending lease. They bound Talon's managed packet copies;
+traffic that cannot be held passes through synchronously. At the deadline Talon
+reinjects the original, clears the lease payload, and releases capacity when the
+replay queue drains. A non-cooperative extension task can continue running, but
+it no longer retains Talon's admission reservation.
 
 Every held packet is reinjected with translated or original bytes while its
 connection remains valid. Handler failure and timeout replay the original. VCE
@@ -87,7 +96,9 @@ Pointer reuse cannot send that stale packet to a new connection.
 For the current DQX payload contract, the opcode is byte zero. An optional marker
 matches its little-endian 16-bit representation at a fixed byte offset, which
 defaults to byte one. This keeps selection policy in managed handlers while packet
-capture preserves the complete payload for further protocol work.
+capture preserves each payload accepted by its bounded writer for further
+protocol work. Capture records can be dropped if disk I/O falls behind the
+1,024-record diagnostics queue; packet handling itself is unaffected.
 
 ## Diagnostics
 
@@ -119,9 +130,11 @@ closed before replay.
 
 ## Distribution
 
-Keep Talon's x86 runtime self-contained and co-located inside the Velopack
-package. The launcher's x64 runtime does not satisfy CoreCLR injection into the
-32-bit game, and a machine-wide runtime would make Proton hosting less
-deterministic. Velopack can manage launcher prerequisites independently; its
+Keep the Injector-owned x86 runtime self-contained and co-located inside the
+Velopack package. `Talon.dll` is a managed component loaded into that one runtime,
+so runtime files are never flattened from two independent publishes. The
+launcher's x64 runtime does not satisfy CoreCLR injection into the 32-bit game,
+and a machine-wide runtime would make Proton hosting less deterministic.
+Velopack can manage launcher prerequisites independently; its
 [Windows framework bootstrap](https://docs.velopack.io/packaging/bootstrapping)
 does not replace Talon's architecture-specific payload.

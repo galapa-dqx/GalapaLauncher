@@ -32,13 +32,14 @@ the unpack trigger. See [OEP barrier](docs/oep-barrier.md) for its invariants.
 
 1. Load the `hostfxr.dll` distributed beside Boot. Use `nethost.dll` only as a
    fallback to locate a compatible host.
-2. Initialize the self-contained application through
+2. Initialize the self-contained `Talon.Injector.dll` application context through
    `hostfxr_initialize_for_dotnet_command_line`, which processes
-   `Talon.runtimeconfig.json` and `Talon.deps.json`.
+   `Talon.Injector.runtimeconfig.json` and `Talon.Injector.deps.json`.
 3. Request the `load_assembly_and_get_function_pointer` delegate.
 4. Load `Talon.dll` and resolve `Talon.EntryPoint.Initialize`.
 
-Talon ships a self-contained `win-x86` runtime. The game machine does not need a
+The Injector owns the one self-contained `win-x86` runtime used by both the
+Injector process and managed Talon inside DQX. The game machine does not need a
 separate .NET installation.
 
 Boot uses the official .NET native-hosting headers vendored under `dotnet/`.
