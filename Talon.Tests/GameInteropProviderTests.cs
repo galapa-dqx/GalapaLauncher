@@ -23,4 +23,14 @@ public sealed class GameInteropProviderTests
 
         Assert.True(GameInteropProvider.IsNullImportDescriptor((nint)descriptor));
     }
+
+    [Fact]
+    public unsafe void FindsResolvedAddressWhenOriginalThunkIsAbsent()
+    {
+        uint* iat = stackalloc uint[] { 0x10203040, 0x50607080, 0 };
+
+        Assert.Equal(
+            (nint)(iat + 1),
+            GameInteropProvider.FindResolvedImport((nint)iat, 0x50607080));
+    }
 }

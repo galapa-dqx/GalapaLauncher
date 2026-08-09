@@ -61,7 +61,7 @@
     </Target>
 
     <Target Name="ValidateTalonBuildPayload" AfterTargets="Build"
-            DependsOnTargets="CopyTalonBootPayload">
+            DependsOnTargets="CopyTalonBootPayload;CopyDotNetRuntimeNotices">
         <Warning Condition="!Exists('$(OutDir)Talon.Boot.dll') and '$(TalonRequireNativePayload)' != 'true'"
                  Text="Talon.Boot.dll is missing. The managed-only injector output cannot launch DQX." />
         <Error Condition="!Exists('$(OutDir)Talon.Boot.dll') and '$(TalonRequireNativePayload)' == 'true'"

@@ -290,7 +290,22 @@ public sealed partial class GameInteropProvider(ISigScanner scanner) : IGameInte
 
             var lookupRva = *(uint*)descriptor;
             var iatRva = *(uint*)(descriptor + 16);
-            if (lookupRva == 0) lookupRva = iatRva;
+            if (lookupRva == 0)
+            {
+                // Bound images can omit OriginalFirstThunk. Their IAT already
+                // contains resolved addresses, so compare those addresses with
+                // the export instead of interpreting them as image RVAs.
+                var importedHandle = GetModuleHandle(importedModule!);
+                if (importedHandle == 0) throw new DllNotFoundException(importedModule);
+                var target = !string.IsNullOrEmpty(functionName)
+                    ? GetProcAddress(importedHandle, functionName)
+                    : hintOrOrdinal is > 0 and <= ushort.MaxValue
+                        ? GetProcAddress(importedHandle, (nint)hintOrOrdinal)
+                        : 0;
+                if (target == 0)
+                    throw new MissingMethodException($"{moduleName}!{functionName}");
+                return FindResolvedImport((nint)(image + iatRva), unchecked((uint)target));
+            }
             for (var index = 0; ; index++)
             {
                 var lookup = *(uint*)(image + lookupRva + index * 4);
@@ -306,6 +321,15 @@ public sealed partial class GameInteropProvider(ISigScanner scanner) : IGameInte
             }
         }
         throw new MissingMethodException($"{moduleName}!{functionName}");
+    }
+
+    internal static unsafe nint FindResolvedImport(nint iat, uint target)
+    {
+        var entries = (uint*)iat;
+        for (var index = 0; entries[index] != 0; index++)
+            if (entries[index] == target)
+                return (nint)(entries + index);
+        throw new MissingMethodException($"No IAT entry resolves to 0x{target:X8}.");
     }
 
     internal static unsafe bool IsNullImportDescriptor(nint descriptor)
@@ -330,4 +354,7 @@ public sealed partial class GameInteropProvider(ISigScanner scanner) : IGameInte
 
     [LibraryImport("kernel32.dll", EntryPoint = "GetProcAddress", StringMarshalling = StringMarshalling.Utf8)]
     private static partial nint GetProcAddress(nint module, string exportName);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "GetProcAddress")]
+    private static partial nint GetProcAddress(nint module, nint ordinal);
 }

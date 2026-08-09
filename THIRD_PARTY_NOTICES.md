@@ -27,8 +27,9 @@ implementations.
 Talon redistributes `goatcorp.Reloaded.Hooks` and its Reloaded transitive
 dependencies, including Reloaded.Hooks.Definitions, Reloaded.Memory, and
 Reloaded.Memory.Buffers. These packages are distributed under the GNU Lesser
-General Public License version 3. The complete license is shipped as
-`licenses/Reloaded.LGPL-3.0.txt`.
+General Public License version 3. The LGPL supplement and the GNU General Public
+License version 3 that it incorporates are shipped as
+`licenses/Reloaded.LGPL-3.0.txt` and `licenses/GPL-3.0.txt`.
 
 Reloaded.Hooks also depends on Iced, which is distributed under the MIT license
 shipped as `licenses/Iced.MIT.txt`.
