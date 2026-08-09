@@ -22,6 +22,7 @@ static DWORD WINAPI managed_worker(LPVOID parameter) {
 
     if (!load_managed_entry(g_boot_module, &entry)) {
         dbg("[boot] managed runtime bootstrap failed; releasing game thread\n");
+        cancel_unpack_barrier();
         SetEvent(g_managed_ready);
         delete state;
         return 0;

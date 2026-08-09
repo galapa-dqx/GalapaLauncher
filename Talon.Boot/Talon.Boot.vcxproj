@@ -85,10 +85,14 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="coreclr_host.h" />
+    <ClInclude Include="dotnet\coreclr_delegates.h" />
+    <ClInclude Include="dotnet\hostfxr.h" />
+    <ClInclude Include="dotnet\nethost.h" />
     <ClInclude Include="log.h" />
     <ClInclude Include="unpack_trigger.h" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="dotnet\LICENSE.txt" />
     <None Include="Talon.Boot.def" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

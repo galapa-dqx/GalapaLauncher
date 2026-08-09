@@ -1,35 +1,12 @@
 #include "coreclr_host.h"
+#include "dotnet/coreclr_delegates.h"
+#include "dotnet/hostfxr.h"
+#include "dotnet/nethost.h"
 #include "log.h"
 
 #include <stdint.h>
 #include <string>
 #include <vector>
-
-// This file implements the standard .NET native-hosting sequence without taking
-// a dependency on the SDK headers. These declarations mirror nethost/hostfxr.
-using char_t = wchar_t;
-
-struct get_hostfxr_parameters {
-    size_t size;
-    const char_t* assembly_path;
-    const char_t* dotnet_root;
-};
-
-using get_hostfxr_path_fn =
-    int32_t(__cdecl*)(char_t*, size_t*, const get_hostfxr_parameters*);
-using hostfxr_handle = void*;
-using hostfxr_initialize_for_dotnet_command_line_fn =
-    int32_t(__cdecl*)(int, const char_t**, const void*, hostfxr_handle*);
-using hostfxr_get_runtime_delegate_fn =
-    int32_t(__cdecl*)(hostfxr_handle, int32_t, void**);
-using hostfxr_close_fn = int32_t(__cdecl*)(hostfxr_handle);
-using load_assembly_and_get_function_pointer_fn =
-    int32_t(__stdcall*)(const char_t*, const char_t*, const char_t*,
-                        const char_t*, void*, void**);
-
-// hostfxr_delegate_type::hdt_load_assembly_and_get_function_pointer. Keep this
-// value aligned with the .NET hostfxr.h enum when updating the bundled runtime.
-static constexpr int32_t hdt_load_assembly_and_get_function_pointer = 5;
 
 static std::wstring module_directory(HMODULE module) {
     std::vector<wchar_t> path(32768);
@@ -61,7 +38,7 @@ static HMODULE load_hostfxr(
     std::wstring nethost_path = join(directory, L"nethost.dll");
     HMODULE nethost = LoadLibraryW(nethost_path.c_str());
     if (!nethost) return nullptr;
-    auto get_hostfxr_path = reinterpret_cast<get_hostfxr_path_fn>(
+    auto get_hostfxr_path = reinterpret_cast<decltype(&::get_hostfxr_path)>(
         GetProcAddress(nethost, "get_hostfxr_path"));
     if (!get_hostfxr_path) return nullptr;
 
