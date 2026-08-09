@@ -39,6 +39,15 @@ public sealed class LooseFileAssetProviderTests : IDisposable
     }
 
     [Fact]
+    public void MissingOverrideReturnsFalse()
+    {
+        Directory.CreateDirectory(root);
+        var provider = new LooseFileAssetProvider(root);
+
+        Assert.False(provider.TryOpen("ui/missing.bin", out _));
+    }
+
+    [Fact]
     public void RejectsSiblingPrefixEscape()
     {
         Directory.CreateDirectory(root);

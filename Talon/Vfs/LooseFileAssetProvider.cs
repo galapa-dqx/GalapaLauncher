@@ -20,7 +20,7 @@ internal sealed partial class LooseFileAssetProvider
     {
         filePath = string.Empty;
         if (!TryOpen(gamePath, out var stream)) return false;
-        using (stream) filePath = stream.Name;
+        using (stream) filePath = GetFinalPath(stream.SafeFileHandle);
         return true;
     }
 
@@ -29,6 +29,7 @@ internal sealed partial class LooseFileAssetProvider
         stream = null!;
         if (string.IsNullOrWhiteSpace(gamePath) || gamePath.Contains(':')) return false;
 
+        SafeFileHandle? openedHandle = null;
         FileStream? opened = null;
         try
         {
@@ -38,13 +39,21 @@ internal sealed partial class LooseFileAssetProvider
             if (!candidate.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase))
                 return false;
 
-            opened = new FileStream(
+            openedHandle = CreateFile(
                 candidate,
-                FileMode.Open,
-                FileAccess.Read,
-                FileShare.Read,
-                bufferSize: 4096,
-                FileOptions.SequentialScan);
+                GenericRead,
+                FileShareRead,
+                0,
+                OpenExisting,
+                FileAttributeNormal | FileFlagSequentialScan,
+                0);
+            if (openedHandle.IsInvalid) return false;
+
+            // Construct the stream from the handle we validate below. Missing
+            // overrides are the normal case, so CreateFile's invalid-handle result
+            // avoids allocating and catching a FileNotFoundException per VFS read.
+            opened = new FileStream(openedHandle, FileAccess.Read, 4096, isAsync: false);
+            openedHandle = null; // FileStream now owns the SafeFileHandle.
             using var rootHandle = CreateFile(
                 Path.TrimEndingDirectorySeparator(rootWithSeparator),
                 0,
@@ -70,7 +79,11 @@ internal sealed partial class LooseFileAssetProvider
         {
             return false;
         }
-        finally { opened?.Dispose(); }
+        finally
+        {
+            opened?.Dispose();
+            openedHandle?.Dispose();
+        }
     }
 
     private static string GetFinalPath(SafeFileHandle handle)
@@ -91,10 +104,13 @@ internal sealed partial class LooseFileAssetProvider
     private static string EnsureTrailingSeparator(string path) =>
         Path.EndsInDirectorySeparator(path) ? path : path + Path.DirectorySeparatorChar;
 
+    private const uint GenericRead = 0x80000000;
     private const uint FileShareRead = 0x1;
     private const uint FileShareWrite = 0x2;
     private const uint FileShareDelete = 0x4;
     private const uint OpenExisting = 3;
+    private const uint FileAttributeNormal = 0x00000080;
+    private const uint FileFlagSequentialScan = 0x08000000;
     private const uint FileFlagBackupSemantics = 0x02000000;
 
     [LibraryImport("kernel32.dll", EntryPoint = "CreateFileW", SetLastError = true,
