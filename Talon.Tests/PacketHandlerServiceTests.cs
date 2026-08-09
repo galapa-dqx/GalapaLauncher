@@ -1,3 +1,4 @@
+using System.Buffers;
 using Talon.Network;
 
 namespace Talon.Tests;
@@ -113,6 +114,21 @@ public sealed class PacketHandlerServiceTests
         Assert.True(service.TryHold(0x1234, 1, [0x50]));
     }
 
+    [Fact]
+    public async Task ReplayPreparationFailureQueuesOriginalPacket()
+    {
+        var service = new PacketHandlerService();
+        service.Register(new FaultingReplacementInterceptor());
+        byte[] original = [0x50, 0x01, 0x02];
+
+        Assert.True(service.TryHold(0x1234, 1, original));
+        var completed = await WaitForPacket(service);
+
+        Assert.Equal(original, completed.Data);
+        Assert.True(service.TryHold(0x1234, 1, original));
+        _ = await WaitForPacket(service);
+    }
+
     private static async Task<PacketHandlerService.CompletedPacket> WaitForPacket(
         PacketHandlerService service)
     {
@@ -152,5 +168,25 @@ public sealed class PacketHandlerServiceTests
             await Task.Delay(packet.Data.Span[1], cancellationToken);
             return PacketDecision.Original;
         }
+    }
+
+    private sealed class FaultingReplacementInterceptor : IInboundPacketInterceptor
+    {
+        private readonly FaultingMemoryManager memory = new();
+        public PacketSelector Selector => new(0x50);
+
+        public ValueTask<PacketDecision> InterceptAsync(
+            InboundPacket packet,
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult(PacketDecision.Replacement(memory.CreateMemory()));
+    }
+
+    private sealed class FaultingMemoryManager : MemoryManager<byte>
+    {
+        public ReadOnlyMemory<byte> CreateMemory() => base.CreateMemory(1);
+        public override Span<byte> GetSpan() => throw new InvalidOperationException("test fault");
+        public override MemoryHandle Pin(int elementIndex = 0) => throw new NotSupportedException();
+        public override void Unpin() { }
+        protected override void Dispose(bool disposing) { }
     }
 }

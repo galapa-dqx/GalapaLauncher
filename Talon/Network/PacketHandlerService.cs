@@ -89,7 +89,7 @@ internal sealed class PacketHandlerService
             return false;
         }
 
-        _ = CompleteAsync(session, packet, selection.Handler);
+        _ = CompleteAsync(session, packet, bytes, selection.Handler);
         return true;
     }
 
@@ -122,6 +122,7 @@ internal sealed class PacketHandlerService
     private async Task CompleteAsync(
         nint session,
         InboundPacket packet,
+        byte[] original,
         IInboundPacketInterceptor handler)
     {
         PacketDecision decision;
@@ -138,15 +139,29 @@ internal sealed class PacketHandlerService
             Log.Error($"packet {packet.PacketId} handler failed; replaying original", exception);
             decision = PacketDecision.Original;
         }
-        var replay = decision.Replace ? decision.Data.ToArray() : packet.Data.ToArray();
+        byte[] replay;
+        try
+        {
+            // Reuse the copy retained by TryHold when no replacement is needed.
+            // If replacement materialization fails, the original is still safe
+            // to enqueue without another allocation.
+            replay = decision.Replace ? decision.Data.ToArray() : original;
+        }
+        catch (Exception exception)
+        {
+            Log.Error(
+                $"packet {packet.PacketId} replay preparation failed; replaying original",
+                exception);
+            replay = original;
+        }
         if (replay.Length == 0 || replay.Length > MaximumHeldBytes)
-            replay = packet.Data.ToArray();
-        var reservationDelta = replay.Length - packet.Data.Length;
+            replay = original;
+        var reservationDelta = replay.Length - original.Length;
         if (reservationDelta > 0 &&
             Interlocked.Add(ref heldByteCount, reservationDelta) > MaximumHeldBytes)
         {
             Interlocked.Add(ref heldByteCount, -reservationDelta);
-            replay = packet.Data.ToArray();
+            replay = original;
         }
         else if (reservationDelta < 0)
         {
