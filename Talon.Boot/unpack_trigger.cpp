@@ -18,6 +18,7 @@
 static const DWORD kDr7ExecDr0 = 0x00000001;
 static const DWORD kResumeFlag = 0x00010000;
 static const DWORD kBarrierTimeoutMs = 30000;
+static const DWORD kCancellationGraceMs = 5000;
 
 static volatile LONG g_armed = 0;
 static volatile LONG g_stage = 0;
@@ -27,6 +28,8 @@ static uintptr_t g_text_begin = 0;
 static uintptr_t g_text_end = 0;
 static HANDLE g_unpack_complete = nullptr;
 static HANDLE g_managed_ready = nullptr;
+static HANDLE g_initialization_cancelled = nullptr;
+static volatile LONG* g_initialization_state = nullptr;
 static PVOID g_veh_handle = nullptr;
 
 static bool find_text_range(uint8_t* base) {
@@ -62,6 +65,17 @@ static void clear_dr0(CONTEXT* context) {
 static void remove_veh() {
     PVOID handle = InterlockedExchangePointer(&g_veh_handle, nullptr);
     if (handle) RemoveVectoredExceptionHandler(handle);
+}
+
+static bool cancel_initialization() {
+    if (!g_initialization_state) return false;
+    LONG previous = InterlockedCompareExchange(
+        g_initialization_state,
+        talon_initialization_cancelled,
+        talon_initialization_pending);
+    if (previous != talon_initialization_pending) return false;
+    if (g_initialization_cancelled) SetEvent(g_initialization_cancelled);
+    return true;
 }
 
 static LONG CALLBACK unpack_veh(EXCEPTION_POINTERS* ep) {
@@ -113,9 +127,22 @@ static LONG CALLBACK unpack_veh(EXCEPTION_POINTERS* ep) {
 
     DWORD result = g_managed_ready
         ? WaitForSingleObject(g_managed_ready, kBarrierTimeoutMs) : WAIT_FAILED;
-    if (result != WAIT_OBJECT_0)
-        dbg("[barrier] managed hook initialization did not finish in %lu ms; resuming\n",
-            kBarrierTimeoutMs);
+    if (result != WAIT_OBJECT_0) {
+        bool cancelled = cancel_initialization();
+        dbg("[barrier] managed hook initialization did not finish in %lu ms; "
+            "%s Talon startup\n",
+            kBarrierTimeoutMs,
+            cancelled ? "cancelling" : "waiting for committed");
+
+        // A cancelled managed preparation owns enabled hooks until it rolls them
+        // back. Give it a bounded cleanup window before DQX resumes. If managed
+        // committed at the deadline, the same window covers its imminent ready signal.
+        if (g_managed_ready)
+            result = WaitForSingleObject(g_managed_ready, kCancellationGraceMs);
+        if (result != WAIT_OBJECT_0)
+            dbg("[barrier] managed cancellation did not settle in %lu ms; resuming\n",
+                kCancellationGraceMs);
+    }
     // The handler code remains loaded for the process lifetime. Removing this
     // registration only prevents later exception dispatches to it.
     remove_veh();
@@ -151,7 +178,11 @@ static void clear_barrier_dr0_all_threads(DWORD self_tid) {
     CloseHandle(snap);
 }
 
-bool start_unpack_barrier(HANDLE unpack_complete, HANDLE managed_ready) {
+bool start_unpack_barrier(
+    HANDLE unpack_complete,
+    HANDLE managed_ready,
+    HANDLE initialization_cancelled,
+    volatile LONG* initialization_state) {
     uint8_t* base = (uint8_t*)GetModuleHandleA(nullptr);
     HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
     g_ntprotect_va = ntdll
@@ -161,9 +192,13 @@ bool start_unpack_barrier(HANDLE unpack_complete, HANDLE managed_ready) {
         return false;
     }
 
-    if (!unpack_complete || !managed_ready) return false;
+    if (!unpack_complete || !managed_ready || !initialization_cancelled ||
+        !initialization_state)
+        return false;
     g_unpack_complete = unpack_complete;
     g_managed_ready = managed_ready;
+    g_initialization_cancelled = initialization_cancelled;
+    g_initialization_state = initialization_state;
 
     g_veh_handle = AddVectoredExceptionHandler(1, unpack_veh);
     if (!g_veh_handle) {
@@ -181,6 +216,7 @@ bool start_unpack_barrier(HANDLE unpack_complete, HANDLE managed_ready) {
 }
 
 void cancel_unpack_barrier() {
+    cancel_initialization();
     // Keep the VEH armed while removing DR0. If g_armed were cleared first,
     // another thread could hit the still-live breakpoint during this sweep and
     // have its EXCEPTION_SINGLE_STEP propagated as unhandled.

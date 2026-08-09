@@ -10,6 +10,8 @@ static constexpr DWORD kInitializationTimeoutMs = 30000;
 static HMODULE g_boot_module = nullptr;
 static HANDLE g_unpack_complete = nullptr;
 static HANDLE g_managed_ready = nullptr;
+static HANDLE g_initialization_cancelled = nullptr;
+static volatile LONG g_initialization_state = talon_initialization_pending;
 static volatile LONG g_started = 0;
 static volatile LONG g_failure_notified = 0;
 
@@ -46,10 +48,15 @@ static DWORD WINAPI managed_worker(LPVOID parameter) {
         return 0;
     }
 
-    DWORD result = WaitForSingleObject(g_unpack_complete, kInitializationTimeoutMs);
+    HANDLE startup_events[] = {g_unpack_complete, g_initialization_cancelled};
+    DWORD result = WaitForMultipleObjects(2, startup_events, FALSE,
+                                          kInitializationTimeoutMs);
     if (result != WAIT_OBJECT_0) {
+        bool cancelled = result == WAIT_OBJECT_0 + 1;
         dbg("[boot] unpack barrier timed out; managed hooks were not installed\n");
-        notify_failure(L"Talon did not observe DQX unpacking in time. DQX will continue without Talon hooks. See talon-boot.log for details.");
+        notify_failure(cancelled
+            ? L"Talon startup was cancelled before managed hooks could be installed. DQX will continue without Talon hooks. See talon-boot.log for details."
+            : L"Talon did not observe DQX unpacking in time. DQX will continue without Talon hooks. See talon-boot.log for details.");
         cancel_unpack_barrier();
         SetEvent(g_managed_ready);
         delete state;
@@ -57,11 +64,19 @@ static DWORD WINAPI managed_worker(LPVOID parameter) {
     }
 
     __try {
-        entry((void*)state->start_info_json, g_managed_ready);
+        entry((void*)state->start_info_json,
+              g_managed_ready,
+              g_initialization_cancelled,
+              (void*)&g_initialization_state);
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         dbg("[boot] managed entry raised SEH 0x%08lX; releasing game thread\n",
             GetExceptionCode());
         notify_failure(L"Talon's managed entry point failed. DQX will continue without Talon hooks. See talon-boot.log for details.");
+        InterlockedCompareExchange(
+            &g_initialization_state,
+            talon_initialization_cancelled,
+            talon_initialization_pending);
+        SetEvent(g_initialization_cancelled);
         SetEvent(g_managed_ready);
     }
 
@@ -80,7 +95,8 @@ extern "C" __declspec(dllexport) DWORD __cdecl TalonInitialize(
 
     g_unpack_complete = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     g_managed_ready = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-    if (!g_unpack_complete || !g_managed_ready) {
+    g_initialization_cancelled = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    if (!g_unpack_complete || !g_managed_ready || !g_initialization_cancelled) {
         DWORD error = GetLastError();
         dbg("[boot] CreateEvent failed (err=%lu)\n", error);
         notify_failure(L"Talon could not create its startup events. DQX will continue without Talon hooks. See talon-boot.log for details.");
@@ -88,7 +104,11 @@ extern "C" __declspec(dllexport) DWORD __cdecl TalonInitialize(
         return error;
     }
 
-    if (!start_unpack_barrier(g_unpack_complete, g_managed_ready)) {
+    if (!start_unpack_barrier(
+            g_unpack_complete,
+            g_managed_ready,
+            g_initialization_cancelled,
+            &g_initialization_state)) {
         dbg("[boot] unpack barrier initialization failed\n");
         notify_failure(L"Talon could not arm its unpack barrier. DQX will continue without Talon hooks. See talon-boot.log for details.");
         SetEvent(g_managed_ready);

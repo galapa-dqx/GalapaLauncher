@@ -18,7 +18,9 @@ this step.
 5. At that transition, it clears DR0 and parks the unpacking thread before the
    protection call executes.
 6. The worker starts managed Talon and waits for its initialization signal. It
-   then releases the unpacking thread.
+   prepares hooks, atomically commits them, and releases the unpacking thread.
+   If preparation exceeds 30 seconds, Boot signals cancellation, gives managed
+   code up to five seconds to roll back, and then releases DQX without Talon.
 
 The protection transition defines unpack completion. Managed scanners resolve
 version-specific game hooks only after the barrier.
@@ -49,10 +51,11 @@ unrelated protection changes.
   Clearing DR6 alone can repeat the single-step exception.
 - Hook installation never runs in the exception handler. The handler parks the
   unpacking thread while the worker starts CoreCLR and installs managed hooks.
-- Startup is fail-open. CLR load failures, unpack timeouts, stale managed
-  signatures, and individual subsystem failures are logged and reported once;
-  Boot clears its debug register and releases DQX. Managed VFS and network hooks
-  initialize independently, so either, both, or neither can remain active.
+- Core Talon startup is transactional. CLR load failures, unpack timeouts, and
+  cancellation before commit leave no intentionally active Talon hooks. Boot
+  clears its debug register and releases DQX, so startup remains fail-open to
+  the game. Managed VFS and network hooks initialize independently after core
+  preparation begins, so either, both, or neither can commit.
 
 ## Update behavior
 

@@ -290,7 +290,10 @@ public static partial class Injector
         void PatchShortForwardBranch(int operand, int target)
         {
             var displacement = target - (operand + 1);
-            code[operand] = checked((byte)displacement);
+            if (displacement is < sbyte.MinValue or > sbyte.MaxValue)
+                throw new InvalidOperationException(
+                    $"Bootstrap short branch displacement is out of range: {displacement}.");
+            code[operand] = unchecked((byte)(sbyte)displacement);
         }
     }
 
