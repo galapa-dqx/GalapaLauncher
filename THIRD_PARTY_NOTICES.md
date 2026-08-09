@@ -18,11 +18,34 @@ Talon's hook and signature-service API shape is adapted from
 - `Talon/Interop/SignatureAttribute.cs`
 
 Dalamud is distributed under the GNU Affero General Public License version 3.
-Talon's PE32 decoding, signature matching, batch scanning, and backend adapters
-are project-specific implementations.
+This repository is distributed under the same license. Talon's PE32 decoding,
+signature matching, batch scanning, and backend adapters are project-specific
+implementations.
+
+## Reloaded.Hooks
+
+Talon redistributes `goatcorp.Reloaded.Hooks` and its Reloaded transitive
+dependencies, including Reloaded.Hooks.Definitions, Reloaded.Memory, and
+Reloaded.Memory.Buffers. These packages are distributed under the GNU Lesser
+General Public License version 3. The complete license is shipped as
+`licenses/Reloaded.LGPL-3.0.txt`.
+
+Reloaded.Hooks also depends on Iced, which is distributed under the MIT license
+shipped as `licenses/Iced.MIT.txt`.
 
 ## .NET native-hosting headers
 
 The files under `Talon.Boot/dotnet/` are copied from the .NET 10.0.1
 `Microsoft.NETCore.App.Host.win-x86` pack. They are distributed by the .NET
 Foundation under the MIT license included in that directory.
+
+Talon's self-contained package also redistributes the .NET x86 runtime. The
+exact runtime pack's `LICENSE.TXT` and `THIRD-PARTY-NOTICES.TXT` are copied into
+`licenses/dotnet-runtime/` during build and publish.
+
+## MinHook
+
+`Talon.Recon` contains a vendored copy of MinHook for the separate reverse-
+engineering payload. MinHook is distributed under the 2-clause BSD license in
+`Talon.Recon/vendor/minhook/LICENSE.txt`. It is not included in Talon's runtime
+artifact.

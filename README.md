@@ -32,3 +32,9 @@ their native architecture, but Talon itself is distributed for `win-x86`.
 - Remembers your password
 - Automatically logs you in
 - Includes developer tooling for suspended launches, Talon injection, and loose-file VFS overrides
+
+## License
+
+GalapaLauncher and Talon are distributed under the GNU Affero General Public
+License version 3. See [LICENSE](LICENSE) and
+[third-party notices](THIRD_PARTY_NOTICES.md).
