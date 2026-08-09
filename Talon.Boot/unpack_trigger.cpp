@@ -116,6 +116,8 @@ static LONG CALLBACK unpack_veh(EXCEPTION_POINTERS* ep) {
     if (result != WAIT_OBJECT_0)
         dbg("[barrier] managed hook initialization did not finish in %lu ms; resuming\n",
             kBarrierTimeoutMs);
+    // The handler code remains loaded for the process lifetime. Removing this
+    // registration only prevents later exception dispatches to it.
     remove_veh();
     return EXCEPTION_CONTINUE_EXECUTION;
 }

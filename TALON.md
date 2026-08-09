@@ -9,8 +9,11 @@ hardware-breakpoint unpack barrier.
 1. `Talon.Injector` creates DQX suspended and allocates one remote bootstrap
    region. It contains the Boot path, versioned JSON start info, export name,
    and a small RX x86 APC thunk.
-2. The thunk calls `LoadLibraryW`, resolves `TalonInitialize`, and passes the
-   JSON pointer. Talon does not use environment variables for configuration.
+2. The thunk installs a minimal fallback VEH, calls `LoadLibraryW`, resolves
+   `TalonInitialize`, and passes the JSON pointer. Boot's full barrier takes
+   priority, and the APC removes the fallback after successful initialization.
+   If bootstrap fails, the fallback clears Talon's entrypoint breakpoint so DQX
+   can continue. Talon does not use environment variables for configuration.
 3. Boot loads the Injector-owned self-contained x86 runtime beside
    `Talon.Boot.dll`, arms the
    entrypoint/`NtProtectVirtualMemory` barrier, and waits for the final
@@ -79,12 +82,14 @@ original bytes. Passive observers do not hold traffic.
 Completed translations enter a completion queue. The VCE zero-timeout select
 poller drains at most 32 packets or one millisecond per call, in completion order
 instead of arrival order. There is no head-of-line wait: a later translation can
-be reinjected before an earlier one. Limits are 256 held packets, 8 MiB total,
-and 60 seconds per pending lease. They bound Talon's managed packet copies;
-traffic that cannot be held passes through synchronously. At the deadline Talon
-reinjects the original, clears the lease payload, and releases capacity when the
-replay queue drains. A non-cooperative extension task can continue running, but
-it no longer retains Talon's admission reservation.
+be reinjected before an earlier one. Hold only opcodes whose processing tolerates
+that reordering. Stateful protocol work will need an ordered lane rather than the
+default completion queue. Limits are 256 held packets, 8 MiB total, and 60 seconds
+per pending lease. They bound Talon's managed packet copies; traffic that cannot
+be held passes through synchronously. At the deadline Talon reinjects the original,
+clears the lease payload, and releases capacity when the replay queue drains. A
+non-cooperative extension task can continue running, but it no longer retains
+Talon's admission reservation.
 
 Every held packet is reinjected with translated or original bytes while its
 connection remains valid. Handler failure and timeout replay the original. VCE
