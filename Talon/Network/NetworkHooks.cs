@@ -29,6 +29,8 @@ internal sealed class NetworkHooks(
     private volatile SessionDestructorDelegate? destructorOriginal;
     private volatile bool sessionHookInstallQueued;
     private volatile bool disposed;
+    private nint installedSessionVtable;
+    private int differentVtableWarningLogged;
 
     // ProcessPayload runs inside the parser call. TLS carries that frame's type
     // without sharing state between VCE threads.
@@ -245,16 +247,26 @@ internal sealed class NetworkHooks(
 
     private void QueueSessionHookInstall(nint session)
     {
-        if (session == 0 || disposed || sessionHookInstallQueued || processPayloadHook is not null)
-            return;
-        lock (sessionHookLock)
-        {
-            if (disposed || sessionHookInstallQueued || processPayloadHook is not null) return;
-            sessionHookInstallQueued = true;
-        }
+        if (session == 0 || disposed) return;
         try
         {
             var vtable = Marshal.ReadIntPtr(session);
+            if (processPayloadHook is not null)
+            {
+                WarnIfDifferentSessionVtable(vtable);
+                return;
+            }
+            lock (sessionHookLock)
+            {
+                if (disposed) return;
+                if (processPayloadHook is not null)
+                {
+                    WarnIfDifferentSessionVtable(vtable);
+                    return;
+                }
+                if (sessionHookInstallQueued) return;
+                sessionHookInstallQueued = true;
+            }
             // DQX 8.0 base and observed derived VCE vtables use a scalar deleting
             // destructor in slot 0. ProcessPayload is at byte offset 0x5C.
             var destructorSlot = vtable;
@@ -268,7 +280,8 @@ internal sealed class NetworkHooks(
                 processPayloadSlot,
                 processPayload,
                 destructorSlot,
-                destructor);
+                destructor,
+                vtable);
         }
         catch (Exception exception)
         {
@@ -282,7 +295,8 @@ internal sealed class NetworkHooks(
         nint processPayloadSlot,
         nint processPayload,
         nint destructorSlot,
-        nint destructor)
+        nint destructor,
+        nint vtable)
     {
         Hook<ProcessPayloadDelegate>? newPayloadHook = null;
         Hook<SessionDestructorDelegate>? newDestructorHook = null;
@@ -304,6 +318,7 @@ internal sealed class NetworkHooks(
                 destructorOriginal = newDestructorHook.OriginalDisposeSafe;
                 processPayloadHook = newPayloadHook;
                 destructorHook = newDestructorHook;
+                Volatile.Write(ref installedSessionVtable, vtable);
                 newPayloadHook = null;
                 newDestructorHook = null;
                 // Publish both hook objects before either detour can run. Enable
@@ -327,10 +342,22 @@ internal sealed class NetworkHooks(
                 destructorHook = null;
                 processPayloadOriginal = null;
                 destructorOriginal = null;
+                Volatile.Write(ref installedSessionVtable, 0);
                 sessionHookInstallQueued = false;
             }
             Log.Error("VCE session hook installation failed", exception);
         }
+    }
+
+    private void WarnIfDifferentSessionVtable(nint vtable)
+    {
+        var installed = Volatile.Read(ref installedSessionVtable);
+        if (installed == 0 || installed == vtable ||
+            Interlocked.Exchange(ref differentVtableWarningLogged, 1) != 0)
+            return;
+        Log.Warning(
+            $"VCE session vtable changed from 0x{installed:X8} to 0x{vtable:X8}; " +
+            "the new connection will pass through without managed packet interception");
     }
 
     private static void DisposeFailedHook<T>(Hook<T>? hook, string name) where T : Delegate

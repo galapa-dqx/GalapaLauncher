@@ -78,8 +78,14 @@ internal sealed class PcapNgWriter : IInboundPacketLifecycleObserver, IDisposabl
         try
         {
             if (!writerTask.Wait(TimeSpan.FromSeconds(2)))
+            {
                 cancellation.Cancel();
+                // Dispose is the ownership boundary for the capture file. Wait for
+                // the cooperative writer to close it before returning to callers.
+                writerTask.GetAwaiter().GetResult();
+            }
         }
+        catch (OperationCanceledException) { }
         catch (AggregateException)
         {
             // The fault-logging continuation records the underlying exception.

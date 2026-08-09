@@ -169,9 +169,11 @@ internal sealed class PacketHandlerService
             return;
         }
 
-        var timeoutTask = Task.Delay(handlerTimeout);
+        using var timeoutCancellation = new CancellationTokenSource();
+        var timeoutTask = Task.Delay(handlerTimeout, timeoutCancellation.Token);
         var winner = await Task.WhenAny(handlerTask, packet.Completion, timeoutTask)
             .ConfigureAwait(false);
+        if (winner != timeoutTask) timeoutCancellation.Cancel();
         if (winner == handlerTask)
         {
             try { await handlerTask.ConfigureAwait(false); }
