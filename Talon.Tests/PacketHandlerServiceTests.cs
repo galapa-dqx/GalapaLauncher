@@ -88,7 +88,7 @@ public sealed class PacketHandlerServiceTests
     }
 
     [Fact]
-    public void CompletedPacketsRemainInsideHoldLimitUntilDequeued()
+    public async Task CompletedPacketsRemainInsideHoldLimitUntilDequeued()
     {
         var service = new PacketHandlerService();
         service.Register(new ReplacementInterceptor(new(0x50), [0x50]));
@@ -98,7 +98,7 @@ public sealed class PacketHandlerServiceTests
 
         Assert.Equal(256, held);
         for (var i = 0; i < held; i++)
-            Assert.True(service.TryDequeue(out _));
+            _ = await WaitForPacket(service);
         Assert.True(service.TryHold(0x1234, 1, [0x50]));
     }
 
