@@ -22,48 +22,83 @@
          clean full MSBuild sees the DLL produced earlier in the same solution build.
          Galapa.slnf intentionally excludes the native project; CI builds it explicitly. -->
     <ItemGroup>
-        <ProjectReference Include="..\Talon\Talon.csproj"
-                          ReferenceOutputAssembly="false"
-                          GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained" />
+        <!-- Injector owns the single self-contained runtime. Talon is a normal
+             managed dependency loaded into that runtime inside DQX. -->
+        <ProjectReference Include="..\Talon\Talon.csproj" />
+        <Content Include="..\LICENSE" Link="LICENSE"
+                 CopyToOutputDirectory="PreserveNewest"
+                 CopyToPublishDirectory="PreserveNewest" />
+        <Content Include="..\THIRD_PARTY_NOTICES.md" Link="THIRD_PARTY_NOTICES.md"
+                 CopyToOutputDirectory="PreserveNewest"
+                 CopyToPublishDirectory="PreserveNewest" />
+        <Content Include="..\licenses\**\*" Link="licenses\%(RecursiveDir)%(Filename)%(Extension)"
+                 CopyToOutputDirectory="PreserveNewest"
+                 CopyToPublishDirectory="PreserveNewest" />
     </ItemGroup>
 
     <Target Name="CopyTalonBootPayload" AfterTargets="Build"
-            BeforeTargets="CopyTalonRuntime"
             Condition="Exists('..\Talon.Boot\bin\x86\$(Configuration)\Talon.Boot.dll')">
         <Copy SourceFiles="..\Talon.Boot\bin\x86\$(Configuration)\Talon.Boot.dll"
               DestinationFolder="$(OutDir)"
               SkipUnchangedFiles="true"/>
     </Target>
 
-    <Target Name="CopyTalonRuntime" AfterTargets="Build"
-            DependsOnTargets="CopyTalonBootPayload">
+    <!-- Self-contained publish does not copy the runtime pack's legal files.
+         Preserve the exact notices that accompany the selected x86 runtime. -->
+    <Target Name="CopyDotNetRuntimeNotices" AfterTargets="Build"
+            DependsOnTargets="ResolveFrameworkReferences">
         <ItemGroup>
-            <TalonRuntimeFiles Include="..\Talon\bin\$(Configuration)\net10.0-windows\win-x86\**\*" />
+            <TalonDotNetRuntimeNotice
+                Include="@(ResolvedRuntimePack->'%(PackageDirectory)\LICENSE.TXT')"
+                Condition="'%(ResolvedRuntimePack.FrameworkName)' == 'Microsoft.NETCore.App' and Exists('%(ResolvedRuntimePack.PackageDirectory)\LICENSE.TXT')" />
+            <TalonDotNetRuntimeNotice
+                Include="@(ResolvedRuntimePack->'%(PackageDirectory)\THIRD-PARTY-NOTICES.TXT')"
+                Condition="'%(ResolvedRuntimePack.FrameworkName)' == 'Microsoft.NETCore.App' and Exists('%(ResolvedRuntimePack.PackageDirectory)\THIRD-PARTY-NOTICES.TXT')" />
         </ItemGroup>
-        <Copy SourceFiles="@(TalonRuntimeFiles)"
-              DestinationFiles="@(TalonRuntimeFiles->'$(OutDir)%(RecursiveDir)%(Filename)%(Extension)')"
+        <Copy SourceFiles="@(TalonDotNetRuntimeNotice)"
+              DestinationFiles="@(TalonDotNetRuntimeNotice->'$(OutDir)licenses\dotnet-runtime\%(Filename)%(Extension)')"
               SkipUnchangedFiles="true" />
+    </Target>
+
+    <Target Name="ValidateTalonBuildPayload" AfterTargets="Build"
+            DependsOnTargets="CopyTalonBootPayload">
         <Warning Condition="!Exists('$(OutDir)Talon.Boot.dll') and '$(TalonRequireNativePayload)' != 'true'"
                  Text="Talon.Boot.dll is missing. The managed-only injector output cannot launch DQX." />
         <Error Condition="!Exists('$(OutDir)Talon.Boot.dll') and '$(TalonRequireNativePayload)' == 'true'"
                Text="Talon.Boot.dll is missing. Build Talon.Boot Win32 $(Configuration) before Talon.Injector." />
+        <Error Condition="!Exists('$(OutDir)Talon.dll')"
+               Text="Talon.dll is missing from the Injector output." />
+        <Error Condition="!Exists('$(OutDir)goatcorp.Reloaded.Hooks.dll')"
+               Text="goatcorp.Reloaded.Hooks.dll is missing from the Injector output." />
+        <Error Condition="!Exists('$(OutDir)licenses\dotnet-runtime\LICENSE.TXT') or !Exists('$(OutDir)licenses\dotnet-runtime\THIRD-PARTY-NOTICES.TXT')"
+               Text="The .NET runtime license notices are missing from the Injector output." />
     </Target>
 
-    <Target Name="RequireTalonBootForPublish" BeforeTargets="Publish">
+    <Target Name="RequireTalonPayloadForPublish" BeforeTargets="Publish"
+            DependsOnTargets="ValidateTalonBuildPayload">
         <Error Condition="!Exists('$(OutDir)Talon.Boot.dll')"
                Text="Talon.Boot.dll is missing. Build Talon.Boot Win32 $(Configuration) before publishing Talon.Injector." />
+        <Error Condition="!Exists('$(OutDir)Talon.dll') or !Exists('$(OutDir)goatcorp.Reloaded.Hooks.dll')"
+               Text="The managed Talon payload is incomplete; refusing to publish." />
     </Target>
 
     <!-- Build output is assembled after normal SDK item resolution, so explicitly
          copy the Talon payload into the final publish directory as well. -->
     <Target Name="PublishTalonPayload" AfterTargets="Publish"
-            DependsOnTargets="CopyTalonRuntime;RequireTalonBootForPublish">
-        <Copy SourceFiles="@(TalonRuntimeFiles)"
-              DestinationFiles="@(TalonRuntimeFiles->'$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)')"
-              SkipUnchangedFiles="true" />
+            DependsOnTargets="RequireTalonPayloadForPublish">
+        <ItemGroup>
+            <TalonRuntimeNotice Include="$(OutDir)licenses\dotnet-runtime\*" />
+        </ItemGroup>
         <Copy SourceFiles="$(OutDir)Talon.Boot.dll"
               DestinationFolder="$(PublishDir)"
               SkipUnchangedFiles="true" />
+        <Copy SourceFiles="@(TalonRuntimeNotice)"
+              DestinationFolder="$(PublishDir)licenses\dotnet-runtime"
+              SkipUnchangedFiles="true" />
+        <Error Condition="!Exists('$(PublishDir)Talon.dll') or !Exists('$(PublishDir)goatcorp.Reloaded.Hooks.dll') or !Exists('$(PublishDir)Talon.Boot.dll')"
+               Text="The published Talon payload is incomplete." />
+        <Error Condition="!Exists('$(PublishDir)licenses\dotnet-runtime\LICENSE.TXT') or !Exists('$(PublishDir)licenses\dotnet-runtime\THIRD-PARTY-NOTICES.TXT')"
+               Text="The published .NET runtime license notices are incomplete." />
     </Target>
 
 </Project>

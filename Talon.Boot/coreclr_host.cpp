@@ -24,7 +24,7 @@ static std::wstring join(const std::wstring& directory, const wchar_t* name) {
 static HMODULE load_hostfxr(
     const std::wstring& directory,
     const std::wstring& assembly_path) {
-    // Talon is self-contained, so prefer the x86 hostfxr shipped beside Boot.
+    // The Talon payload is self-contained, so prefer its co-located x86 hostfxr.
     std::wstring local_path = join(directory, L"hostfxr.dll");
     HMODULE local = LoadLibraryW(local_path.c_str());
     if (local) {
@@ -40,7 +40,10 @@ static HMODULE load_hostfxr(
     if (!nethost) return nullptr;
     auto get_hostfxr_path = reinterpret_cast<decltype(&::get_hostfxr_path)>(
         GetProcAddress(nethost, "get_hostfxr_path"));
-    if (!get_hostfxr_path) return nullptr;
+    if (!get_hostfxr_path) {
+        FreeLibrary(nethost);
+        return nullptr;
+    }
 
     get_hostfxr_parameters parameters = {};
     parameters.size = sizeof(parameters);
@@ -49,9 +52,16 @@ static HMODULE load_hostfxr(
 
     size_t path_size = 0;
     get_hostfxr_path(nullptr, &path_size, &parameters);
-    if (!path_size) return nullptr;
+    if (!path_size) {
+        FreeLibrary(nethost);
+        return nullptr;
+    }
     std::vector<wchar_t> path(path_size);
-    if (get_hostfxr_path(path.data(), &path_size, &parameters) != 0) return nullptr;
+    if (get_hostfxr_path(path.data(), &path_size, &parameters) != 0) {
+        FreeLibrary(nethost);
+        return nullptr;
+    }
+    FreeLibrary(nethost);
     return LoadLibraryW(path.data());
 }
 
@@ -66,9 +76,10 @@ bool load_managed_entry(HMODULE boot_module, talon_managed_init_fn* entry) {
     }
 
     std::wstring assembly_path = join(directory, L"Talon.dll");
-    // hostfxr reads Talon's runtime config and dependency manifest from the
-    // assembly path, then selects the co-located self-contained CoreCLR.
-    HMODULE hostfxr = load_hostfxr(directory, assembly_path);
+    std::wstring host_path = join(directory, L"Talon.Injector.dll");
+    // Injector owns the one self-contained runtime and dependency manifest in
+    // the payload. Talon is loaded as a managed component into that context.
+    HMODULE hostfxr = load_hostfxr(directory, host_path);
     if (!hostfxr) {
         dbg("[coreclr] LoadLibraryW(hostfxr) failed (err=%lu)\n", GetLastError());
         return false;
@@ -76,7 +87,7 @@ bool load_managed_entry(HMODULE boot_module, talon_managed_init_fn* entry) {
 
     // A self-contained runtime config cannot be passed to
     // hostfxr_initialize_for_runtime_config. Initialize Talon as the application
-    // command line instead; this also processes Talon.deps.json.
+    // command line instead; this also processes Talon.Injector.deps.json.
     auto initialize = reinterpret_cast<hostfxr_initialize_for_dotnet_command_line_fn>(
         GetProcAddress(hostfxr, "hostfxr_initialize_for_dotnet_command_line"));
     auto get_delegate = reinterpret_cast<hostfxr_get_runtime_delegate_fn>(
@@ -89,7 +100,7 @@ bool load_managed_entry(HMODULE boot_module, talon_managed_init_fn* entry) {
     }
 
     hostfxr_handle context = nullptr;
-    const char_t* arguments[] = { assembly_path.c_str() };
+    const char_t* arguments[] = { host_path.c_str() };
     int32_t rc = initialize(1, arguments, nullptr, &context);
     if (rc < 0 || !context) {
         dbg("[coreclr] runtime initialization failed (0x%08lX)\n", (DWORD)rc);

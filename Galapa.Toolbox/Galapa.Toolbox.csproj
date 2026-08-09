@@ -47,6 +47,8 @@
         <Copy SourceFiles="@(TalonInjectorOutput)"
               DestinationFiles="@(TalonInjectorOutput->'$(OutDir)Talon\%(RecursiveDir)%(Filename)%(Extension)')"
               SkipUnchangedFiles="true"/>
+        <Warning Condition="!Exists('$(OutDir)Talon\Talon.Boot.dll') or !Exists('$(OutDir)Talon\Talon.dll')"
+                 Text="The bundled Talon injector payload is incomplete. Build the native payload before publishing." />
     </Target>
 
     <!-- Files copied only to OutDir are not automatically part of publish output. Copy
@@ -59,5 +61,7 @@
         <Copy SourceFiles="@(TalonPublishFile)"
               DestinationFiles="@(TalonPublishFile->'$(PublishDir)Talon\%(RecursiveDir)%(Filename)%(Extension)')"
               SkipUnchangedFiles="true"/>
+        <Error Condition="!Exists('$(PublishDir)Talon\Talon.Boot.dll') or !Exists('$(PublishDir)Talon\Talon.dll') or !Exists('$(PublishDir)Talon\goatcorp.Reloaded.Hooks.dll')"
+               Text="The published Toolbox Talon payload is incomplete." />
     </Target>
 </Project>
