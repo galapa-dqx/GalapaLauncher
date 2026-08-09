@@ -7,6 +7,7 @@ namespace Talon.Vfs;
 internal sealed partial class LooseFileAssetProvider
 {
     private readonly string rootWithSeparator;
+    private readonly string canonicalRootWithSeparator;
 
     public LooseFileAssetProvider(string root)
     {
@@ -14,6 +15,17 @@ internal sealed partial class LooseFileAssetProvider
         rootWithSeparator = Path.EndsInDirectorySeparator(fullRoot)
             ? fullRoot
             : fullRoot + Path.DirectorySeparatorChar;
+        using var rootHandle = CreateFile(
+            fullRoot,
+            0,
+            FileShareRead | FileShareWrite | FileShareDelete,
+            0,
+            OpenExisting,
+            FileFlagBackupSemantics,
+            0);
+        if (rootHandle.IsInvalid)
+            throw new DirectoryNotFoundException($"Override root is unavailable: {fullRoot}");
+        canonicalRootWithSeparator = EnsureTrailingSeparator(GetFinalPath(rootHandle));
     }
 
     public bool TryResolve(string gamePath, out string filePath)
@@ -27,7 +39,7 @@ internal sealed partial class LooseFileAssetProvider
     public bool TryOpen(string gamePath, out FileStream stream)
     {
         stream = null!;
-        if (string.IsNullOrWhiteSpace(gamePath) || gamePath.Contains(':')) return false;
+        if (!IsSafeGamePath(gamePath)) return false;
 
         SafeFileHandle? openedHandle = null;
         FileStream? opened = null;
@@ -36,7 +48,7 @@ internal sealed partial class LooseFileAssetProvider
             if (Path.IsPathRooted(gamePath)) return false;
             var relative = gamePath.Replace('/', Path.DirectorySeparatorChar);
             var candidate = Path.GetFullPath(Path.Combine(rootWithSeparator, relative));
-            if (!candidate.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase))
+            if (!IsPathWithinRoot(candidate, rootWithSeparator))
                 return false;
 
             openedHandle = CreateFile(
@@ -54,19 +66,8 @@ internal sealed partial class LooseFileAssetProvider
             // avoids allocating and catching a FileNotFoundException per VFS read.
             opened = new FileStream(openedHandle, FileAccess.Read, 4096, isAsync: false);
             openedHandle = null; // FileStream now owns the SafeFileHandle.
-            using var rootHandle = CreateFile(
-                Path.TrimEndingDirectorySeparator(rootWithSeparator),
-                0,
-                FileShareRead | FileShareWrite | FileShareDelete,
-                0,
-                OpenExisting,
-                FileFlagBackupSemantics,
-                0);
-            if (rootHandle.IsInvalid) return false;
-
-            var finalRoot = EnsureTrailingSeparator(GetFinalPath(rootHandle));
             var finalFile = GetFinalPath(opened.SafeFileHandle);
-            if (!finalFile.StartsWith(finalRoot, StringComparison.OrdinalIgnoreCase))
+            if (!IsPathWithinRoot(finalFile, canonicalRootWithSeparator))
                 return false;
 
             stream = opened;
@@ -86,10 +87,55 @@ internal sealed partial class LooseFileAssetProvider
         }
     }
 
-    private static string GetFinalPath(SafeFileHandle handle)
+    // Validate before CreateFile so Win32 cannot reinterpret a game path as a
+    // DOS device, alternate data stream, or normalized traversal component.
+    internal static bool IsSafeGamePath(string gamePath)
     {
-        var buffer = new char[32768];
-        var length = GetFinalPathNameByHandle(handle, buffer, (uint)buffer.Length, 0);
+        if (string.IsNullOrWhiteSpace(gamePath) || Path.IsPathRooted(gamePath)) return false;
+        foreach (var component in gamePath.Split(['/', '\\']))
+        {
+            if (component.Length == 0 || component is "." or ".." ||
+                component.EndsWith(' ') || component.EndsWith('.') ||
+                component.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+                return false;
+
+            var stem = component.Split('.')[0].TrimEnd(' ', '.');
+            if (IsDosDeviceName(stem)) return false;
+        }
+        return true;
+    }
+
+    private static bool IsDosDeviceName(string stem)
+    {
+        if (stem.Equals("CON", StringComparison.OrdinalIgnoreCase) ||
+            stem.Equals("PRN", StringComparison.OrdinalIgnoreCase) ||
+            stem.Equals("AUX", StringComparison.OrdinalIgnoreCase) ||
+            stem.Equals("NUL", StringComparison.OrdinalIgnoreCase) ||
+            stem.Equals("CLOCK$", StringComparison.OrdinalIgnoreCase) ||
+            stem.Equals("CONIN$", StringComparison.OrdinalIgnoreCase) ||
+            stem.Equals("CONOUT$", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (stem.Length == 4 &&
+            (stem.StartsWith("COM", StringComparison.OrdinalIgnoreCase) ||
+             stem.StartsWith("LPT", StringComparison.OrdinalIgnoreCase)))
+            return stem[3] is >= '1' and <= '9' or '\u00B9' or '\u00B2' or '\u00B3';
+        return false;
+    }
+
+    internal static bool IsPathWithinRoot(string path, string rootWithSeparator) =>
+        path.StartsWith(rootWithSeparator, StringComparison.Ordinal);
+
+    private static unsafe string GetFinalPath(SafeFileHandle handle)
+    {
+        var required = GetFinalPathNameByHandle(handle, null, 0, 0);
+        if (required == 0)
+            throw new IOException(
+                $"GetFinalPathNameByHandle failed ({Marshal.GetLastWin32Error()}).");
+        var buffer = new char[required];
+        uint length;
+        fixed (char* bufferPointer = buffer)
+            length = GetFinalPathNameByHandle(handle, bufferPointer, (uint)buffer.Length, 0);
         if (length == 0 || length >= buffer.Length)
             throw new IOException(
                 $"GetFinalPathNameByHandle failed ({Marshal.GetLastWin32Error()}).");
@@ -126,9 +172,9 @@ internal sealed partial class LooseFileAssetProvider
 
     [LibraryImport("kernel32.dll", EntryPoint = "GetFinalPathNameByHandleW", SetLastError = true,
         StringMarshalling = StringMarshalling.Utf16)]
-    private static partial uint GetFinalPathNameByHandle(
+    private static unsafe partial uint GetFinalPathNameByHandle(
         SafeFileHandle file,
-        [Out] char[] path,
+        char* path,
         uint pathLength,
         uint flags);
 }

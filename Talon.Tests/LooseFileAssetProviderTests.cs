@@ -30,6 +30,13 @@ public sealed class LooseFileAssetProviderTests : IDisposable
     [InlineData(@"\\server\share\outside.bin")]
     [InlineData("translated.bin:stream")]
     [InlineData("bad\0path")]
+    [InlineData("NUL")]
+    [InlineData("nul.txt")]
+    [InlineData("ui/CON.dat")]
+    [InlineData("COM1")]
+    [InlineData("lpt9.bin")]
+    [InlineData("COM\u00B9.txt")]
+    [InlineData("trailing. ")]
     public void RejectsUnsafeOrInvalidPaths(string path)
     {
         Directory.CreateDirectory(root);
@@ -73,6 +80,14 @@ public sealed class LooseFileAssetProviderTests : IDisposable
         var provider = new LooseFileAssetProvider(root);
 
         Assert.False(provider.TryResolve("link/secret.bin", out _));
+    }
+
+    [Fact]
+    public void ContainmentUsesCaseSensitiveComparison()
+    {
+        Assert.False(LooseFileAssetProvider.IsPathWithinRoot(
+            @"C:\ROOT\message.bin",
+            @"C:\Root\"));
     }
 
     public void Dispose()
