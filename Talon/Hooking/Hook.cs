@@ -4,7 +4,10 @@ using System.Runtime.InteropServices;
 
 namespace Talon.Hooking;
 
-/// <summary>Controls a hook and exposes its callable original function.</summary>
+/// <summary>
+/// Controls a hook and exposes its callable original function. Hook delegate types
+/// must declare matching Reloaded <c>Function</c> and unmanaged calling conventions.
+/// </summary>
 public abstract class Hook<T> : IDisposable where T : Delegate
 {
     protected Hook(nint address) => Address = address;

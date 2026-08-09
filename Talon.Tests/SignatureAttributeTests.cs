@@ -25,13 +25,49 @@ public sealed class SignatureAttributeTests
         }
     }
 
+    [Fact]
+    public void AmbiguousSignatureIsRejected()
+    {
+        var target = new OffsetTarget();
+        var scanner = new FixedScanner((nint)0x1000, (nint)0x2000);
+
+        Assert.Throws<KeyNotFoundException>(() =>
+            new GameInteropProvider(scanner).InitializeFromAttributes(target));
+    }
+
+    [Fact]
+    public void LaterMemberFailureRollsBackEarlierAssignments()
+    {
+        var memory = Marshal.AllocHGlobal(8);
+        try
+        {
+            Marshal.WriteInt32(memory + 2, 0x12345678);
+            var target = new RollbackTarget();
+
+            Assert.Throws<NotSupportedException>(() =>
+                new GameInteropProvider(new FixedScanner(memory))
+                    .InitializeFromAttributes(target));
+            Assert.Equal(7, target.First);
+        }
+        finally { Marshal.FreeHGlobal(memory); }
+    }
+
     private sealed class OffsetTarget
     {
         [Signature("AA", UseFlags = SignatureUseFlags.Offset, Offset = 2)]
         public int Value { get; private set; }
     }
 
-    private sealed class FixedScanner(nint address) : ISigScanner
+    private sealed class RollbackTarget
+    {
+        [Signature("AA", UseFlags = SignatureUseFlags.Offset, Offset = 2)]
+        public int First { get; private set; } = 7;
+
+        [Signature("BB", UseFlags = SignatureUseFlags.Offset)]
+        public bool Unsupported { get; private set; }
+    }
+
+    private sealed class FixedScanner(nint address, nint secondAddress = default) : ISigScanner
     {
         public bool IsCopy => false;
         public nint SearchBase => address;
@@ -87,7 +123,9 @@ public sealed class SignatureAttributeTests
         public SignatureScanResult ScanTextBatch(
             IReadOnlyCollection<SignatureQuery> queries,
             CancellationToken cancellationToken = default) =>
-            new(queries.ToDictionary(query => query.Name, _ => new[] { address }));
+            new(queries.ToDictionary(
+                query => query.Name,
+                _ => secondAddress == 0 ? [address] : new[] { address, secondAddress }));
         public nint ResolveTextMatch(nint match) => match;
     }
 }

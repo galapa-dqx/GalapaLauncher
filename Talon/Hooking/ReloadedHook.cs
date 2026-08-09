@@ -12,8 +12,6 @@ internal sealed class ReloadedHook<T> : Hook<T> where T : Delegate
     {
         using var scope = HookManager.HookEnableSyncRoot.EnterScope();
         implementation = ReloadedHooks.Instance.CreateHook(detour, address.ToInt64());
-        implementation.Activate();
-        implementation.Disable();
     }
 
     public override T Original
@@ -25,6 +23,7 @@ internal sealed class ReloadedHook<T> : Hook<T> where T : Delegate
         }
     }
 
+    public override T OriginalDisposeSafe => implementation.OriginalFunction;
     public override bool IsEnabled => !IsDisposed && implementation.IsHookEnabled;
     public override string BackendName => "Reloaded";
 
@@ -32,14 +31,19 @@ internal sealed class ReloadedHook<T> : Hook<T> where T : Delegate
     {
         using var scope = HookManager.HookEnableSyncRoot.EnterScope();
         CheckDisposed();
-        if (!implementation.IsHookEnabled) implementation.Enable();
+        if (!implementation.IsHookActivated) implementation.Activate();
+        else if (!implementation.IsHookEnabled) implementation.Enable();
+        HookManager.TrackEnabled(this);
     }
 
     public override void Disable()
     {
         using var scope = HookManager.HookEnableSyncRoot.EnterScope();
         if (!IsDisposed && implementation.IsHookActivated && implementation.IsHookEnabled)
+        {
             implementation.Disable();
+            HookManager.TrackDisabled(this);
+        }
     }
 
     public override void Dispose()
@@ -47,6 +51,7 @@ internal sealed class ReloadedHook<T> : Hook<T> where T : Delegate
         using var scope = HookManager.HookEnableSyncRoot.EnterScope();
         if (IsDisposed) return;
         Disable();
+        HookManager.TrackDisabled(this);
         base.Dispose();
     }
 }

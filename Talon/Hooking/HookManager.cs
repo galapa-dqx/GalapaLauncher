@@ -12,5 +12,12 @@ namespace Talon.Hooking;
 /// </summary>
 internal static class HookManager
 {
+    private static readonly HashSet<object> EnabledHooks = [];
+
     internal static Lock HookEnableSyncRoot { get; } = new();
+
+    // Native code retains only a function pointer. Root enabled hook objects so
+    // an extension cannot collect its reverse delegate wrapper by accident.
+    internal static void TrackEnabled(object hook) => EnabledHooks.Add(hook);
+    internal static void TrackDisabled(object hook) => EnabledHooks.Remove(hook);
 }

@@ -11,7 +11,7 @@ internal sealed class FunctionPointerVariableHook<T> : Hook<T> where T : Delegat
     private readonly T original;
     private readonly T detour;
     private readonly nint detourAddress;
-    private bool enabled;
+    private volatile bool enabled;
 
     public FunctionPointerVariableHook(nint address, T detour) : base(address)
     {
@@ -42,6 +42,7 @@ internal sealed class FunctionPointerVariableHook<T> : Hook<T> where T : Delegat
         if (IsEnabled) return;
         WritePointer(detourAddress);
         enabled = true;
+        HookManager.TrackEnabled(this);
     }
 
     public override void Disable()
@@ -50,6 +51,7 @@ internal sealed class FunctionPointerVariableHook<T> : Hook<T> where T : Delegat
         if (IsDisposed || !IsEnabled) return;
         WritePointer(originalAddress);
         enabled = false;
+        HookManager.TrackDisabled(this);
     }
 
     public override void Dispose()
@@ -57,6 +59,7 @@ internal sealed class FunctionPointerVariableHook<T> : Hook<T> where T : Delegat
         using var scope = HookManager.HookEnableSyncRoot.EnterScope();
         if (IsDisposed) return;
         Disable();
+        HookManager.TrackDisabled(this);
         GC.KeepAlive(detour);
         base.Dispose();
     }

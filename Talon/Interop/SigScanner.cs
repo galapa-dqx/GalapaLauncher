@@ -7,8 +7,9 @@ using System.Runtime.InteropServices;
 namespace Talon.Interop;
 
 /// <summary>Scans the live 32-bit game image for byte signatures.</summary>
-public sealed class SigScanner : ISigScanner
+public sealed partial class SigScanner : ISigScanner
 {
+    private readonly byte[] textCopy;
     /// <summary>Creates a scanner for the current process's main module.</summary>
     public SigScanner()
     {
@@ -40,9 +41,16 @@ public sealed class SigScanner : ISigScanner
 
         if (TextSectionSize == 0)
             throw new BadImageFormatException("The game module has no .text section.");
+
+        // The unpack barrier observes the page-rounded .text range becoming
+        // executable before this constructor runs. Verify that every page is
+        // still committed and readable, then snapshot it before hooks patch it.
+        ValidateReadableRange(TextSectionBase, TextSectionSize);
+        textCopy = new byte[TextSectionSize];
+        Marshal.Copy(TextSectionBase, textCopy, 0, textCopy.Length);
     }
 
-    public bool IsCopy => false;
+    public bool IsCopy => true;
     public nint SearchBase { get; }
     public nint TextSectionBase { get; private set; }
     public long TextSectionOffset { get; private set; }
@@ -57,19 +65,19 @@ public sealed class SigScanner : ISigScanner
 
     public nint GetStaticAddressFromSig(string signature, int offset = 0)
     {
-        var match = ScanRaw(TextSectionBase, TextSectionSize, signature);
+        var match = ScanTextRaw(signature);
         return GetStaticAddressFromMatch(match, offset);
     }
 
     public nint GetStaticAddressFromMatch(nint match, int offset = 0)
     {
         var instruction = ResolveTextMatch(match) + offset;
-        var opcode = Marshal.ReadByte(instruction);
+        var opcode = ReadTextByte(instruction);
         return opcode switch
         {
-            0xA1 or 0xA3 => Marshal.ReadInt32(instruction + 1),
-            0x8B when Marshal.ReadByte(instruction + 1) is 0x0D or 0x15 or 0x1D or 0x35 or 0x3D
-                => Marshal.ReadInt32(instruction + 2),
+            0xA1 or 0xA3 => ReadTextInt32(instruction + 1),
+            0x8B or 0x89 when (ReadTextByte(instruction + 1) & 0xC7) == 0x05
+                => ReadTextInt32(instruction + 2),
             _ => throw new KeyNotFoundException(
                 $"Match at 0x{match:X8} did not point at a supported x86 static-address instruction."),
         };
@@ -82,7 +90,7 @@ public sealed class SigScanner : ISigScanner
     public bool TryScanData(string signature, out nint result) =>
         Try(() => ScanData(signature), out result);
     public nint ScanModule(string signature) =>
-        Scan(SearchBase, Module.ModuleMemorySize, signature);
+        ScanReadableRegions(SearchBase, Module.ModuleMemorySize, signature);
     public bool TryScanModule(string signature, out nint result) =>
         Try(() => ScanModule(signature), out result);
     public nint ResolveRelativeAddress(nint nextInstAddr, int relOffset) =>
@@ -90,7 +98,7 @@ public sealed class SigScanner : ISigScanner
 
     public nint ScanText(string signature)
     {
-        var result = ScanRaw(TextSectionBase, TextSectionSize, signature);
+        var result = ScanTextRaw(signature);
         return ResolveTextMatch(result);
     }
 
@@ -107,16 +115,24 @@ public sealed class SigScanner : ISigScanner
         return ScanTextBatch([query], cancellationToken).GetMatches(query.Name);
     }
 
-    public SignatureScanResult ScanTextBatch(
+    public unsafe SignatureScanResult ScanTextBatch(
         IReadOnlyCollection<SignatureQuery> queries,
-        CancellationToken cancellationToken = default) =>
-        ScanTextBatch(TextSectionBase, TextSectionSize, queries, cancellationToken);
+        CancellationToken cancellationToken = default)
+    {
+        fixed (byte* copy = textCopy)
+            return ScanTextBatchCore(
+                copy,
+                TextSectionBase,
+                textCopy.Length,
+                queries,
+                cancellationToken);
+    }
 
     public nint ResolveTextMatch(nint match)
     {
-        var opcode = Marshal.ReadByte(match);
+        var opcode = ReadTextByte(match);
         return opcode is 0xE8 or 0xE9
-            ? match + 5 + Marshal.ReadInt32(match + 1)
+            ? match + 5 + ReadTextInt32(match + 1)
             : match;
     }
 
@@ -143,9 +159,9 @@ public sealed class SigScanner : ISigScanner
     }
 
     private static nint Scan(nint start, int length, string signature) =>
-        ScanRaw(start, length, signature);
+        ScanRaw(start, length, signature, start);
 
-    private static nint ScanRaw(nint start, int length, string signature)
+    private static nint ScanRaw(nint start, int length, string signature, nint resultBase)
     {
         var pattern = Parse(signature);
         unsafe
@@ -153,16 +169,31 @@ public sealed class SigScanner : ISigScanner
             var haystack = (byte*)start;
             for (var i = 0; i <= length - pattern.Length; i++)
                 if (Matches(haystack + i, pattern))
-                    return start + i;
+                    return resultBase + i;
         }
         throw new KeyNotFoundException($"Signature '{signature}' was not found.");
     }
 
-    internal static SignatureScanResult ScanTextBatch(
+    internal static unsafe SignatureScanResult ScanTextBatch(
         nint start,
         int length,
         IReadOnlyCollection<SignatureQuery> queries,
         CancellationToken cancellationToken = default)
+    {
+        return ScanTextBatchCore(
+            (byte*)start,
+            start,
+            length,
+            queries,
+            cancellationToken);
+    }
+
+    private static unsafe SignatureScanResult ScanTextBatchCore(
+        byte* start,
+        nint resultBase,
+        int length,
+        IReadOnlyCollection<SignatureQuery> queries,
+        CancellationToken cancellationToken)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(length);
         ArgumentNullException.ThrowIfNull(queries);
@@ -188,7 +219,7 @@ public sealed class SigScanner : ISigScanner
             {
                 if (offset <= length - entry.Pattern.Length &&
                     Matches(start + offset, entry.Pattern))
-                    entry.Matches.Add(start + offset);
+                    entry.Matches.Add(resultBase + offset);
             }
         }
 
@@ -217,13 +248,75 @@ public sealed class SigScanner : ISigScanner
         return true;
     }
 
-    private static bool Matches(nint candidate, byte?[] pattern)
+    private unsafe nint ScanTextRaw(string signature)
     {
-        for (var i = 0; i < pattern.Length; i++)
-            if (pattern[i] is { } value && Marshal.ReadByte(candidate + i) != value)
-                return false;
-        return true;
+        fixed (byte* copy = textCopy)
+            return ScanRaw((nint)copy, textCopy.Length, signature, TextSectionBase);
     }
+
+    private byte ReadTextByte(nint address)
+    {
+        var offset = checked((int)(address - TextSectionBase));
+        if ((uint)offset >= (uint)textCopy.Length)
+            return Marshal.ReadByte(address);
+        return textCopy[offset];
+    }
+
+    private int ReadTextInt32(nint address)
+    {
+        var offset = checked((int)(address - TextSectionBase));
+        if ((uint)offset <= (uint)(textCopy.Length - sizeof(int)))
+            return BitConverter.ToInt32(textCopy, offset);
+        return Marshal.ReadInt32(address);
+    }
+
+    private static nint ScanReadableRegions(nint start, int length, string signature)
+    {
+        var pattern = Parse(signature);
+        var current = (nuint)start;
+        var end = checked(current + (nuint)length);
+        while (current < end)
+        {
+            if (VirtualQuery((nint)current, out var info, (nuint)Marshal.SizeOf<MemoryBasicInformation>()) == 0)
+                break;
+            var regionEnd = checked((nuint)info.BaseAddress + info.RegionSize);
+            if (regionEnd <= current) break;
+            var scanEnd = regionEnd < end ? regionEnd : end;
+            if (IsReadable(info) && scanEnd - current >= (nuint)pattern.Length)
+            {
+                unsafe
+                {
+                    var candidate = (byte*)current;
+                    var count = checked((int)(scanEnd - current));
+                    for (var offset = 0; offset <= count - pattern.Length; offset++)
+                        if (Matches(candidate + offset, pattern))
+                            return (nint)(current + (nuint)offset);
+                }
+            }
+            current = regionEnd;
+        }
+        throw new KeyNotFoundException($"Signature '{signature}' was not found.");
+    }
+
+    private static void ValidateReadableRange(nint start, int length)
+    {
+        var current = (nuint)start;
+        var end = checked(current + (nuint)length);
+        while (current < end)
+        {
+            if (VirtualQuery((nint)current, out var info, (nuint)Marshal.SizeOf<MemoryBasicInformation>()) == 0 ||
+                !IsReadable(info))
+                throw new BadImageFormatException("The game .text section is not fully committed and readable.");
+            var regionEnd = checked((nuint)info.BaseAddress + info.RegionSize);
+            if (regionEnd <= current)
+                throw new BadImageFormatException("The game .text memory map is invalid.");
+            current = regionEnd < end ? regionEnd : end;
+        }
+    }
+
+    private static bool IsReadable(MemoryBasicInformation info) =>
+        info.State == MemoryCommit &&
+        (info.Protect & (PageNoAccess | PageGuard)) == 0;
 
     private static bool Try(Func<nint> action, out nint result)
     {
@@ -238,4 +331,26 @@ public sealed class SigScanner : ISigScanner
             return false;
         }
     }
+
+    private const uint MemoryCommit = 0x1000;
+    private const uint PageNoAccess = 0x01;
+    private const uint PageGuard = 0x100;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MemoryBasicInformation
+    {
+        public nint BaseAddress;
+        public nint AllocationBase;
+        public uint AllocationProtect;
+        public nuint RegionSize;
+        public uint State;
+        public uint Protect;
+        public uint Type;
+    }
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    private static partial nuint VirtualQuery(
+        nint address,
+        out MemoryBasicInformation information,
+        nuint length);
 }

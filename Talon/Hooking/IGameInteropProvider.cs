@@ -12,7 +12,12 @@ public interface IGameInteropProvider
     /// <summary>Initializes members marked with <see cref="SignatureAttribute"/>.</summary>
     void InitializeFromAttributes(object self);
 
-    /// <summary>Hooks a function pointer stored at <paramref name="address"/>.</summary>
+    /// <summary>
+    /// Hooks a function pointer stored at <paramref name="address"/>. Delegate types
+    /// must declare matching Reloaded <c>Function</c> and
+    /// <see cref="System.Runtime.InteropServices.UnmanagedFunctionPointerAttribute"/>
+    /// conventions.
+    /// </summary>
     Hook<T> HookFromFunctionPointerVariable<T>(nint address, T detour) where T : Delegate;
 
     /// <summary>Hooks an entry in a module's import address table.</summary>
@@ -30,7 +35,10 @@ public interface IGameInteropProvider
         T detour,
         HookBackend backend = HookBackend.Automatic) where T : Delegate;
 
-    /// <summary>Hooks code at a signed native address.</summary>
+    /// <summary>
+    /// Hooks code at a signed native address. Delegate types must declare matching
+    /// Reloaded and unmanaged calling-convention attributes.
+    /// </summary>
     Hook<T> HookFromAddress<T>(
         nint procAddress,
         T detour,

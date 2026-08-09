@@ -1,4 +1,6 @@
 using System.Reflection;
+using System.Runtime.InteropServices;
+using Talon.Hooking;
 using Reloaded.Hooks.Definitions.X86;
 
 namespace Talon.Tests;
@@ -27,6 +29,9 @@ public sealed class HookCallingConventionTests
         Assert.Equal(
             (int)Reloaded.Hooks.Definitions.X86.CallingConventions.MicrosoftThiscall,
             Convert.ToInt32(convention.Value));
+        var unmanaged = delegateType.GetCustomAttribute<UnmanagedFunctionPointerAttribute>();
+        Assert.NotNull(unmanaged);
+        Assert.Equal(CallingConvention.ThisCall, unmanaged.CallingConvention);
     }
 
     [Fact]
@@ -40,4 +45,21 @@ public sealed class HookCallingConventionTests
         var parameter = Assert.Single(invoke.GetParameters());
         Assert.Equal(typeof(nint), parameter.ParameterType);
     }
+
+    [Fact]
+    public void RejectsDelegateWithoutReloadedConvention() =>
+        Assert.Throws<ArgumentException>(() =>
+            HookDelegateValidator.Validate<UnmanagedOnlyDelegate>());
+
+    [Fact]
+    public void RejectsMismatchedDelegateConventions() =>
+        Assert.Throws<ArgumentException>(() =>
+            HookDelegateValidator.Validate<MismatchedDelegate>());
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate void UnmanagedOnlyDelegate();
+
+    [Function(Reloaded.Hooks.Definitions.X86.CallingConventions.MicrosoftThiscall)]
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate void MismatchedDelegate();
 }

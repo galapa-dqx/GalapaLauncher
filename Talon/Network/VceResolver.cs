@@ -72,7 +72,7 @@ internal sealed class VceResolver(ISigScanner scanner, SignatureScanResult signa
         return RequireUnique(candidates, "VCE normal-select poller");
     }
 
-    private static bool HasTripleDirectCallToSameTarget(nint start, nint end)
+    internal static bool HasTripleDirectCallToSameTarget(nint start, nint end)
     {
         var calls = new List<(nint Address, nint Target)>();
         for (var address = start; address + 5 < end; address++)
@@ -87,7 +87,7 @@ internal sealed class VceResolver(ISigScanner scanner, SignatureScanResult signa
         return false;
     }
 
-    private static bool IsIndirectCallWithDisp8(nint address, byte displacement)
+    internal static bool IsIndirectCallWithDisp8(nint address, byte displacement)
     {
         if (Marshal.ReadByte(address) != 0xFF) return false;
         var modRm = Marshal.ReadByte(address + 1);

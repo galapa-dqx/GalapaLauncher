@@ -17,6 +17,7 @@ public sealed partial class GameInteropProvider(ISigScanner scanner) : IGameInte
         const BindingFlags flags =
             BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
         var members = self.GetType().GetMembers(flags)
+            .OrderBy(member => member.MetadataToken)
             .Select(member => (Member: member, Attribute: member.GetCustomAttribute<SignatureAttribute>()))
             .Where(entry => entry.Attribute is not null)
             .Select((entry, index) => (
@@ -28,31 +29,66 @@ public sealed partial class GameInteropProvider(ISigScanner scanner) : IGameInte
             .ToArray();
         var matches = scanner.ScanTextBatch(members.Select(entry => entry.Query).ToArray());
 
-        foreach (var entry in members)
+        var initialized = new List<(MemberInfo Member, object? Previous, IDisposable? Created)>();
+        try
         {
-            try
+            foreach (var entry in members)
             {
                 var candidates = matches.GetMatches(entry.Query.Name);
-                if (candidates.Count == 0)
-                    throw new KeyNotFoundException(
-                        $"Signature '{entry.Attribute.Signature}' was not found.");
-                var address = entry.Attribute.ScanType == SignatureScanType.StaticAddress
-                    ? scanner.GetStaticAddressFromMatch(candidates[0])
-                    : scanner.ResolveTextMatch(candidates[0]);
-                InitializeMember(self, entry.Member, entry.Attribute, address);
+                nint address;
+                try
+                {
+                    if (candidates.Count != 1)
+                        throw new KeyNotFoundException(
+                            $"Signature '{entry.Attribute.Signature}' expected one match " +
+                            $"but found {candidates.Count}.");
+                    address = entry.Attribute.ScanType == SignatureScanType.StaticAddress
+                        ? scanner.GetStaticAddressFromMatch(candidates[0])
+                        : scanner.ResolveTextMatch(candidates[0]);
+                }
+                catch (KeyNotFoundException exception) when (entry.Attribute.Fallibility)
+                {
+                    Log.Warning(
+                        $"fallible signature '{entry.Attribute.Signature}' failed: " +
+                        exception.Message);
+                    continue;
+                }
+
+                var previous = GetMemberValue(self, entry.Member);
+                var value = CreateMemberValue(self, entry.Member, entry.Attribute, address);
+                initialized.Add((entry.Member, previous, value as IDisposable));
+                SetMemberValue(self, entry.Member, value);
             }
-            catch (Exception exception) when (entry.Attribute.Fallibility)
+        }
+        catch
+        {
+            for (var index = initialized.Count - 1; index >= 0; index--)
             {
-                Log.Warning(
-                    $"fallible signature '{entry.Attribute.Signature}' failed: {exception.Message}");
+                var assignment = initialized[index];
+                try { assignment.Created?.Dispose(); }
+                catch (Exception exception)
+                {
+                    Log.Error($"signature hook rollback failed for {assignment.Member.Name}", exception);
+                }
+                try { SetMemberValue(self, assignment.Member, assignment.Previous); }
+                catch (Exception exception)
+                {
+                    Log.Error(
+                        $"signature member rollback failed for {assignment.Member.Name}",
+                        exception);
+                }
             }
+            throw;
         }
     }
 
     /// <inheritdoc />
     public Hook<T> HookFromFunctionPointerVariable<T>(nint address, T detour)
-        where T : Delegate =>
-        new FunctionPointerVariableHook<T>(address, detour);
+        where T : Delegate
+    {
+        HookDelegateValidator.Validate<T>();
+        return new FunctionPointerVariableHook<T>(address, detour);
+    }
 
     /// <inheritdoc />
     public Hook<T> HookFromImport<T>(
@@ -86,13 +122,16 @@ public sealed partial class GameInteropProvider(ISigScanner scanner) : IGameInte
     public Hook<T> HookFromAddress<T>(
         nint procAddress,
         T detour,
-        HookBackend backend = HookBackend.Automatic) where T : Delegate =>
-        backend switch
+        HookBackend backend = HookBackend.Automatic) where T : Delegate
+    {
+        HookDelegateValidator.Validate<T>();
+        return backend switch
         {
             HookBackend.Automatic or HookBackend.Reloaded =>
                 new ReloadedHook<T>(procAddress, detour),
             _ => throw new ArgumentOutOfRangeException(nameof(backend)),
         };
+    }
 
     /// <inheritdoc />
     public Hook<T> HookFromAddress<T>(
@@ -115,7 +154,7 @@ public sealed partial class GameInteropProvider(ISigScanner scanner) : IGameInte
         HookBackend backend = HookBackend.Automatic) where T : Delegate =>
         HookFromAddress(scanner.ScanText(signature), detour, backend);
 
-    private void InitializeMember(
+    private object CreateMemberValue(
         object target,
         MemberInfo member,
         SignatureAttribute attribute,
@@ -132,7 +171,7 @@ public sealed partial class GameInteropProvider(ISigScanner scanner) : IGameInte
             ? InferUse(memberType)
             : attribute.UseFlags;
 
-        object value = use switch
+        return use switch
         {
             SignatureUseFlags.Pointer => CreatePointer(memberType, address),
             SignatureUseFlags.Hook => CreateHook(target, member, memberType, address, attribute),
@@ -140,9 +179,20 @@ public sealed partial class GameInteropProvider(ISigScanner scanner) : IGameInte
             _ => throw new NotSupportedException(
                 $"Signature member {member.Name} has unsupported type {memberType}."),
         };
+    }
 
-        if (member is FieldInfo fieldInfo) fieldInfo.SetValue(target, value);
-        else ((PropertyInfo)member).SetValue(target, value);
+    private static object? GetMemberValue(object target, MemberInfo member) => member switch
+    {
+        FieldInfo field => field.GetValue(target),
+        PropertyInfo property => property.GetValue(target),
+        _ => throw new NotSupportedException($"Unsupported signature member {member.Name}."),
+    };
+
+    private static void SetMemberValue(object target, MemberInfo member, object? value)
+    {
+        if (member is FieldInfo field) field.SetValue(target, value);
+        else if (member is PropertyInfo property) property.SetValue(target, value);
+        else throw new NotSupportedException($"Unsupported signature member {member.Name}.");
     }
 
     private static SignatureUseFlags InferUse(Type memberType)
@@ -198,12 +248,22 @@ public sealed partial class GameInteropProvider(ISigScanner scanner) : IGameInte
 
     private static object ReadOffset(Type memberType, nint address, int offset)
     {
-        if (!memberType.IsPrimitive)
-            throw new NotSupportedException(
-                $"Signature offset use requires a primitive member, not {memberType}.");
-        return Marshal.PtrToStructure(address + offset, memberType)
-            ?? throw new InvalidOperationException(
-                $"Could not read {memberType} at 0x{address + offset:X8}.");
+        var pointer = address + offset;
+        return Type.GetTypeCode(memberType) switch
+        {
+            TypeCode.Byte => (object)Marshal.ReadByte(pointer),
+            TypeCode.SByte => unchecked((sbyte)Marshal.ReadByte(pointer)),
+            TypeCode.Int16 => Marshal.ReadInt16(pointer),
+            TypeCode.UInt16 => unchecked((ushort)Marshal.ReadInt16(pointer)),
+            TypeCode.Int32 => Marshal.ReadInt32(pointer),
+            TypeCode.UInt32 => unchecked((uint)Marshal.ReadInt32(pointer)),
+            TypeCode.Int64 => Marshal.ReadInt64(pointer),
+            TypeCode.UInt64 => unchecked((ulong)Marshal.ReadInt64(pointer)),
+            TypeCode.Single => BitConverter.Int32BitsToSingle(Marshal.ReadInt32(pointer)),
+            TypeCode.Double => BitConverter.Int64BitsToDouble(Marshal.ReadInt64(pointer)),
+            _ => throw new NotSupportedException(
+                $"Signature offset use requires a fixed-width primitive, not {memberType}.")
+        };
     }
 
     private static unsafe nint FindImport(
