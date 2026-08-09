@@ -40,4 +40,46 @@ public sealed class VceResolverTests
         }
         finally { Marshal.FreeHGlobal(memory); }
     }
+
+    [Fact]
+    public void RejectsThreeNearbyCallsToDifferentTargets()
+    {
+        var memory = Marshal.AllocHGlobal(0x40);
+        try
+        {
+            var bytes = Enumerable.Repeat((byte)0x90, 0x40).ToArray();
+            foreach (var offset in new[] { 0, 8, 16 })
+            {
+                bytes[offset] = 0xE8;
+                var target = memory + 0x20 + offset;
+                BitConverter.GetBytes(checked((int)(target - (memory + offset + 5))))
+                    .CopyTo(bytes, offset + 1);
+            }
+            Marshal.Copy(bytes, 0, memory, bytes.Length);
+
+            Assert.False(VceResolver.HasTripleDirectCallToSameTarget(memory, memory + 0x40));
+        }
+        finally { Marshal.FreeHGlobal(memory); }
+    }
+
+    [Fact]
+    public void RejectsSameTargetCallsOutsideStructuralWindow()
+    {
+        var memory = Marshal.AllocHGlobal(0x100);
+        try
+        {
+            var bytes = Enumerable.Repeat((byte)0x90, 0x100).ToArray();
+            foreach (var offset in new[] { 0, 0x81, 0x90 })
+            {
+                bytes[offset] = 0xE8;
+                var target = memory + 0xF0;
+                BitConverter.GetBytes(checked((int)(target - (memory + offset + 5))))
+                    .CopyTo(bytes, offset + 1);
+            }
+            Marshal.Copy(bytes, 0, memory, bytes.Length);
+
+            Assert.False(VceResolver.HasTripleDirectCallToSameTarget(memory, memory + 0x100));
+        }
+        finally { Marshal.FreeHGlobal(memory); }
+    }
 }

@@ -197,9 +197,14 @@ public sealed partial class SigScanner : ISigScanner
     {
         ArgumentOutOfRangeException.ThrowIfNegative(length);
         ArgumentNullException.ThrowIfNull(queries);
+        cancellationToken.ThrowIfCancellationRequested();
 
         var names = new HashSet<string>(StringComparer.Ordinal);
-        var compiled = new List<(SignatureQuery Query, byte?[] Pattern, List<nint> Matches)>();
+        var compiled = new List<(
+            SignatureQuery Query,
+            byte?[] Pattern,
+            int LastOffset,
+            List<nint> Matches)>();
         foreach (var query in queries)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(query.Name);
@@ -207,23 +212,26 @@ public sealed partial class SigScanner : ISigScanner
                 throw new ArgumentException(
                     $"Signature batch contains duplicate name '{query.Name}'.",
                     nameof(queries));
-            compiled.Add((query, Parse(query.Pattern), []));
+            var pattern = Parse(query.Pattern);
+            compiled.Add((query, pattern, length - pattern.Length, []));
         }
+        var compiledPatterns = compiled.ToArray();
 
         // Keep the image offset as the outer loop. All registered patterns inspect
         // each candidate while that part of .text is hot in the CPU cache.
         for (var offset = 0; offset < length; offset++)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            foreach (var entry in compiled)
+            if ((offset & 0xFFFF) == 0) cancellationToken.ThrowIfCancellationRequested();
+            foreach (var entry in compiledPatterns)
             {
-                if (offset <= length - entry.Pattern.Length &&
+                if (offset <= entry.LastOffset &&
                     Matches(start + offset, entry.Pattern))
                     entry.Matches.Add(resultBase + offset);
             }
         }
+        cancellationToken.ThrowIfCancellationRequested();
 
-        var results = compiled.ToDictionary(
+        var results = compiledPatterns.ToDictionary(
             entry => entry.Query.Name,
             entry => entry.Matches.ToArray(),
             StringComparer.Ordinal);

@@ -45,4 +45,18 @@ public sealed class SignatureBatchTests
 
         Assert.Contains("duplicate name", exception.Message);
     }
+
+    [Fact]
+    public void RejectsPreCancelledScanEvenForEmptyImage()
+    {
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        Assert.Throws<OperationCanceledException>(() =>
+            SigScanner.ScanTextBatch(
+                0,
+                0,
+                [new SignatureQuery("single", "AA")],
+                cancellation.Token));
+    }
 }
