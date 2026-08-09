@@ -18,7 +18,6 @@
 
   <ItemGroup>
     <PackageReference Include="goatcorp.Reloaded.Hooks" Version="4.2.0-goatcorp8" />
-    <PackageReference Include="MinSharp" Version="1.0.4" />
   </ItemGroup>
 
   <Target Name="CopyTalonNetHost"

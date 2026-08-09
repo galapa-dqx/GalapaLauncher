@@ -37,8 +37,8 @@ dotnet build Talon.Injector\Talon.Injector.csproj -c Release
 
 `Talon.Interop.ISigScanner`, `Talon.Hooking.IGameInteropProvider`, and
 `Talon.Hooking.Hook<T>` follow the familiar Dalamud service shape. Automatic
-hooks use Reloaded.Hooks. MinHook remains an explicit backend for targets that
-require it. All DQX delegates declare their x86 calling convention.
+hooks use Reloaded.Hooks, Talon's managed patching backend. All DQX delegates
+declare their x86 calling convention.
 
 Built-in hooks submit named `SignatureQuery` values to `ScanTextBatch`, which
 walks `.text` once and returns every raw candidate for structural validation.

@@ -12,7 +12,6 @@ Talon's hook and signature-service API shape is adapted from
 - `Talon/Hooking/IGameInteropProvider.cs`
 - `Talon/Hooking/GameInteropProvider.cs`
 - `Talon/Hooking/FunctionPointerVariableHook.cs`
-- `Talon/Hooking/MinHook.cs`
 - `Talon/Hooking/ReloadedHook.cs`
 - `Talon/Interop/ISigScanner.cs`
 - `Talon/Interop/SigScanner.cs`

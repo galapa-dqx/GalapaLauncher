@@ -89,7 +89,6 @@ public sealed partial class GameInteropProvider(ISigScanner scanner) : IGameInte
         HookBackend backend = HookBackend.Automatic) where T : Delegate =>
         backend switch
         {
-            HookBackend.MinHook => new MinHook<T>(procAddress, detour),
             HookBackend.Automatic or HookBackend.Reloaded =>
                 new ReloadedHook<T>(procAddress, detour),
             _ => throw new ArgumentOutOfRangeException(nameof(backend)),
@@ -221,7 +220,9 @@ public sealed partial class GameInteropProvider(ISigScanner scanner) : IGameInte
         var importRva = *(uint*)(optional + 96 + 8);
         if (importRva == 0) throw new MissingMethodException("The module has no imports.");
 
-        for (var descriptor = image + importRva; *(uint*)descriptor != 0; descriptor += 20)
+        for (var descriptor = image + importRva;
+             !IsNullImportDescriptor((nint)descriptor);
+             descriptor += 20)
         {
             var importedModule = Marshal.PtrToStringAnsi((nint)(image + *(uint*)(descriptor + 12)));
             if (!string.Equals(importedModule, moduleName, StringComparison.OrdinalIgnoreCase))
@@ -245,6 +246,16 @@ public sealed partial class GameInteropProvider(ISigScanner scanner) : IGameInte
             }
         }
         throw new MissingMethodException($"{moduleName}!{functionName}");
+    }
+
+    internal static unsafe bool IsNullImportDescriptor(nint descriptor)
+    {
+        var fields = (uint*)descriptor;
+        return fields[0] == 0 &&
+               fields[1] == 0 &&
+               fields[2] == 0 &&
+               fields[3] == 0 &&
+               fields[4] == 0;
     }
 
     private static ProcessModule GetMainModule()

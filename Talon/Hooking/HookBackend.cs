@@ -10,7 +10,4 @@ public enum HookBackend
 
     /// <summary>Uses Reloaded.Hooks.</summary>
     Reloaded,
-
-    /// <summary>Uses MinHook.</summary>
-    MinHook,
 }
