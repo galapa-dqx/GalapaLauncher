@@ -165,7 +165,7 @@ public sealed class PacketHandlerServiceTests
     }
 
     [Fact]
-    public async Task TimedOutHandlerRetainsCapacityUntilItsTaskSettles()
+    public async Task TimedOutHandlerReleasesCapacityWithoutTaskSettlement()
     {
         var service = new PacketHandlerService(TimeSpan.FromMilliseconds(25));
         var interceptor = new ManuallyCompletedInterceptor();
@@ -180,7 +180,7 @@ public sealed class PacketHandlerServiceTests
             admitted = Enumerable.Range(0, 256)
                 .Count(_ => service.TryHold(0x1234, 1, [0x50]));
 
-            Assert.Equal(255, admitted);
+            Assert.Equal(256, admitted);
         }
         finally
         {
@@ -214,22 +214,25 @@ public sealed class PacketHandlerServiceTests
         byte[] replacement) : IInboundPacketInterceptor
     {
         public PacketSelector Selector => selector;
-        public ValueTask<PacketDecision> InterceptAsync(
-            InboundPacket packet,
-            CancellationToken cancellationToken) =>
-            ValueTask.FromResult(PacketDecision.Replacement(replacement));
+        public ValueTask InterceptAsync(
+            HeldInboundPacket packet,
+            CancellationToken cancellationToken)
+        {
+            packet.TryReinject(replacement);
+            return ValueTask.CompletedTask;
+        }
     }
 
     private sealed class VariableDelayInterceptor : IInboundPacketInterceptor
     {
         public PacketSelector Selector => new(0x50);
 
-        public async ValueTask<PacketDecision> InterceptAsync(
-            InboundPacket packet,
+        public async ValueTask InterceptAsync(
+            HeldInboundPacket packet,
             CancellationToken cancellationToken)
         {
             await Task.Delay(packet.Data.Span[1], cancellationToken);
-            return PacketDecision.Original;
+            packet.TryReinjectOriginal();
         }
     }
 
@@ -238,10 +241,13 @@ public sealed class PacketHandlerServiceTests
         private readonly FaultingMemoryManager memory = new();
         public PacketSelector Selector => new(0x50);
 
-        public ValueTask<PacketDecision> InterceptAsync(
-            InboundPacket packet,
-            CancellationToken cancellationToken) =>
-            ValueTask.FromResult(PacketDecision.Replacement(memory.CreateMemory()));
+        public ValueTask InterceptAsync(
+            HeldInboundPacket packet,
+            CancellationToken cancellationToken)
+        {
+            packet.TryReinject(memory.CreateMemory());
+            return ValueTask.CompletedTask;
+        }
     }
 
     private sealed class BlockingSetupInterceptor : IInboundPacketInterceptor
@@ -250,29 +256,30 @@ public sealed class PacketHandlerServiceTests
         public ManualResetEventSlim Release { get; } = new();
         public PacketSelector Selector => new(0x50);
 
-        public ValueTask<PacketDecision> InterceptAsync(
-            InboundPacket packet,
+        public ValueTask InterceptAsync(
+            HeldInboundPacket packet,
             CancellationToken cancellationToken)
         {
             Started.Set();
             Release.Wait(cancellationToken);
-            return ValueTask.FromResult(PacketDecision.Original);
+            packet.TryReinjectOriginal();
+            return ValueTask.CompletedTask;
         }
     }
 
     private sealed class ManuallyCompletedInterceptor : IInboundPacketInterceptor
     {
-        private readonly TaskCompletionSource<PacketDecision> completion =
+        private readonly TaskCompletionSource completion =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public PacketSelector Selector => new(0x50);
 
-        public ValueTask<PacketDecision> InterceptAsync(
-            InboundPacket packet,
+        public ValueTask InterceptAsync(
+            HeldInboundPacket packet,
             CancellationToken cancellationToken) =>
             new(completion.Task);
 
-        public void Complete() => completion.TrySetResult(PacketDecision.Original);
+        public void Complete() => completion.TrySetResult();
     }
 
     private sealed class FaultingMemoryManager : MemoryManager<byte>

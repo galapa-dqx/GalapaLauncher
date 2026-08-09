@@ -8,18 +8,21 @@ internal sealed class DialogueReplaySmokeInterceptor : IInboundPacketInterceptor
 
     public PacketSelector Selector => new(0x47, 0x3CA8);
 
-    public async ValueTask<PacketDecision> InterceptAsync(
-        InboundPacket packet,
+    public async ValueTask InterceptAsync(
+        HeldInboundPacket packet,
         CancellationToken cancellationToken)
     {
         lock (sync)
         {
             if (!testedConnections.Add((packet.Connection, packet.ConnectionGeneration)))
-                return PacketDecision.Original;
+            {
+                packet.TryReinjectOriginal();
+                return;
+            }
         }
 
         Log.Info($"network smoke: holding packet {packet.PacketId} for 250ms");
         await Task.Delay(250, cancellationToken).ConfigureAwait(false);
-        return PacketDecision.Original;
+        packet.TryReinjectOriginal();
     }
 }

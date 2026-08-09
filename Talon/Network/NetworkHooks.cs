@@ -18,11 +18,15 @@ internal sealed class NetworkHooks(
     private readonly PacketHandlerService handlers = new();
     private readonly SessionLifetimeRegistry sessionLifetimes = new();
     private readonly object sessionHookLock = new();
-    private Hook<FrameParserDelegate>? parserHook;
-    private Hook<PollerDelegate>? pollerHook;
+    private volatile Hook<FrameParserDelegate>? parserHook;
+    private volatile Hook<PollerDelegate>? pollerHook;
     private volatile Hook<ProcessPayloadDelegate>? processPayloadHook;
     private volatile Hook<SessionDestructorDelegate>? destructorHook;
-    private PcapNgWriter? capture;
+    private volatile PcapNgWriter? capture;
+    private volatile FrameParserDelegate? parserOriginal;
+    private volatile PollerDelegate? pollerOriginal;
+    private volatile ProcessPayloadDelegate? processPayloadOriginal;
+    private volatile SessionDestructorDelegate? destructorOriginal;
     private volatile bool sessionHookInstallQueued;
     private volatile bool disposed;
 
@@ -57,6 +61,8 @@ internal sealed class NetworkHooks(
         pollerHook = interop.HookFromAddress(
             poller,
             (PollerDelegate)PollerDetour);
+        parserOriginal = parserHook.OriginalDisposeSafe;
+        pollerOriginal = pollerHook.OriginalDisposeSafe;
         parserHook.Enable();
         pollerHook.Enable();
         Log.Info($"VCE parser hook enabled at 0x{parser:X8}");
@@ -79,17 +85,32 @@ internal sealed class NetworkHooks(
 
     private int FrameParserDetour(nint session, nint frame, int length)
     {
-        // The parser supplies the live session object and calls its payload slot.
-        QueueSessionHookInstall(session);
+        var original = parserOriginal;
+        if (original is null) return 0;
         var previous = currentFrameType;
         var wasParsing = parsingFrame;
-        parsingFrame = true;
-        currentFrameType = frame != 0 && length > 0
-            ? (byte)(Marshal.ReadByte(frame) >> 4)
-            : byte.MaxValue;
         try
         {
-            return parserHook!.Original(session, frame, length);
+            try
+            {
+                // The parser supplies the live session object and calls its payload slot.
+                QueueSessionHookInstall(session);
+                parsingFrame = true;
+                currentFrameType = frame != 0 && length > 0
+                    ? (byte)(Marshal.ReadByte(frame) >> 4)
+                    : byte.MaxValue;
+            }
+            catch (Exception exception)
+            {
+                // Hook bookkeeping must never prevent VCE from parsing the frame.
+                Log.Error("VCE parser setup failed open", exception);
+            }
+            return original(session, frame, length);
+        }
+        catch (Exception exception)
+        {
+            Log.Error("VCE parser original failed", exception);
+            return 0;
         }
         finally
         {
@@ -100,72 +121,124 @@ internal sealed class NetworkHooks(
 
     private void ProcessPayloadDetour(nint session, nint payload, int length)
     {
-        // Only normal type-0 data frames enter the translation path. VCE control
-        // traffic and recursive replay remain synchronous.
-        if (replaying || !parsingFrame || currentFrameType != 0 || payload == 0 || length <= 0)
+        var original = processPayloadOriginal;
+        if (original is null) return;
+        var held = false;
+        try
         {
-            processPayloadHook!.Original(session, payload, length);
-            return;
+            // Only normal type-0 data frames enter the translation path. VCE control
+            // traffic and recursive replay remain synchronous.
+            if (ShouldHoldPayload(replaying, parsingFrame, currentFrameType, payload, length) &&
+                sessionLifetimes.TryGetGeneration(session, out var generation))
+            {
+                unsafe
+                {
+                    held = handlers.TryHold(
+                        session,
+                        generation,
+                        new ReadOnlySpan<byte>((void*)payload, length));
+                }
+            }
         }
-
-        var generation = sessionLifetimes.GetGeneration(session);
-
-        unsafe
-        {
-            if (!handlers.TryHold(session, generation, new ReadOnlySpan<byte>((void*)payload, length)))
-                processPayloadHook!.Original(session, payload, length);
-        }
+        catch (Exception exception) { Log.Error("VCE payload detour failed open", exception); }
+        if (!held) TryCallPayloadOriginal(original, session, payload, length);
     }
 
     private nint SessionDestructorDetour(nint session, uint flags)
     {
-        // Invalidate the generation before destruction and keep the session gate
-        // until native teardown completes. An active replay holds the same gate.
-        using var destruction = sessionLifetimes.AcquireDestruction(session);
-        return destructorHook!.Original(session, flags);
+        var original = destructorOriginal;
+        if (original is null) return 0;
+        IDisposable? destruction = null;
+        try
+        {
+            // Binary Ninja confirms slot 0 is the most-derived scalar deleting
+            // destructor. Invalidate after active replay drains, then release the
+            // gate before native teardown so VCE cannot invert a managed lock.
+            destruction = sessionLifetimes.AcquireDestruction(session);
+        }
+        catch (Exception exception)
+        {
+            // Lifetime bookkeeping is protective, but native destruction must run.
+            Log.Error("VCE destruction tracking failed open", exception);
+        }
+
+        try { return original(session, flags); }
+        catch (Exception exception)
+        {
+            Log.Error("VCE destructor original failed", exception);
+            return 0;
+        }
+        finally
+        {
+            try { destruction?.Dispose(); }
+            catch (Exception exception)
+            {
+                Log.Error("VCE destruction tracking cleanup failed", exception);
+            }
+        }
     }
 
     private nint PollerDetour(nint poller)
     {
         // NormalSelectPoller is a member function. Preserve ECX when the
         // detour calls the original implementation.
-        var result = pollerHook!.Original(poller);
-        // Drain completed work on VCE's own thread. Completion order is deliberate:
-        // a slow packet does not block a later packet that is ready to replay.
-        var stopwatch = Stopwatch.StartNew();
-        for (var count = 0;
-             count < MaximumPumpPackets && stopwatch.Elapsed < MaximumPumpTime &&
-             handlers.TryDequeue(out var packet);
-             count++)
+        var pollerCall = pollerOriginal;
+        if (pollerCall is null) return 0;
+        nint result;
+        try { result = pollerCall(poller); }
+        catch (Exception exception)
         {
-            using var replayLease = sessionLifetimes.TryAcquireReplay(
-                packet.Session,
-                packet.Generation);
-            if (replayLease is null)
+            Log.Error("VCE poller original failed", exception);
+            return 0;
+        }
+        try
+        {
+            // Drain completed work on VCE's own thread. Completion order is deliberate:
+            // a slow packet does not block a later packet that is ready to replay.
+            var pumpStart = Stopwatch.GetTimestamp();
+            for (var count = 0;
+                 count < MaximumPumpPackets &&
+                 Stopwatch.GetElapsedTime(pumpStart) < MaximumPumpTime &&
+                 handlers.TryDequeue(out var packet);
+                 count++)
             {
-                capture?.Write(packet, PacketCaptureEvent.ConnectionClosed);
-                continue;
-            }
-
-            unsafe
-            {
-                fixed (byte* data = packet.Data)
+                using var replayLease = sessionLifetimes.TryAcquireReplay(
+                    packet.Session,
+                    packet.Generation);
+                if (replayLease is null)
                 {
-                    replaying = true;
-                    try
+                    capture?.Write(packet, PacketCaptureEvent.ConnectionClosed);
+                    continue;
+                }
+
+                unsafe
+                {
+                    fixed (byte* data = packet.Data)
                     {
-                        processPayloadHook?.Original(
-                            packet.Session,
-                            (nint)data,
-                            packet.Data.Length);
-                        capture?.Write(packet, PacketCaptureEvent.Reinject);
-                    }
-                    finally
-                    {
-                        replaying = false;
+                        replaying = true;
+                        try
+                        {
+                            var payloadCall = processPayloadOriginal;
+                            if (payloadCall is null) continue;
+                            TryCallPayloadOriginal(
+                                payloadCall,
+                                packet.Session,
+                                (nint)data,
+                                packet.Data.Length);
+                            capture?.Write(packet, PacketCaptureEvent.Reinject);
+                        }
+                        finally
+                        {
+                            replaying = false;
+                        }
                     }
                 }
             }
+        }
+        catch (Exception exception)
+        {
+            // Polling already succeeded; an auxiliary replay failure must not alter it.
+            Log.Error("VCE replay pump failed open", exception);
         }
         return result;
     }
@@ -182,8 +255,8 @@ internal sealed class NetworkHooks(
         try
         {
             var vtable = Marshal.ReadIntPtr(session);
-            // DQX's VCE iSession has its destructor at slot 0 and ProcessPayload
-            // at byte offset 0x5C. Reject pointers outside game code before hooking.
+            // DQX 8.0 base and observed derived VCE vtables use a scalar deleting
+            // destructor in slot 0. ProcessPayload is at byte offset 0x5C.
             var destructorSlot = vtable;
             var processPayloadSlot = vtable + 0x5C;
             var destructor = Marshal.ReadIntPtr(destructorSlot);
@@ -211,6 +284,8 @@ internal sealed class NetworkHooks(
         nint destructorSlot,
         nint destructor)
     {
+        Hook<ProcessPayloadDelegate>? newPayloadHook = null;
+        Hook<SessionDestructorDelegate>? newDestructorHook = null;
         try
         {
             lock (sessionHookLock)
@@ -219,12 +294,18 @@ internal sealed class NetworkHooks(
                 // VCE dispatches both methods through this shared vtable. Replace
                 // each aligned x86 pointer atomically instead of patching code that
                 // another parser thread may currently be executing.
-                processPayloadHook = interop.HookFromFunctionPointerVariable(
+                newPayloadHook = interop.HookFromFunctionPointerVariable(
                     processPayloadSlot,
                     (ProcessPayloadDelegate)ProcessPayloadDetour);
-                destructorHook = interop.HookFromFunctionPointerVariable(
+                newDestructorHook = interop.HookFromFunctionPointerVariable(
                     destructorSlot,
                     (SessionDestructorDelegate)SessionDestructorDetour);
+                processPayloadOriginal = newPayloadHook.OriginalDisposeSafe;
+                destructorOriginal = newDestructorHook.OriginalDisposeSafe;
+                processPayloadHook = newPayloadHook;
+                destructorHook = newDestructorHook;
+                newPayloadHook = null;
+                newDestructorHook = null;
                 // Publish both hook objects before either detour can run. Enable
                 // the payload hook last because it is the active traffic path.
                 destructorHook.Enable();
@@ -238,10 +319,14 @@ internal sealed class NetworkHooks(
         {
             lock (sessionHookLock)
             {
+                DisposeFailedHook(newPayloadHook, "new VCE payload");
+                DisposeFailedHook(newDestructorHook, "new VCE destructor");
                 DisposeFailedHook(processPayloadHook, "VCE payload");
                 DisposeFailedHook(destructorHook, "VCE destructor");
                 processPayloadHook = null;
                 destructorHook = null;
+                processPayloadOriginal = null;
+                destructorOriginal = null;
                 sessionHookInstallQueued = false;
             }
             Log.Error("VCE session hook installation failed", exception);
@@ -253,6 +338,24 @@ internal sealed class NetworkHooks(
         try { hook?.Dispose(); }
         catch (Exception exception) { Log.Error($"{name} hook cleanup failed", exception); }
     }
+
+    private static void TryCallPayloadOriginal(
+        ProcessPayloadDelegate original,
+        nint session,
+        nint payload,
+        int length)
+    {
+        try { original(session, payload, length); }
+        catch (Exception exception) { Log.Error("VCE payload original failed", exception); }
+    }
+
+    internal static bool ShouldHoldPayload(
+        bool isReplaying,
+        bool isParsingFrame,
+        byte frameType,
+        nint payload,
+        int length) =>
+        !isReplaying && isParsingFrame && frameType == 0 && payload != 0 && length > 0;
 
     private bool IsInText(nint address) =>
         address >= scanner.TextSectionBase &&

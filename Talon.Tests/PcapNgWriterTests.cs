@@ -137,9 +137,12 @@ public sealed class PcapNgWriterTests
     {
         public PacketSelector Selector => new(0x47);
 
-        public ValueTask<PacketDecision> InterceptAsync(
-            InboundPacket packet,
-            CancellationToken cancellationToken) =>
-            ValueTask.FromResult(PacketDecision.Original);
+        public ValueTask InterceptAsync(
+            HeldInboundPacket packet,
+            CancellationToken cancellationToken)
+        {
+            packet.TryReinjectOriginal();
+            return ValueTask.CompletedTask;
+        }
     }
 }

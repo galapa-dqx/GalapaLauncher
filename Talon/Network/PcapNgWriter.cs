@@ -16,18 +16,21 @@ internal sealed class PcapNgWriter : IInboundPacketLifecycleObserver, IDisposabl
 {
     private const ushort LinkTypeUser0 = 147;
     private const int TalonHeaderSize = 32;
-    private readonly Channel<CaptureRecord> channel =
-        Channel.CreateBounded<CaptureRecord>(new BoundedChannelOptions(1024)
-        {
-            FullMode = BoundedChannelFullMode.DropWrite,
-            SingleReader = true,
-            SingleWriter = false,
-        });
+    private readonly Channel<CaptureRecord> channel;
     private readonly CancellationTokenSource cancellation = new();
     private readonly Task writerTask;
+    private long droppedRecords;
 
     public PcapNgWriter(string path)
     {
+        channel = Channel.CreateBounded<CaptureRecord>(
+            new BoundedChannelOptions(1024)
+            {
+                FullMode = BoundedChannelFullMode.DropWrite,
+                SingleReader = true,
+                SingleWriter = false,
+            },
+            _ => Interlocked.Increment(ref droppedRecords));
         var fullPath = Path.GetFullPath(path);
         var directory = Path.GetDirectoryName(fullPath);
         if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
@@ -82,6 +85,9 @@ internal sealed class PcapNgWriter : IInboundPacketLifecycleObserver, IDisposabl
             // The fault-logging continuation records the underlying exception.
         }
         cancellation.Dispose();
+        var dropped = Interlocked.Read(ref droppedRecords);
+        if (dropped != 0)
+            Log.Warning($"packet capture dropped {dropped} records under backpressure");
     }
 
     private async Task RunAsync(string path, CancellationToken cancellationToken)

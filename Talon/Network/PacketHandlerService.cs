@@ -6,13 +6,8 @@ namespace Talon.Network;
 // Selects packets, runs bounded asynchronous handlers, and queues completed replay.
 internal sealed class PacketHandlerService
 {
-    // Each held packet owns a managed copy. These limits keep a stalled or broken
-    // translator from growing the in-process backlog without bound. When a limit
-    // is reached, the detour passes the packet to VCE synchronously instead.
-    private const int MaximumHeldPackets = 256;
-    private const long MaximumHeldBytes = 8 * 1024 * 1024;
-    // A handler that does not finish must fail open so the original packet can
-    // return to the live connection.
+    internal const int MaximumHeldPackets = 256;
+    internal const long MaximumHeldBytes = 8 * 1024 * 1024;
     private static readonly TimeSpan DefaultHandlerTimeout = TimeSpan.FromSeconds(60);
 
     private readonly object registrationLock = new();
@@ -20,15 +15,18 @@ internal sealed class PacketHandlerService
     private readonly SortedDictionary<(byte Opcode, int Offset, ushort Marker), IInboundPacketInterceptor>
         markerHandlers = [];
     private readonly List<IInboundPacketObserver> observers = [];
+    private volatile IInboundPacketObserver[] observerSnapshot = [];
+    private volatile KeyValuePair<(byte Opcode, int Offset, ushort Marker), IInboundPacketInterceptor>[]
+        markerSnapshot = [];
+    private volatile IReadOnlyDictionary<byte, IInboundPacketInterceptor> opcodeSnapshot =
+        new Dictionary<byte, IInboundPacketInterceptor>();
     private readonly ConcurrentQueue<CompletedPacket> completed = new();
     private readonly TimeSpan handlerTimeout;
     private long nextPacketId;
     private int heldPacketCount;
     private long heldByteCount;
 
-    public PacketHandlerService() : this(DefaultHandlerTimeout)
-    {
-    }
+    public PacketHandlerService() : this(DefaultHandlerTimeout) { }
 
     internal PacketHandlerService(TimeSpan handlerTimeout)
     {
@@ -53,39 +51,47 @@ internal sealed class PacketHandlerService
                     throw new InvalidOperationException(
                         $"Duplicate packet selector opcode=0x{interceptor.Selector.Opcode:X2}, " +
                         $"marker=0x{marker:X4}, offset={interceptor.Selector.MarkerOffset}.");
+                markerSnapshot = markerHandlers.ToArray();
             }
             else if (!opcodeHandlers.TryAdd(interceptor.Selector.Opcode, interceptor))
             {
                 throw new InvalidOperationException(
                     $"Duplicate packet selector opcode=0x{interceptor.Selector.Opcode:X2}.");
             }
+            else opcodeSnapshot = new Dictionary<byte, IInboundPacketInterceptor>(opcodeHandlers);
         }
     }
 
     public void Register(IInboundPacketObserver observer)
     {
-        lock (registrationLock) observers.Add(observer);
+        lock (registrationLock)
+        {
+            observers.Add(observer);
+            observerSnapshot = observers.ToArray();
+        }
     }
 
-    public bool TryHold(
-        nint session,
-        long generation,
-        ReadOnlySpan<byte> data)
+    public bool TryHold(nint session, long generation, ReadOnlySpan<byte> data)
     {
-        if (data.IsEmpty) return false;
+        if (data.IsEmpty || generation == 0) return false;
         var opcode = data[0];
         var selection = FindHandler(opcode, data);
-        IInboundPacketObserver[] observerSnapshot;
-        lock (registrationLock) observerSnapshot = observers.ToArray();
-        if (selection.Handler is null && observerSnapshot.Length == 0)
+        var packetObservers = observerSnapshot;
+        if (selection.Handler is null && packetObservers.Length == 0) return false;
+
+        // Reject impossible holds before allocating the managed payload copy.
+        if (selection.Handler is not null && data.Length > MaximumHeldBytes)
+        {
+            Log.Warning("packet exceeds the hold byte limit; passing it through");
             return false;
+        }
 
         var marker = selection.Marker;
         var packetId = unchecked((ulong)Interlocked.Increment(ref nextPacketId));
         var bytes = data.ToArray();
         var packet = new InboundPacket(packetId, session, generation, opcode, marker, bytes);
 
-        foreach (var observer in observerSnapshot)
+        foreach (var observer in packetObservers)
         {
             try { observer.Observe(packet); }
             catch (Exception exception) { Log.Error("packet observer failed", exception); }
@@ -105,23 +111,21 @@ internal sealed class PacketHandlerService
             Log.Warning("packet hold byte limit reached; passing packet through");
             return false;
         }
-        var reservation = new HoldReservation(this, bytes.Length);
 
-        foreach (var observer in observerSnapshot)
+        var reservation = new HoldReservation(this, bytes.Length);
+        var pending = new PendingPacket(this, packet, bytes, reservation);
+        var lease = new HeldInboundPacket(packet, bytes, pending.TryComplete);
+
+        foreach (var observer in packetObservers)
         {
             if (observer is not IInboundPacketLifecycleObserver lifecycleObserver) continue;
             try { lifecycleObserver.Held(packet); }
             catch (Exception exception) { Log.Error("packet lifecycle observer failed", exception); }
         }
 
-        // CompleteAsync invokes extension code before its first await. Queue the
-        // whole operation so that synchronous setup cannot block VCE's thread.
-        _ = Task.Run(() => CompleteAsync(
-            session,
-            packet,
-            bytes,
-            selection.Handler,
-            reservation));
+        // Invoke extension code wholly off the VCE thread, including synchronous
+        // work performed before its first await.
+        _ = Task.Run(() => RunHandlerAsync(selection.Handler, lease));
         return true;
     }
 
@@ -136,85 +140,94 @@ internal sealed class PacketHandlerService
         byte opcode,
         ReadOnlySpan<byte> data)
     {
-        lock (registrationLock)
+        foreach (var pair in markerSnapshot)
         {
-            foreach (var pair in markerHandlers)
-            {
-                if (pair.Key.Opcode == opcode &&
-                    MatchesMarker(data, pair.Key.Marker, pair.Key.Offset))
-                    return (pair.Value, pair.Key.Marker);
-            }
-            return opcodeHandlers.TryGetValue(opcode, out var handler)
-                ? (handler, null)
-                : (null, null);
+            if (pair.Key.Opcode == opcode &&
+                MatchesMarker(data, pair.Key.Marker, pair.Key.Offset))
+                return (pair.Value, pair.Key.Marker);
         }
+        return opcodeSnapshot.TryGetValue(opcode, out var handler)
+            ? (handler, null)
+            : (null, null);
     }
 
-    private async Task CompleteAsync(
-        nint session,
-        InboundPacket packet,
-        byte[] original,
+    private async Task RunHandlerAsync(
         IInboundPacketInterceptor handler,
-        HoldReservation reservation)
+        HeldInboundPacket packet)
     {
-        Task<PacketDecision>? handlerTask = null;
-        PacketDecision decision;
+        var cancellation = new CancellationTokenSource();
+        Task handlerTask;
         try
         {
-            using var timeout = new CancellationTokenSource(handlerTimeout);
-            handlerTask = handler.InterceptAsync(packet, timeout.Token).AsTask();
-            decision = await handlerTask
-                .WaitAsync(timeout.Token)
-                .ConfigureAwait(false);
+            handlerTask = handler.InterceptAsync(packet, cancellation.Token).AsTask();
         }
         catch (Exception exception)
         {
             Log.Error($"packet {packet.PacketId} handler failed; replaying original", exception);
-            decision = PacketDecision.Original;
-            if (handlerTask is { IsCompleted: false })
-            {
-                // The replay queue and unfinished handler share the copied packet.
-                // Keep one reservation reference for each owner so capacity is not
-                // released until both have stopped retaining it.
-                reservation.Retain();
-                _ = handlerTask.ContinueWith(
-                    static (task, state) =>
-                    {
-                        _ = task.Exception;
-                        ((HoldReservation)state!).Release();
-                    },
-                    reservation,
-                    CancellationToken.None,
-                    TaskContinuationOptions.ExecuteSynchronously,
-                    TaskScheduler.Default);
-            }
+            packet.TryReinjectOriginal();
+            cancellation.Dispose();
+            return;
         }
-        byte[] replay;
-        try
+
+        var timeoutTask = Task.Delay(handlerTimeout);
+        var winner = await Task.WhenAny(handlerTask, packet.Completion, timeoutTask)
+            .ConfigureAwait(false);
+        if (winner == handlerTask)
         {
-            // Reuse the copy retained by TryHold when no replacement is needed.
-            // If replacement materialization fails, the original is still safe
-            // to enqueue without another allocation.
-            replay = decision.Replace ? decision.Data.ToArray() : original;
+            try { await handlerTask.ConfigureAwait(false); }
+            catch (Exception exception)
+            {
+                Log.Error($"packet {packet.PacketId} handler failed; replaying original", exception);
+            }
+            packet.TryReinjectOriginal();
+            cancellation.Dispose();
+            return;
         }
+
+        TryCancel(cancellation, packet.PacketId);
+        if (winner == timeoutTask && packet.TryReinjectOriginal())
+            Log.Warning($"packet {packet.PacketId} handler timed out; replaying original");
+
+        if (handlerTask.IsCompleted)
+        {
+            ObserveCompletedHandler(handlerTask, packet.PacketId);
+            cancellation.Dispose();
+        }
+        else
+        {
+            // A non-cooperative task can outlive its lease, but it no longer owns
+            // Talon's payload or admission reservation. Retain only its CTS until
+            // the task settles so late token registrations remain valid.
+            _ = ObserveLateHandlerAsync(handlerTask, cancellation, packet.PacketId);
+        }
+    }
+
+    private static async Task ObserveLateHandlerAsync(
+        Task handlerTask,
+        CancellationTokenSource cancellation,
+        ulong packetId)
+    {
+        try { await handlerTask.ConfigureAwait(false); }
         catch (Exception exception)
         {
-            Log.Error(
-                $"packet {packet.PacketId} replay preparation failed; replaying original",
-                exception);
-            replay = original;
+            Log.Error($"packet {packetId} handler failed after replay", exception);
         }
-        if (replay.Length == 0 || replay.Length > MaximumHeldBytes)
-            replay = original;
-        if (!reservation.TryResize(replay.Length)) replay = original;
-        completed.Enqueue(new CompletedPacket(
-            packet.PacketId,
-            session,
-            packet.ConnectionGeneration,
-            packet.Opcode,
-            packet.Marker,
-            reservation,
-            replay));
+        finally { cancellation.Dispose(); }
+    }
+
+    private static void ObserveCompletedHandler(Task task, ulong packetId)
+    {
+        if (task.Exception is { } exception)
+            Log.Error($"packet {packetId} handler failed after replay", exception.GetBaseException());
+    }
+
+    private static void TryCancel(CancellationTokenSource cancellation, ulong packetId)
+    {
+        try { cancellation.Cancel(); }
+        catch (Exception exception)
+        {
+            Log.Error($"packet {packetId} cancellation callback failed", exception);
+        }
     }
 
     private static bool MatchesMarker(ReadOnlySpan<byte> data, ushort marker, int offset) =>
@@ -230,19 +243,58 @@ internal sealed class PacketHandlerService
         HoldReservation Reservation,
         byte[] Data);
 
+    private sealed class PendingPacket(
+        PacketHandlerService owner,
+        InboundPacket packet,
+        byte[] original,
+        HoldReservation reservation)
+    {
+        private int completed;
+
+        public bool TryComplete(PacketDecision decision)
+        {
+            if (Interlocked.Exchange(ref completed, 1) != 0) return false;
+            var replay = PrepareReplay(decision);
+            owner.completed.Enqueue(new CompletedPacket(
+                packet.PacketId,
+                packet.Connection,
+                packet.ConnectionGeneration,
+                packet.Opcode,
+                packet.Marker,
+                reservation,
+                replay));
+            return true;
+        }
+
+        private byte[] PrepareReplay(PacketDecision decision)
+        {
+            byte[] replay;
+            try { replay = decision.Replace ? decision.Data.ToArray() : original; }
+            catch (Exception exception)
+            {
+                Log.Error(
+                    $"packet {packet.PacketId} replay preparation failed; replaying original",
+                    exception);
+                replay = original;
+            }
+            if (replay.Length == 0 || replay.Length > MaximumHeldBytes)
+                replay = original;
+            if (!reservation.TryResize(replay.Length)) replay = original;
+            return replay;
+        }
+    }
+
     internal sealed class HoldReservation
     {
         private readonly PacketHandlerService owner;
         private int byteCount;
-        private int references = 1;
+        private int released;
 
         public HoldReservation(PacketHandlerService owner, int byteCount)
         {
             this.owner = owner;
             this.byteCount = byteCount;
         }
-
-        public void Retain() => Interlocked.Increment(ref references);
 
         public bool TryResize(int newByteCount)
         {
@@ -260,7 +312,7 @@ internal sealed class PacketHandlerService
 
         public void Release()
         {
-            if (Interlocked.Decrement(ref references) != 0) return;
+            if (Interlocked.Exchange(ref released, 1) != 0) return;
             Interlocked.Decrement(ref owner.heldPacketCount);
             Interlocked.Add(ref owner.heldByteCount, -byteCount);
         }

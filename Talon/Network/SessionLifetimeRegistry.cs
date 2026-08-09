@@ -19,6 +19,16 @@ internal sealed class SessionLifetimeRegistry
         lock (state.Sync) return state.Generation;
     }
 
+    public bool TryGetGeneration(nint session, out long generation)
+    {
+        var state = GetState(session);
+        lock (state.Sync)
+        {
+            generation = state.Generation;
+            return generation != 0;
+        }
+    }
+
     public IDisposable? TryAcquireReplay(nint session, long generation)
     {
         var state = TryGetState(session);
@@ -35,9 +45,13 @@ internal sealed class SessionLifetimeRegistry
     {
         var state = GetState(session);
         Monitor.Enter(state.Sync);
-        // Zero is never assigned to a live connection. It invalidates every
-        // completion while the native destructor owns this gate.
-        state.Generation = 0;
+        try
+        {
+            // Waiting for this gate drains any active replay. Zero then rejects
+            // new replay without holding a managed lock across native teardown.
+            state.Generation = 0;
+        }
+        finally { Monitor.Exit(state.Sync); }
         return new DestructionLease(this, session, state);
     }
 
@@ -65,7 +79,6 @@ internal sealed class SessionLifetimeRegistry
                 ReferenceEquals(current, state))
                 states.Remove(session);
         }
-        Monitor.Exit(state.Sync);
     }
 
     private sealed class SessionState(long generation)
