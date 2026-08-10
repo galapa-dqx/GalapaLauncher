@@ -65,11 +65,6 @@ static void clear_dr0(CONTEXT* context) {
     context->Dr6 = 0;
 }
 
-static void remove_veh() {
-    PVOID handle = InterlockedExchangePointer(&g_veh_handle, nullptr);
-    if (handle) RemoveVectoredExceptionHandler(handle);
-}
-
 static bool cancel_initialization() {
     if (!g_initialization_state) return false;
     LONG previous = InterlockedCompareExchange(
@@ -168,9 +163,10 @@ static LONG CALLBACK unpack_veh(EXCEPTION_POINTERS* ep) {
             dbg("[barrier] managed cancellation did not settle in %lu ms; resuming\n",
                 kCancellationGraceMs);
     }
-    // The handler code remains loaded for the process lifetime. Removing this
-    // registration only prevents later exception dispatches to it.
-    remove_veh();
+    // Do not unregister the VEH from inside its own callback. Windows waits for
+    // active callbacks to drain during removal, which deadlocks this thread. The
+    // inert handler remains safe because Talon.Boot stays loaded for the process
+    // lifetime and g_armed now makes later dispatches continue immediately.
     return EXCEPTION_CONTINUE_EXECUTION;
 }
 

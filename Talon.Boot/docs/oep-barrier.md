@@ -53,6 +53,9 @@ unrelated protection changes.
   contexts. The VEH remains registered in that stage so an already-dispatched
   exception can clear DR0 from its saved context instead of restoring a trap
   after cancellation.
+- After a successful barrier, the VEH also remains registered but inert. A VEH
+  cannot remove itself safely because Windows waits for its active callback to
+  return. Talon.Boot remains loaded for the process lifetime.
 - Hook installation never runs in the exception handler. The handler parks the
   unpacking thread while the worker starts CoreCLR and installs managed hooks.
 - Core Talon startup is transactional. CLR load failures, unpack timeouts, and
