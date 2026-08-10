@@ -252,10 +252,12 @@ oracle leaves it. Two real cases drove this:
 A naive `OpenOrCreate` (XIVLauncher's behavior) would instead create a bogus `.dat` and
 keep going, diverging from the oracle and potentially corrupting the install.
 
-> Note: `ApplyOptionChunk` still parses the `IgnoreMissing`/`IgnoreOldMismatch` APLY
-> flags into `ZiPatchConfig` (as XIVLauncher does), but neither implementation enforces
-> them in the data path. Galapa's abort is hardcoded to match the observed oracle
-> regardless of those flags (both are `false` in every sampled patch).
+> Note: `ApplyOptionChunk` parses the `IgnoreMissing`/`IgnoreOldMismatch` APLY flags into
+> `ZiPatchConfig` (as XIVLauncher does), but **no data-path code reads them** — they are
+> currently a parsed no-op in both implementations. Galapa's abort/missing-file behavior is
+> hardcoded to the observed oracle, which is safe only because both flags are `false` in
+> every sampled patch; a patch that set them would not change behavior. Enforcing them (or
+> rejecting non-`false` values) is future work, not a validated capability.
 
 ### 5.5 SqpkHeader ('H') — Dat-only, existing-file-only
 

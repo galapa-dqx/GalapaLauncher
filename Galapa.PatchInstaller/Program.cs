@@ -99,6 +99,13 @@ public static class Program
         var expectedDir = args[1];
         var baseDir = args.Length == 3 ? args[2] : null;
 
+        if (!File.Exists(patch))
+            return Fail($"patch not found: {patch}");
+        if (!Directory.Exists(expectedDir))
+            return Fail($"expected-dir not found: {expectedDir}");
+        if (baseDir != null && !Directory.Exists(baseDir))
+            return Fail($"base-dir not found: {baseDir}");
+
         var workDir = Path.Combine(Path.GetTempPath(), "galapa-verify-" + Guid.NewGuid().ToString("N"));
         try
         {
@@ -107,7 +114,9 @@ public static class Program
                 CopyDirectory(baseDir, workDir);
 
             Console.Error.WriteLine($"[verify] applying {Path.GetFileName(patch)} -> (temp){(baseDir != null ? " seeded from base" : string.Empty)}");
-            ZiPatchInstaller.InstallPatch(patch, workDir);
+            var applyResult = ZiPatchInstaller.InstallPatch(patch, workDir);
+            if (applyResult.Aborted)
+                Console.Error.WriteLine($"[verify] note: patch aborted at {applyResult.AbortedTarget} (partial apply)");
 
             var diffs = DirectoryComparer.Compare(expectedDir, workDir).ToList();
             if (diffs.Count == 0)

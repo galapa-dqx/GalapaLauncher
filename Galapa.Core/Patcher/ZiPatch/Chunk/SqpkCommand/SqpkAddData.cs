@@ -29,7 +29,15 @@ internal sealed class SqpkAddData(BinaryReader reader, long offset, long size)
         BlockDeleteNumber = (long)Reader.ReadUInt32BE() << 7;
 
         BlockDataSourceOffset = Offset + Reader.BaseStream.Position;
-        BlockData = Reader.ReadBytesRequired(checked((int)BlockNumber));
+
+        // Bound the block-data length by what's actually left in the chunk before allocating —
+        // BlockNumber is attacker-controllable and could otherwise force a huge allocation (or throw
+        // OverflowException from the cast, which callers catching ZiPatchException wouldn't handle).
+        if (BlockNumber < 0 || BlockNumber > advanceAfter.NumBytesRemaining)
+            throw new ZiPatchException(
+                $"SQPK:A block data length {BlockNumber} exceeds the remaining chunk size {advanceAfter.NumBytesRemaining}.");
+
+        BlockData = Reader.ReadBytesRequired((int)BlockNumber);
     }
 
     public override void ApplyChunk(ZiPatchConfig config)
@@ -51,8 +59,16 @@ internal sealed class SqpkAddData(BinaryReader reader, long offset, long size)
             ? TargetFile.OpenStream(config.GamePath, FileMode.OpenOrCreate)
             : TargetFile.OpenStream(config.Store, config.GamePath, FileMode.OpenOrCreate);
 
-        file.WriteFromOffset(BlockData, BlockOffset);
-        file.Wipe(BlockDeleteNumber);
+        try
+        {
+            file.WriteFromOffset(BlockData, BlockOffset);
+            file.Wipe(BlockDeleteNumber);
+        }
+        finally
+        {
+            if (config.Store == null)
+                file.Dispose(); // store-owned streams are disposed by the store
+        }
     }
 
     public override string ToString() =>

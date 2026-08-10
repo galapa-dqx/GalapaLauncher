@@ -73,7 +73,10 @@ public class SqexFile
             ? root
             : root + System.IO.Path.DirectorySeparatorChar;
 
-        if (full != root && !full.StartsWith(rootWithSep, StringComparison.OrdinalIgnoreCase))
+        // Case-insensitive on Windows (case-insensitive FS); case-sensitive elsewhere — otherwise a
+        // "../GALAPA-ROOT/x" that resolves to a *different* directory on Linux/Proton would slip past.
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        if (full != root && !full.StartsWith(rootWithSep, comparison))
             throw new ZiPatchException($"patch path escapes the game root: {relativePath}");
 
         return full;

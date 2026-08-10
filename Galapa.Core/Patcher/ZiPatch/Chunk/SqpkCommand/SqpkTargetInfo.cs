@@ -40,7 +40,15 @@ internal sealed class SqpkTargetInfo(BinaryReader reader, long offset, long size
         // ~0x60 reserved bytes follow (skipped on dispose).
     }
 
-    public override void ApplyChunk(ZiPatchConfig config) => config.Platform = Platform;
+    public override void ApplyChunk(ZiPatchConfig config)
+    {
+        // Reject an unmapped platform id — SqpackFile.GetFileName would otherwise turn it into a
+        // bogus extension (e.g. ".4") and target the wrong file. Real DQX patches are always Win32.
+        if (!Enum.IsDefined(Platform) || Platform == ZiPatchConfig.PlatformId.Unknown)
+            throw new ZiPatchException($"Unsupported target platform id {(ushort)Platform}.");
+
+        config.Platform = Platform;
+    }
 
     public override string ToString() =>
         $"{TypeName}:{CommandName}:{Platform}:{Region}:{IsDebug}:{Version}:{DeletedDataSize}:{SeekCount}";

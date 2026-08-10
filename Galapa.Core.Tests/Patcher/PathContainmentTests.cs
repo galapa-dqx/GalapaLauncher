@@ -30,4 +30,15 @@ public class PathContainmentTests
         var resolved = SqexFile.ResolveUnderBase(Root, relative);
         Assert.StartsWith(Path.GetFullPath(Root), resolved);
     }
+
+    [Fact]
+    public void ResolveUnderBase_CaseVariantEscape_RejectedOnCaseSensitiveFs()
+    {
+        // On a case-insensitive FS (Windows) a case-variant sibling *is* the same directory, so this
+        // is only an escape on case-sensitive filesystems (Linux/Proton), where it must be rejected.
+        if (OperatingSystem.IsWindows())
+            return;
+
+        Assert.Throws<ZiPatchException>(() => SqexFile.ResolveUnderBase(Root, "../GALAPA-ROOT/escape.txt"));
+    }
 }

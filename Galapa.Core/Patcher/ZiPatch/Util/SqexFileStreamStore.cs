@@ -34,12 +34,28 @@ public sealed class SqexFileStreamStore : IDisposable
 
     public void Dispose()
     {
+        List<Exception>? errors = null;
+
         foreach (var stream in _streams.Values)
         {
-            stream.Flush(true);
-            stream.Dispose();
+            // A failing OS-level flush (e.g. a full disk) must not leak the remaining handles.
+            try
+            {
+                stream.Flush(true);
+            }
+            catch (Exception ex)
+            {
+                (errors ??= []).Add(ex);
+            }
+            finally
+            {
+                stream.Dispose();
+            }
         }
 
         _streams.Clear();
+
+        if (errors is { Count: > 0 })
+            throw new AggregateException("Failed to flush one or more patch target streams.", errors);
     }
 }

@@ -47,6 +47,10 @@ internal sealed class SqpkFile(BinaryReader reader, long offset, long size)
         ExpansionId = Reader.ReadUInt16BE();
         Reader.ReadBytes(2);
 
+        // Bound the path length by the bytes left in the chunk before ReadFixedLengthString allocates.
+        if (pathLen > advanceAfter.NumBytesRemaining)
+            throw new ZiPatchException($"SQPK:F path length {pathLen} exceeds the remaining chunk size {advanceAfter.NumBytesRemaining}.");
+
         TargetFile = new SqexFile(Reader.ReadFixedLengthString(pathLen));
 
         if (Operation == OperationKind.AddFile)
@@ -84,12 +88,20 @@ internal sealed class SqpkFile(BinaryReader reader, long offset, long size)
                     ? TargetFile.OpenStream(config.GamePath, FileMode.OpenOrCreate)
                     : TargetFile.OpenStream(config.Store, config.GamePath, FileMode.OpenOrCreate);
 
-                if (FileOffset == 0)
-                    fileStream.SetLength(0);
+                try
+                {
+                    if (FileOffset == 0)
+                        fileStream.SetLength(0);
 
-                fileStream.Seek(FileOffset, SeekOrigin.Begin);
-                foreach (var block in CompressedData)
-                    block.DecompressInto(fileStream);
+                    fileStream.Seek(FileOffset, SeekOrigin.Begin);
+                    foreach (var block in CompressedData)
+                        block.DecompressInto(fileStream);
+                }
+                finally
+                {
+                    if (config.Store == null)
+                        fileStream.Dispose(); // store-owned streams are disposed by the store
+                }
 
                 break;
 

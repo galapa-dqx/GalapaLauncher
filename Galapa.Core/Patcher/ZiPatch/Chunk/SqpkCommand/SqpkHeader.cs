@@ -75,7 +75,15 @@ internal sealed class SqpkHeader(BinaryReader reader, long offset, long size)
             ? TargetFile.OpenStream(config.GamePath, FileMode.Open)
             : TargetFile.OpenStream(config.Store, config.GamePath, FileMode.Open);
 
-        file.WriteFromOffset(HeaderData, HeaderKind == TargetHeaderKind.Version ? 0 : HeaderSize);
+        try
+        {
+            file.WriteFromOffset(HeaderData, HeaderKind == TargetHeaderKind.Version ? 0 : HeaderSize);
+        }
+        finally
+        {
+            if (config.Store == null)
+                file.Dispose(); // store-owned streams are disposed by the store
+        }
     }
 
     public override string ToString() => $"{TypeName}:{CommandName}:{FileKind}:{HeaderKind}:{TargetFile}";

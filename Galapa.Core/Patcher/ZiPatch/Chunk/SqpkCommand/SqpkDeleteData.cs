@@ -42,7 +42,15 @@ internal sealed class SqpkDeleteData(BinaryReader reader, long offset, long size
             ? TargetFile.OpenStream(config.GamePath, FileMode.OpenOrCreate)
             : TargetFile.OpenStream(config.Store, config.GamePath, FileMode.OpenOrCreate);
 
-        SqpackDatFile.WriteEmptyFileBlockAt(file, BlockOffset, BlockNumber);
+        try
+        {
+            SqpackDatFile.WriteEmptyFileBlockAt(file, BlockOffset, BlockNumber);
+        }
+        finally
+        {
+            if (config.Store == null)
+                file.Dispose(); // store-owned streams are disposed by the store
+        }
     }
 
     public override string ToString() => $"{TypeName}:{CommandName}:{TargetFile}:{BlockOffset}:{BlockNumber}";

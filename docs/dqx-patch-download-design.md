@@ -83,7 +83,7 @@ download token is re-fetched per file, just-in-time** (tokens go stale long befo
 52 GiB chain finishes).
 
 ```
-1. Read on-disk versions:  <install>/boot/Boot.ver, <install>/game/Game.ver   (fresh ⇒ 1.6.0.0)
+1. Read on-disk versions:  <install>/Boot/Boot.ver, <install>/Game/Game.ver   (fresh ⇒ 1.6.0.0)
 2. ENUMERATE each repo (boot, then game): walk X-NextVersion → ordered PatchListEntry[]
 3. PLAN: per-repo list with a known grand total (POST /patch/count for the headline number)
 4. SPAWN the elevated apply child once (single UAC prompt) and handshake.
@@ -142,8 +142,13 @@ connects, both exchange the token in `Hello`; mismatch ⇒ abort. The **child in
 re-verifies every patch** (ZiPatch CRC + `X-Filesize` length + expected from/to version)
 *before* applying — defense-in-depth so a spoofed/poisoned command can't make the elevated
 process apply attacker-controlled bytes. The child also monitors `--parent-pid` and exits
-if the UI dies (no orphaned elevated applier). *Hardening TBD:* tighten the pipe DACL to
-the user SID; consider making the elevated side the pipe server with that DACL.
+if the UI dies (no orphaned elevated applier). **Required before elevation ships (not
+optional hardening):** create the pipe with an explicit DACL restricted to the current
+user's SID — a same-user process could otherwise connect to the elevated child and drive
+`StartInstall` — and bind the handshake to the expected `--parent-pid` (validate the
+connecting peer is that process), or hand the child an *inherited private* pipe handle
+instead of a named one. The token-in-args exchange is a secondary check, not the access
+control.
 
 **Message protocol** (envelope `{ opcode, payload }`, JSON):
 
@@ -151,16 +156,22 @@ the user SID; consider making the elevated side the pipe server with that DACL.
 |---|---|---|
 | C→P | `Hello` | `{ token }` — child ready |
 | P→C | `StartInstall` | `{ patchFilePath, repo, fromVersion, toVersion, expectedLength, signature }` |
-| C→P | `ApplyProgress` | `{ repo, toVersion, bytesApplied, totalBytes }` — streamed per chunk |
-| C→P | `InstallOk` | `{ repo, toVersion }` |
-| C→P | `InstallFailed` | `{ repo, toVersion, error }` |
-| P→C | `FinalizeRepo` | `{ repo, finalVersion }` — write `Boot.ver`/`Game.ver` (+ `.bck`, TBD) |
+| C→P | `ApplyProgress` | `{ repo, toVersion, chunksApplied, chunkCount }` — streamed; see below |
+| C→P | `InstallOk` | `{ repo, toVersion }` — applied to `EOF_` |
+| C→P | `InstallAborted` | `{ repo, toVersion, abortedTarget }` — carries `ZiPatchApplyResult.Aborted`: a **partial** apply that is an **expected** outcome (the patch touched a repository this install lacks — see §5.4 of the patcher assessment), **not** a failure. The chain continues and `FinalizeRepo` still proceeds (matches the oracle byte-for-byte). |
+| C→P | `InstallFailed` | `{ repo, toVersion, error }` — a **real** error (corrupt patch, IO, path-escape, oversized block). **Blocks** `FinalizeRepo` for that repo. |
+| P→C | `FinalizeRepo` | `{ repo, finalVersion }` — write `Boot.ver`/`Game.ver` (+ `.bck`, TBD). Sent only after the repo's chain reached its target with no `InstallFailed`. |
 | C→P | `Finished` | — |
 | P→C | `Bye` | — child exits |
 
-This is XIVLauncher's `PatcherIpc*` set plus a real `ApplyProgress` stream (their apply was
-fast and local; ours can take minutes for a multi-GB game patch — and
-`ZiPatchInstaller.InstallPatch` already exposes a per-chunk progress callback to drive it).
+This is XIVLauncher's `PatcherIpc*` set plus a distinct `InstallAborted` result and a real
+`ApplyProgress` stream (their apply was fast and local; ours can take minutes for a multi-GB
+game patch). **`ApplyProgress` reports chunk progress**, not bytes: `chunksApplied` counts the
+`ZiPatchChunk`s applied so far (monotonic, resets per patch) and `chunkCount` is the patch's
+total — that is exactly what `ZiPatchInstaller.InstallPatch`'s per-chunk callback exposes.
+Byte-accurate progress would need a chunk→byte mapping (compressed and empty-block chunks vary
+wildly for the same input size); chunk progress is honest and cheap. On abort, `chunksApplied`
+stops where the patch stopped.
 
 > **Decision to confirm:** the elevated child does **apply only**; the UI process does the
 > download. This keeps network code unelevated and matches XIVLauncher. The alternative —
@@ -223,15 +234,23 @@ PatchManager.RunAsync (per repo):
 
 ## 7. Verification
 
+**Transport must be HTTPS with certificate validation.** Length and ZiPatch CRC are
+*integrity* checks (they catch corruption) — they are **not authentication** (they don't
+prove the bytes came from Square-Enix). Over plain HTTP a MITM could rewrite both the patch
+and `X-Filesize` and feed the elevated child altered bytes. So all enumeration/patch
+endpoints use HTTPS, and **unattended** application stays gated on a verified signature (3);
+until that's decoded, do not auto-apply game data — require (1)+(2) plus explicit user action.
+
 Cheap → strong, run before apply (and re-run by the child elevated, per §4):
 
 1. **Length** — downloaded bytes == `X-Filesize` == `Content-Range` total. Always.
 2. **ZiPatch CRC** — open with `needsChecksum: true`, assert every `chunk.IsChecksumValid`
-   (already done in tests). Strong, self-contained, server-secret-free; primary gate.
-3. **`X-Signature`** — algorithm not yet pinned. Sample `8d4dbb66…` is 38 hex chars
-   (19 bytes) → looks like a 20-byte digest printed **without zero-padding** (likely
-   SHA-1(file) formatted `%x`/byte). Confirm against `DQXUpdater.exe` `0x618e68`
-   ("Patch checksum error") before relying on it; until then record but gate on (1)+(2).
+   (already done in tests). Integrity, not authentication: catches corruption, not tampering.
+3. **`X-Signature` (the authentication gate; required for unattended apply)** — algorithm not
+   yet pinned. Sample `8d4dbb66…` is 38 hex chars (19 bytes) → looks like a 20-byte digest
+   printed **without zero-padding** (likely SHA-1(file) formatted `%x`/byte). Confirm against
+   `DQXUpdater.exe` `0x618e68` ("Patch checksum error"). Until it's decoded **and** validated,
+   record it and do not auto-apply.
 
 Failed verify → discard cache file, re-download once, then surface an error.
 
@@ -239,11 +258,12 @@ Failed verify → discard cache file, re-download once, then surface an error.
 
 ## 8. Open questions / things to confirm
 
-- **Game apply target dir.** Boot → `<install>/Boot` (oracle-validated). Game uses the
-  SqPack triple → bare `dataNNNNNNNN.win32.datN`, so target is likely
-  `<install>/Game/Content/Data` (or `…/Content`). **Not yet oracle-validated** — needs a
-  base dir at a game patch's *from* version run through the DQXUpdater oracle. Resolve
-  before shipping game patching. The child picks the target dir from `repo`.
+- **Game apply target dir.** Boot → `<install>/Boot` (oracle-validated). Game patches carry a
+  patch-relative `Content/Data/dataNNNNNNNN.win32.datN`, so the apply **root** is
+  `<install>/Game` — the patcher joins `Content/Data/…` under it, so don't double up the
+  `Content/Data` segment. **Game orchestration stays disabled until this is oracle-validated:**
+  it needs a base dir at a game patch's *from* version run through the DQXUpdater oracle
+  (`OracleDifferentialTests` currently covers Boot only). The child picks the root from `repo`.
 - **`.ver` / `.bck` handling.** Child writes `Boot.ver`/`Game.ver` (plain version strings)
   on `FinalizeRepo`. Whether DQX keeps a `.bck` backup like FFXIV is unconfirmed — TBD.
 - **`X-Signature` algorithm** — §7.

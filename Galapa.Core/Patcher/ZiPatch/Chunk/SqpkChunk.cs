@@ -34,6 +34,8 @@ public abstract class SqpkChunk(BinaryReader reader, long offset, long size)
             var innerSize = reader.ReadInt32BE();
             if (size != innerSize)
                 throw new ZiPatchException("SQPK inner size does not match chunk size.");
+            if (innerSize < 5)
+                throw new ZiPatchException($"SQPK inner size {innerSize} is too small (needs the u32 size + 1-char opcode).");
 
             var command = reader.ReadFixedLengthString(1u);
             if (!CommandTypes.TryGetValue(command, out var constructor))

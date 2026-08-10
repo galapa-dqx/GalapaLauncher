@@ -44,6 +44,11 @@ public abstract class ZiPatchChunk
         { EndOfFileChunk.TypeName, (r, o, s) => new EndOfFileChunk(r, o, s) },
     };
 
+    // Largest ZiPatch chunk we accept; the biggest real DQX chunk observed is ~47 MiB. The bound
+    // guards against a corrupt/hostile 4-byte size field forcing a huge scratch-buffer allocation
+    // or overflowing `size + 8` below (which would leave the parser reading stale buffer bytes).
+    private const int MaxChunkSize = 256 * 1024 * 1024;
+
     public static ZiPatchChunk GetChunk(Stream stream, bool needsChecksum)
     {
         var memoryStream = LocalMemoryStream.Value ??= new MemoryStream();
@@ -51,7 +56,11 @@ public abstract class ZiPatchChunk
         try
         {
             var reader = new BinaryReader(stream);
-            var size = checked((int)reader.ReadUInt32BE());
+            var sizeRaw = reader.ReadUInt32BE();
+            if (sizeRaw > MaxChunkSize)
+                throw new ZiPatchException($"Chunk size {sizeRaw} exceeds the maximum of {MaxChunkSize} bytes.");
+
+            var size = (int)sizeRaw;
             var baseOffset = stream.Position;
 
             // payload + name (4) + crc (4)

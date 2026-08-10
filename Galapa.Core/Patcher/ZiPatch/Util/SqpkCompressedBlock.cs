@@ -28,6 +28,10 @@ internal sealed class SqpkCompressedBlock
 
     public byte[] CompressedBlock { get; }
 
+    // Generous bound on a block's declared sizes; real DQX blocks decompress to <= 64 KB. Guards the
+    // length math below against overflow and a negative/huge count reaching ReadBytesRequired.
+    private const int MaxBlockSize = 16 * 1024 * 1024;
+
     public SqpkCompressedBlock(BinaryReader reader)
     {
         // These four header fields are little-endian inside the big-endian container.
@@ -36,6 +40,13 @@ internal sealed class SqpkCompressedBlock
 
         CompressedSize = reader.ReadInt32();
         DecompressedSize = reader.ReadInt32();
+
+        if (HeaderSize < 16 || HeaderSize > MaxBlockSize
+            || DecompressedSize < 0 || DecompressedSize > MaxBlockSize
+            || (IsCompressed && (CompressedSize < 0 || CompressedSize > MaxBlockSize))
+            || CompressedBlockLength < HeaderSize)
+            throw new ZiPatchException(
+                $"SQPK compressed block header out of range (header={HeaderSize}, comp={CompressedSize}, decomp={DecompressedSize}).");
 
         if (IsCompressed)
         {
