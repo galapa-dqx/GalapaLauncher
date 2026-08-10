@@ -139,9 +139,14 @@ a few messages/sec of progress.)
 **Auth / safety across integrity levels.** Parent generates a random pipe name
 (`galapa-patch-<guid>`) and a 256-bit token, passes both as args. Handshake: child
 connects, both exchange the token in `Hello`; mismatch ⇒ abort. The **child independently
-re-verifies every patch** (ZiPatch CRC + `X-Filesize` length + expected from/to version)
-*before* applying — defense-in-depth so a spoofed/poisoned command can't make the elevated
-process apply attacker-controlled bytes. The child also monitors `--parent-pid` and exits
+re-verifies every patch** (ZiPatch CRC + `X-Filesize` length + expected from/to version +
+`X-Signature` once decoded) *before* applying — defense-in-depth so a spoofed/poisoned command
+can't make the elevated process apply attacker-controlled bytes. **It must verify and apply from
+one open handle that denies writes/replacement** (`FileShare.Read`, opened once) and never
+re-open the path between verify and apply, so a same-user process can't swap the cache file in the
+TOCTOU window. (`ZiPatchInstaller.InstallPatch` therefore needs a stream/handle overload that
+verifies chunk checksums, instead of today's reopen-by-path `FromFileName` with checksums off.)
+The child also monitors `--parent-pid` and exits
 if the UI dies (no orphaned elevated applier). **Required before elevation ships (not
 optional hardening):** create the pipe with an explicit DACL restricted to the current
 user's SID — a same-user process could otherwise connect to the elevated child and drive
@@ -264,8 +269,14 @@ Failed verify → discard cache file, re-download once, then surface an error.
   `Content/Data` segment. **Game orchestration stays disabled until this is oracle-validated:**
   it needs a base dir at a game patch's *from* version run through the DQXUpdater oracle
   (`OracleDifferentialTests` currently covers Boot only). The child picks the root from `repo`.
-- **`.ver` / `.bck` handling.** Child writes `Boot.ver`/`Game.ver` (plain version strings)
-  on `FinalizeRepo`. Whether DQX keeps a `.bck` backup like FFXIV is unconfirmed — TBD.
+- **`.ver` / `.bck` handling (must be crash-safe).** Child writes `Boot.ver`/`Game.ver` (plain
+  version strings) on `FinalizeRepo` — but the write must be **atomic**: write the new version to
+  a temp file, flush, then atomically replace the live `.ver` (`File.Replace`/rename), so a crash
+  mid-write can't leave version metadata truncated or out of sync with the applied SqPack data.
+  Copy the previous `.ver` to `.bck` before replacing (FFXIV keeps such a backup; whether DQX does
+  is unconfirmed — TBD), and on startup recover from `.bck` when `.ver` is missing/invalid.
+  `FinalizeRepo` runs only after the repo's chain finished with no `InstallFailed`. Define and test
+  this recovery before unattended updates ship.
 - **`X-Signature` algorithm** — §7.
 - **`IsElevationRequiredForWrite`** — implement via a write-probe in the install dir;
   confirm behaviour under Proton (expected: writable, no elevation).
