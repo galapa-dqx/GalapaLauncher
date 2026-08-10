@@ -25,14 +25,27 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      - name: 🧰 Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: 🛠 Build native Talon projects
+        run: |
+          msbuild Talon.Boot\Talon.Boot.vcxproj /m /p:Configuration=Debug /p:Platform=Win32
+          msbuild Talon.Boot\Talon.Boot.vcxproj /m /p:Configuration=Release /p:Platform=Win32
+          msbuild Talon.Recon\Talon.Recon.vcxproj /m /p:Configuration=Debug /p:Platform=Win32
+          msbuild Talon.Recon\Talon.Recon.vcxproj /m /p:Configuration=Release /p:Platform=Win32
+
+      # Galapa.slnf is Galapa.sln minus the native C++ project (Talon.Boot.vcxproj),
+      # which the .NET SDK cannot build. Both native projects were built with MSBuild
+      # above; this managed build copies Talon.Boot.dll into the Injector and Toolbox.
       - name: 📦 Install dependencies
-        run: dotnet restore
+        run: dotnet restore Galapa.slnf
 
       - name: 🛠 Build solution
-        run: dotnet build --no-restore --configuration Release
+        run: dotnet build Galapa.slnf --no-restore --configuration Release
 
       - name: 🧪 Run tests with coverage
-        run: dotnet test --no-build --configuration Release --collect:"XPlat Code Coverage"
+        run: dotnet test Galapa.slnf --no-build --configuration Release --collect:"XPlat Code Coverage"
 
       - name: 🛠 Publish Galapa.Launcher for x64
         run: dotnet publish Galapa.Launcher --configuration Release -r win-x64 --self-contained false -o artifacts/Galapa.Launcher-x64

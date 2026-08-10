@@ -18,15 +18,45 @@
         <PackageReference Include="Avalonia.Desktop" Version="11.3.8"/>
         <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.8"/>
         <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.8"/>
-        <PackageReference Include="Avalonia.Diagnostics" Version="11.3.8">
-            <IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
-            <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
-        </PackageReference>
+        <PackageReference Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.3"/>
         <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0"/>
         <PackageReference Include="MessageBox.Avalonia" Version="3.1.6"/>
     </ItemGroup>
 
     <ItemGroup>
         <ProjectReference Include="..\Galapa.Core\Galapa.Core.csproj"/>
+        <ProjectReference Include="..\Galapa.UI\Galapa.UI.csproj"/>
+        <!-- Build-order dependency only. Talon.Injector is a standalone x86 exe the Toolbox
+             SPAWNS (it can't inject from this x64 process); we copy its output ourselves in
+             the target below rather than referencing its assembly. -->
+        <ProjectReference Include="..\Talon.Injector\Talon.Injector.csproj"
+                           ReferenceOutputAssembly="false"
+                           Private="false"
+                           GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained"/>
     </ItemGroup>
+
+    <!-- Bundle the built Talon.Injector output (exe + runtime config + Talon.Boot.dll) into a
+         Talon\ subfolder next to the Toolbox exe. NOTE: Talon.Boot.dll is only present when the
+         solution is built with MSBuild/Visual Studio (the .NET SDK cannot build the C++ project);
+         a plain `dotnet build` bundles the injector without its native payload. -->
+    <Target Name="BundleTalonInjector" AfterTargets="Build">
+        <ItemGroup>
+            <TalonInjectorOutput Include="..\Talon.Injector\bin\$(Configuration)\net8.0-windows\**\*"/>
+        </ItemGroup>
+        <Copy SourceFiles="@(TalonInjectorOutput)"
+              DestinationFiles="@(TalonInjectorOutput->'$(OutDir)Talon\%(RecursiveDir)%(Filename)%(Extension)')"
+              SkipUnchangedFiles="true"/>
+    </Target>
+
+    <!-- Files copied only to OutDir are not automatically part of publish output. Copy
+         the completed Talon bundle to PublishDir so packaged Toolbox builds remain usable. -->
+    <Target Name="PublishTalonBundle" AfterTargets="Publish"
+            DependsOnTargets="BundleTalonInjector">
+        <ItemGroup>
+            <TalonPublishFile Include="$(OutDir)Talon\**\*"/>
+        </ItemGroup>
+        <Copy SourceFiles="@(TalonPublishFile)"
+              DestinationFiles="@(TalonPublishFile->'$(PublishDir)Talon\%(RecursiveDir)%(Filename)%(Extension)')"
+              SkipUnchangedFiles="true"/>
+    </Target>
 </Project>

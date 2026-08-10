@@ -22,3 +22,4 @@ Galapalauncher is currently alpha-quality software and is not yet feature comple
 - Launches the game
 - Remembers your password
 - Automatically logs you in
+- Includes developer tooling for suspended launches, Talon injection, and loose-file VFS overrides

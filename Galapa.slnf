@@ -1,0 +1,15 @@
+{
+  "solution": {
+    "path": "Galapa.sln",
+    "projects": [
+      "Galapa.Core\\Galapa.Core.csproj",
+      "Galapa.Core.Tests\\Galapa.Core.Tests.csproj",
+      "Galapa.Toolbox\\Galapa.Toolbox.csproj",
+      "Galapa.TestUtilities\\Galapa.TestUtilities.csproj",
+      "Galapa.Launcher\\Galapa.Launcher.csproj",
+      "Galapa.Launcher.Tests\\Galapa.Launcher.Tests.csproj",
+      "Galapa.UI\\Galapa.UI.csproj",
+      "Talon.Injector\\Talon.Injector.csproj"
+    ]
+  }
+}
