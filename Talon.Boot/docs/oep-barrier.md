@@ -49,6 +49,10 @@ unrelated protection changes.
   pre-APC context.
 - The handler sets x86 EFLAGS.RF before it resumes each execute breakpoint.
   Clearing DR6 alone can repeat the single-step exception.
+- Cancellation publishes a dedicated barrier stage before it sweeps live thread
+  contexts. The VEH remains registered in that stage so an already-dispatched
+  exception can clear DR0 from its saved context instead of restoring a trap
+  after cancellation.
 - Hook installation never runs in the exception handler. The handler parks the
   unpacking thread while the worker starts CoreCLR and installs managed hooks.
 - Core Talon startup is transactional. CLR load failures, unpack timeouts, and

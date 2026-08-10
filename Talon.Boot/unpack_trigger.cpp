@@ -19,6 +19,9 @@ static const DWORD kDr7ExecDr0 = 0x00000001;
 static const DWORD kResumeFlag = 0x00010000;
 static const DWORD kBarrierTimeoutMs = 30000;
 static const DWORD kCancellationGraceMs = 5000;
+static const LONG kStageAwaitingEntrypoint = 1;
+static const LONG kStageAwaitingProtection = 2;
+static const LONG kStageCancelled = 3;
 
 static volatile LONG g_armed = 0;
 static volatile LONG g_stage = 0;
@@ -79,21 +82,43 @@ static bool cancel_initialization() {
 }
 
 static LONG CALLBACK unpack_veh(EXCEPTION_POINTERS* ep) {
-    if (!g_armed || ep->ExceptionRecord->ExceptionCode != EXCEPTION_SINGLE_STEP ||
+    if (ep->ExceptionRecord->ExceptionCode != EXCEPTION_SINGLE_STEP ||
         !(ep->ContextRecord->Dr6 & 1))
         return EXCEPTION_CONTINUE_SEARCH;
 
     uintptr_t address = (uintptr_t)ep->ExceptionRecord->ExceptionAddress;
-    if (g_stage == 1 && address == g_entrypoint_va) {
+    LONG stage = InterlockedCompareExchange(&g_stage, 0, 0);
+    if (stage == kStageCancelled) {
+        // cancel_unpack_barrier can race a dispatch whose debug context is held
+        // in EXCEPTION_POINTERS rather than the thread's live CONTEXT. Keep the
+        // VEH registered and clear any late saved Talon breakpoint here.
+        uintptr_t dr0 = (uintptr_t)ep->ContextRecord->Dr0;
+        if (address != g_entrypoint_va && address != g_ntprotect_va &&
+            dr0 != g_entrypoint_va && dr0 != g_ntprotect_va)
+            return EXCEPTION_CONTINUE_SEARCH;
+        ep->ContextRecord->EFlags |= kResumeFlag;
+        clear_dr0(ep->ContextRecord);
+        return EXCEPTION_CONTINUE_EXECUTION;
+    }
+    if (!g_armed) return EXCEPTION_CONTINUE_SEARCH;
+
+    if (stage == kStageAwaitingEntrypoint && address == g_entrypoint_va) {
         // start_unpack_barrier publishes every target before setting g_armed.
         set_dr0(ep->ContextRecord, g_ntprotect_va);
-        InterlockedExchange(&g_stage, 2);
+        if (InterlockedCompareExchange(
+                &g_stage,
+                kStageAwaitingProtection,
+                kStageAwaitingEntrypoint) != kStageAwaitingEntrypoint) {
+            ep->ContextRecord->EFlags |= kResumeFlag;
+            clear_dr0(ep->ContextRecord);
+            return EXCEPTION_CONTINUE_EXECUTION;
+        }
         dbg("[barrier] entrypoint rendezvous hit at %p; DR0 -> NtProtectVirtualMemory\n",
             (void*)address);
         return EXCEPTION_CONTINUE_EXECUTION;
     }
 
-    if (g_stage != 2 || address != g_ntprotect_va)
+    if (stage != kStageAwaitingProtection || address != g_ntprotect_va)
         return EXCEPTION_CONTINUE_SEARCH;
 
     DWORD requested_base = 0, requested_size = 0, requested_protect = 0;
@@ -205,7 +230,7 @@ bool start_unpack_barrier(
         dbg("[barrier] AddVectoredExceptionHandler failed (err=%lu)\n", GetLastError());
         return false;
     }
-    InterlockedExchange(&g_stage, 1);
+    InterlockedExchange(&g_stage, kStageAwaitingEntrypoint);
     InterlockedExchange(&g_armed, 1);
 
     dbg("[barrier] awaiting injector entrypoint rendezvous=%p; "
@@ -217,10 +242,10 @@ bool start_unpack_barrier(
 
 void cancel_unpack_barrier() {
     cancel_initialization();
-    // Keep the VEH armed while removing DR0. If g_armed were cleared first,
-    // another thread could hit the still-live breakpoint during this sweep and
-    // have its EXCEPTION_SINGLE_STEP propagated as unhandled.
+    // Publish cancellation before sweeping live thread contexts. A concurrent
+    // VEH clears its saved exception context, which the sweep cannot modify.
+    // Keep the VEH registered afterward to consume any already-pending trap.
+    InterlockedExchange(&g_stage, kStageCancelled);
     clear_barrier_dr0_all_threads(GetCurrentThreadId());
     InterlockedExchange(&g_armed, 0);
-    remove_veh();
 }
