@@ -7,6 +7,11 @@ using Talon.Interop;
 namespace Talon.Hooking;
 
 /// <summary>Creates hooks for game code, imports, exports, and signatures.</summary>
+/// <remarks>
+/// Detours execute on native game threads and are not wrapped automatically.
+/// A detour must catch all managed exceptions before they cross the unmanaged
+/// boundary and call its original function when auxiliary work fails.
+/// </remarks>
 public interface IGameInteropProvider
 {
     /// <summary>Initializes members marked with <see cref="SignatureAttribute"/>.</summary>

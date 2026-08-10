@@ -21,13 +21,31 @@ public static partial class EntryPoint
         nint startInfoJson,
         nint mainThreadContinueEvent,
         nint initializationCancelledEvent,
-        nint initializationState)
+        nint initializationState) =>
+        InitializeCore(
+            startInfoJson,
+            mainThreadContinueEvent,
+            initializationCancelledEvent,
+            initializationState,
+            RuntimeHost.Prepare,
+            FailureNotifier.ShowOnce,
+            static handle => SetEvent(handle));
+
+    internal static void InitializeCore(
+        nint startInfoJson,
+        nint mainThreadContinueEvent,
+        nint initializationCancelledEvent,
+        nint initializationState,
+        Func<TalonStartInfo, CancellationToken, RuntimeHost.PreparedRuntime> prepareRuntime,
+        Action<string, Exception> notifyFailure,
+        Action<nint> signalEvent)
     {
         RuntimeHost.PreparedRuntime? prepared = null;
-        using var cancellation = new NativeInitializationCancellation(
-            initializationCancelledEvent);
+        NativeInitializationCancellation? cancellation = null;
         try
         {
+            cancellation = new NativeInitializationCancellation(
+                initializationCancelledEvent);
             cancellation.ThrowIfCancellationRequested();
             var json = Marshal.PtrToStringUTF8(startInfoJson)
                 ?? throw new InvalidOperationException("Native bootstrap supplied null start-info JSON.");
@@ -40,7 +58,7 @@ public static partial class EntryPoint
 
             Log.Open();
             Log.Info($"managed runtime initialized ({RuntimeInformation.FrameworkDescription})");
-            prepared = RuntimeHost.Prepare(startInfo, cancellation.Token);
+            prepared = prepareRuntime(startInfo, cancellation.Token);
             cancellation.ThrowIfCancellationRequested();
             if (!TryCommitInitialization(initializationState))
                 throw new OperationCanceledException(
@@ -49,23 +67,31 @@ public static partial class EntryPoint
             RuntimeHost.Commit(prepared);
             prepared = null;
         }
-        catch (OperationCanceledException exception) when (cancellation.IsCancellationRequested)
+        catch (OperationCanceledException exception) when (
+            cancellation?.IsCancellationRequested == true)
         {
             Log.Warning("managed initialization cancelled; prepared hooks were rolled back");
-            FailureNotifier.ShowOnce(
+            notifyFailure(
                 "the managed runtime before its startup deadline",
                 exception);
         }
         catch (Exception exception)
         {
-            CancelInitialization(initializationState, initializationCancelledEvent);
+            CancelInitialization(
+                initializationState,
+                initializationCancelledEvent,
+                signalEvent);
             Log.Error("managed initialization failed", exception);
-            FailureNotifier.ShowOnce("the managed runtime", exception);
+            notifyFailure("the managed runtime", exception);
         }
         finally
         {
-            prepared?.Dispose();
-            SetEvent(mainThreadContinueEvent);
+            try
+            {
+                prepared?.Dispose();
+                cancellation?.Dispose();
+            }
+            finally { signalEvent(mainThreadContinueEvent); }
         }
     }
 
@@ -76,14 +102,17 @@ public static partial class EntryPoint
         return Interlocked.CompareExchange(ref state, 1, 0) == 0;
     }
 
-    private static unsafe void CancelInitialization(nint stateAddress, nint cancelledEvent)
+    private static unsafe void CancelInitialization(
+        nint stateAddress,
+        nint cancelledEvent,
+        Action<nint> signalEvent)
     {
         if (stateAddress != 0)
         {
             ref var state = ref Unsafe.AsRef<int>((void*)stateAddress);
             Interlocked.CompareExchange(ref state, 2, 0);
         }
-        if (cancelledEvent != 0) SetEvent(cancelledEvent);
+        if (cancelledEvent != 0) signalEvent(cancelledEvent);
     }
 
     private sealed class NativeInitializationCancellation : IDisposable

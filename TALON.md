@@ -54,6 +54,13 @@ Attributed members are also collected into a batch before initialization.
 Individual scan methods remain available for dynamic discovery and unusual
 plugin needs, but the batch path is the preferred extension surface.
 
+Managed detours execute directly on native game threads. The current low-level
+hook API does not synthesize an exception guard for arbitrary delegate shapes;
+detour implementations must catch every managed exception and call their
+original function when optional work fails. Talon's first-party detours enforce
+that boundary explicitly. A future plugin layer should expose a guarded hook
+surface before third-party code can register detours.
+
 The exact Dalamud-derived API areas and source revision are recorded in
 [third-party notices](THIRD_PARTY_NOTICES.md).
 

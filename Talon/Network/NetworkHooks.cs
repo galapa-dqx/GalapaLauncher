@@ -97,10 +97,12 @@ internal sealed class NetworkHooks(
             {
                 // The parser supplies the live session object and calls its payload slot.
                 QueueSessionHookInstall(session);
-                parsingFrame = true;
                 currentFrameType = frame != 0 && length > 0
                     ? (byte)(Marshal.ReadByte(frame) >> 4)
                     : byte.MaxValue;
+                // Publish the gate only after frame classification succeeds. A
+                // failed game-memory read must not expose a stale type to payloads.
+                parsingFrame = true;
             }
             catch (Exception exception)
             {
