@@ -146,8 +146,15 @@ one open handle that denies writes/replacement** (`FileShare.Read`, opened once)
 re-open the path between verify and apply, so a same-user process can't swap the cache file in the
 TOCTOU window. (`ZiPatchInstaller.InstallPatch` therefore needs a stream/handle overload that
 verifies chunk checksums, instead of today's reopen-by-path `FromFileName` with checksums off.)
-The child also monitors `--parent-pid` and exits
-if the UI dies (no orphaned elevated applier). **Required before elevation ships (not
+The child also monitors `--parent-pid` so it never orphans as an elevated process — but on
+parent death it must **shut down gracefully, not abruptly**: stop accepting new `StartInstall`,
+and let the in-flight `InstallPatch` reach a safe boundary (finish the current patch — or at
+minimum the current chunk's write + flush) before exiting, so a watchdog exit can never leave a
+game `.dat` torn mid-write. Because a repo's `.ver` only advances on a clean `FinalizeRepo`, a
+mid-apply exit leaves the old version on disk and the next run re-applies from there. (The
+alternative — per-target rollback/recovery of every modified file — is heavier; the safe-boundary
+shutdown is the design, and the kill-during-apply test in §9 must cover it.) **Required before
+elevation ships (not
 optional hardening):** create the pipe with an explicit DACL restricted to the current
 user's SID — a same-user process could otherwise connect to the elevated child and drive
 `StartInstall` — and bind the handshake to the expected `--parent-pid` (validate the
@@ -292,6 +299,9 @@ Failed verify → discard cache file, re-download once, then surface an error.
   `IDqxPatchClient`.
 - **Acquisition** — resume vs a local `HttpListener` that supports Range and injects a
   one-shot 403 (assert token-refresh + resume-from-offset; assert GET-only, no HEAD).
+- **Kill-during-apply** — signal parent death mid-`InstallPatch` and assert the child finishes
+  its safe boundary (current chunk write + flush) before exiting, does **not** advance the repo's
+  `.ver`, leaves no torn `.dat`, and that a subsequent run then completes cleanly.
 - **IPC** — `NamedPipePatchIpcChannel` round-trips envelopes; the `serve` loop applies a
   synthetic patch and streams `ApplyProgress`; token-mismatch handshake aborts. An
   in-process channel impl lets `PatchManager`↔`PatchApplyService` be tested without
