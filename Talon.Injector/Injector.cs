@@ -34,9 +34,9 @@ public static partial class Injector
     /// loader's early alertable wait, before the target's entry point runs.
     /// </summary>
     /// <param name="gameCommandLine">
-    /// Full command line for the target, verbatim — first token is the quoted exe path.
-    /// Passed straight to <c>CreateProcessW</c>'s <c>lpCommandLine</c>; the caller owns any
-    /// quoting (see the raw-tail handoff in Program.cs).
+    /// Full command line for the target, verbatim; the first token is the quoted exe path.
+    /// Copied into the writable buffer required by <c>CreateProcessW</c>. The caller owns
+    /// all quoting (see the raw-tail handoff in Program.cs).
     /// </param>
     /// <param name="workingDir">Working directory for the target process.</param>
     /// <param name="bootDllPath">Absolute path to the native x86 boot DLL to inject.</param>
@@ -48,6 +48,10 @@ public static partial class Injector
     {
         if (string.IsNullOrWhiteSpace(gameCommandLine))
             throw new ArgumentException("Game command line is empty.", nameof(gameCommandLine));
+        if (gameCommandLine.Contains('\0'))
+            throw new ArgumentException(
+                "Game command line contains an embedded null character.",
+                nameof(gameCommandLine));
         if (!File.Exists(bootDllPath))
             throw new FileNotFoundException("Boot DLL not found.", bootDllPath);
 
@@ -61,14 +65,8 @@ public static partial class Injector
 
         var startupInfo = new STARTUPINFO { cb = Marshal.SizeOf<STARTUPINFO>() };
 
-        var created = CreateProcess(
-            null,
+        var created = CreateProcessWithMutableCommandLine(
             gameCommandLine,
-            nint.Zero,
-            nint.Zero,
-            false,
-            CREATE_SUSPENDED,
-            nint.Zero,
             workingDir,
             ref startupInfo,
             out var pi);
@@ -387,11 +385,37 @@ public static partial class Injector
     private const uint PAGE_EXECUTE_READ = 0x20;
     private const ushort IMAGE_FILE_MACHINE_I386 = 0x014C;
 
+    private static unsafe bool CreateProcessWithMutableCommandLine(
+        string commandLine,
+        string workingDirectory,
+        ref STARTUPINFO startupInfo,
+        out PROCESS_INFORMATION processInformation)
+    {
+        // CreateProcessW may insert a terminator while it parses the executable
+        // token. A by-value UTF-16 string is pinned by LibraryImport, so provide
+        // an explicitly writable buffer instead of exposing System.String memory.
+        var buffer = (commandLine + '\0').ToCharArray();
+        fixed (char* commandLinePointer = buffer)
+        {
+            return CreateProcess(
+                null,
+                commandLinePointer,
+                nint.Zero,
+                nint.Zero,
+                false,
+                CREATE_SUSPENDED,
+                nint.Zero,
+                workingDirectory,
+                ref startupInfo,
+                out processInformation);
+        }
+    }
+
     [LibraryImport("kernel32.dll", EntryPoint = "CreateProcessW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool CreateProcess(
+    private static unsafe partial bool CreateProcess(
         string? lpApplicationName,
-        string lpCommandLine,
+        char* lpCommandLine,
         nint lpProcessAttributes,
         nint lpThreadAttributes,
         [MarshalAs(UnmanagedType.Bool)] bool bInheritHandles,

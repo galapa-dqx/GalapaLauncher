@@ -1,5 +1,6 @@
-using System.Runtime.InteropServices;
+using System.Buffers;
 using System.Collections.Concurrent;
+using System.Runtime.InteropServices;
 using System.Text;
 using Reloaded.Hooks.Definitions.X86;
 using Talon.Hooking;
@@ -8,7 +9,7 @@ using Talon.Interop;
 namespace Talon.Vfs;
 
 // Redirects matching game VFS reads to canonicalized loose files.
-internal sealed class VfsHooks(
+internal sealed partial class VfsHooks(
     SignatureScanResult signatures,
     IGameInteropProvider interop,
     TalonStartInfo startInfo) : IDisposable
@@ -173,17 +174,53 @@ internal sealed class VfsHooks(
         }
     }
 
-    private static string DecodeGamePath(nint pointer)
+    internal static unsafe string DecodeGamePath(nint pointer)
     {
         const int maximumPathBytes = 4096;
-        var length = 0;
-        while (length < maximumPathBytes && Marshal.ReadByte(pointer + length) != 0)
-            length++;
-        if (length == maximumPathBytes)
+        var bytes = ArrayPool<byte>.Shared.Rent(maximumPathBytes);
+        try
+        {
+            var length = 0;
+            while (length < maximumPathBytes)
+            {
+                var address = pointer + length;
+                if (VirtualQuery(
+                        address,
+                        out var information,
+                        (nuint)Marshal.SizeOf<MemoryBasicInformation>()) == 0 ||
+                    information.State != MemoryCommit ||
+                    (information.Protect & (PageNoAccess | PageGuard)) != 0)
+                    throw new InvalidDataException("VFS path points to unreadable game memory.");
+
+                var current = (nuint)address;
+                var regionEnd = checked((nuint)information.BaseAddress + information.RegionSize);
+                if (regionEnd <= current)
+                    throw new InvalidDataException("VFS path memory map is invalid.");
+                var available = regionEnd - current;
+                var remaining = (nuint)(maximumPathBytes - length);
+                var chunkLength = checked((int)(available < remaining ? available : remaining));
+
+                nuint read;
+                fixed (byte* destination = &bytes[length])
+                {
+                    if (!ReadProcessMemory(
+                            GetCurrentProcess(),
+                            address,
+                            destination,
+                            (nuint)chunkLength,
+                            out read) ||
+                        read != (nuint)chunkLength)
+                        throw new InvalidDataException("VFS path could not be read safely.");
+                }
+
+                var terminator = bytes.AsSpan(length, chunkLength).IndexOf((byte)0);
+                if (terminator >= 0)
+                    return GamePathEncoding.GetString(bytes, 0, length + terminator);
+                length += chunkLength;
+            }
             throw new InvalidDataException("VFS path exceeds the 4096-byte safety limit.");
-        var bytes = new byte[length];
-        Marshal.Copy(pointer, bytes, 0, bytes.Length);
-        return GamePathEncoding.GetString(bytes);
+        }
+        finally { ArrayPool<byte>.Shared.Return(bytes); }
     }
 
     private static Encoding CreateGamePathEncoding()
@@ -194,6 +231,40 @@ internal sealed class VfsHooks(
             EncoderFallback.ExceptionFallback,
             DecoderFallback.ExceptionFallback);
     }
+
+    private const uint MemoryCommit = 0x1000;
+    private const uint PageNoAccess = 0x01;
+    private const uint PageGuard = 0x100;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MemoryBasicInformation
+    {
+        public nint BaseAddress;
+        public nint AllocationBase;
+        public uint AllocationProtect;
+        public nuint RegionSize;
+        public uint State;
+        public uint Protect;
+        public uint Type;
+    }
+
+    [LibraryImport("kernel32.dll")]
+    private static partial nint GetCurrentProcess();
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static unsafe partial bool ReadProcessMemory(
+        nint process,
+        nint baseAddress,
+        byte* buffer,
+        nuint size,
+        out nuint bytesRead);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    private static partial nuint VirtualQuery(
+        nint address,
+        out MemoryBasicInformation information,
+        nuint length);
 
     private sealed record VfsCallbacks(
         VfsAllocateDelegate Allocate,
