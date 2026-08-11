@@ -7,8 +7,6 @@
 // a normal worker resolves and installs hooks.
 
 #include "unpack_trigger.h"
-#include "vfs_hook.h"
-#include "hook_manager.h"
 #include "log.h"
 
 #define WIN32_LEAN_AND_MEAN
@@ -20,16 +18,22 @@
 static const DWORD kDr7ExecDr0 = 0x00000001;
 static const DWORD kResumeFlag = 0x00010000;
 static const DWORD kBarrierTimeoutMs = 30000;
+static const DWORD kCancellationGraceMs = 5000;
+static const LONG kStageAwaitingEntrypoint = 1;
+static const LONG kStageAwaitingProtection = 2;
+static const LONG kStageCancelled = 3;
 
 static volatile LONG g_armed = 0;
 static volatile LONG g_stage = 0;
-static volatile LONG g_worker_ready = 0;
 static uintptr_t g_entrypoint_va = 0;
 static uintptr_t g_ntprotect_va = 0;
 static uintptr_t g_text_begin = 0;
 static uintptr_t g_text_end = 0;
-static HANDLE g_barrier_event = nullptr;
-static HANDLE g_barrier_done = nullptr;
+static HANDLE g_unpack_complete = nullptr;
+static HANDLE g_managed_ready = nullptr;
+static HANDLE g_initialization_cancelled = nullptr;
+static volatile LONG* g_initialization_state = nullptr;
+static PVOID g_veh_handle = nullptr;
 
 static bool find_text_range(uint8_t* base) {
     auto dos = (PIMAGE_DOS_HEADER)base;
@@ -37,7 +41,9 @@ static bool find_text_range(uint8_t* base) {
     g_entrypoint_va = (uintptr_t)base + nt->OptionalHeader.AddressOfEntryPoint;
     auto section = IMAGE_FIRST_SECTION(nt);
     for (WORD i = 0; i < nt->FileHeader.NumberOfSections; ++i) {
-        if (memcmp(section[i].Name, ".text", 5) != 0) continue;
+        static const BYTE text_name[IMAGE_SIZEOF_SHORT_NAME] =
+            {'.', 't', 'e', 'x', 't', 0, 0, 0};
+        if (memcmp(section[i].Name, text_name, sizeof(text_name)) != 0) continue;
         uintptr_t begin = (uintptr_t)base + section[i].VirtualAddress;
         uintptr_t end = begin + section[i].Misc.VirtualSize;
         g_text_begin = begin & ~(uintptr_t)0xFFF;
@@ -59,27 +65,55 @@ static void clear_dr0(CONTEXT* context) {
     context->Dr6 = 0;
 }
 
+static bool cancel_initialization() {
+    if (!g_initialization_state) return false;
+    LONG previous = InterlockedCompareExchange(
+        g_initialization_state,
+        talon_initialization_cancelled,
+        talon_initialization_pending);
+    if (previous != talon_initialization_pending) return false;
+    if (g_initialization_cancelled) SetEvent(g_initialization_cancelled);
+    return true;
+}
+
 static LONG CALLBACK unpack_veh(EXCEPTION_POINTERS* ep) {
-    if (!g_armed || ep->ExceptionRecord->ExceptionCode != EXCEPTION_SINGLE_STEP ||
+    if (ep->ExceptionRecord->ExceptionCode != EXCEPTION_SINGLE_STEP ||
         !(ep->ContextRecord->Dr6 & 1))
         return EXCEPTION_CONTINUE_SEARCH;
 
     uintptr_t address = (uintptr_t)ep->ExceptionRecord->ExceptionAddress;
-    if (g_stage == 1 && address == g_entrypoint_va) {
-        if (g_worker_ready) {
-            set_dr0(ep->ContextRecord, g_ntprotect_va);
-            InterlockedExchange(&g_stage, 2);
-            dbg("[barrier] entrypoint rendezvous hit at %p; DR0 -> NtProtectVirtualMemory\n",
-                (void*)address);
-        } else {
+    LONG stage = InterlockedCompareExchange(&g_stage, 0, 0);
+    if (stage == kStageCancelled) {
+        // cancel_unpack_barrier can race a dispatch whose debug context is held
+        // in EXCEPTION_POINTERS rather than the thread's live CONTEXT. Keep the
+        // VEH registered and clear any late saved Talon breakpoint here.
+        uintptr_t dr0 = (uintptr_t)ep->ContextRecord->Dr0;
+        if (address != g_entrypoint_va && address != g_ntprotect_va &&
+            dr0 != g_entrypoint_va && dr0 != g_ntprotect_va)
+            return EXCEPTION_CONTINUE_SEARCH;
+        ep->ContextRecord->EFlags |= kResumeFlag;
+        clear_dr0(ep->ContextRecord);
+        return EXCEPTION_CONTINUE_EXECUTION;
+    }
+    if (!g_armed) return EXCEPTION_CONTINUE_SEARCH;
+
+    if (stage == kStageAwaitingEntrypoint && address == g_entrypoint_va) {
+        // start_unpack_barrier publishes every target before setting g_armed.
+        set_dr0(ep->ContextRecord, g_ntprotect_va);
+        if (InterlockedCompareExchange(
+                &g_stage,
+                kStageAwaitingProtection,
+                kStageAwaitingEntrypoint) != kStageAwaitingEntrypoint) {
+            ep->ContextRecord->EFlags |= kResumeFlag;
             clear_dr0(ep->ContextRecord);
-            InterlockedExchange(&g_armed, 0);
-            dbg("[barrier] entrypoint rendezvous hit without a worker; DR0 cleared\n");
+            return EXCEPTION_CONTINUE_EXECUTION;
         }
+        dbg("[barrier] entrypoint rendezvous hit at %p; DR0 -> NtProtectVirtualMemory\n",
+            (void*)address);
         return EXCEPTION_CONTINUE_EXECUTION;
     }
 
-    if (g_stage != 2 || address != g_ntprotect_va)
+    if (stage != kStageAwaitingProtection || address != g_ntprotect_va)
         return EXCEPTION_CONTINUE_SEARCH;
 
     DWORD requested_base = 0, requested_size = 0, requested_protect = 0;
@@ -109,13 +143,30 @@ static LONG CALLBACK unpack_veh(EXCEPTION_POINTERS* ep) {
         "parking unpacker\n", requested_base, requested_size);
     clear_dr0(ep->ContextRecord);
     InterlockedExchange(&g_armed, 0);
-    if (g_barrier_event) SetEvent(g_barrier_event);
+    if (g_unpack_complete) SetEvent(g_unpack_complete);
 
-    DWORD result = g_barrier_done
-        ? WaitForSingleObject(g_barrier_done, kBarrierTimeoutMs) : WAIT_FAILED;
-    if (result != WAIT_OBJECT_0)
-        dbg("[barrier] hook worker did not finish in %lu ms; resuming without hooks\n",
-            kBarrierTimeoutMs);
+    DWORD result = g_managed_ready
+        ? WaitForSingleObject(g_managed_ready, kBarrierTimeoutMs) : WAIT_FAILED;
+    if (result != WAIT_OBJECT_0) {
+        bool cancelled = cancel_initialization();
+        dbg("[barrier] managed hook initialization did not finish in %lu ms; "
+            "%s Talon startup\n",
+            kBarrierTimeoutMs,
+            cancelled ? "cancelling" : "waiting for committed");
+
+        // A cancelled managed preparation owns enabled hooks until it rolls them
+        // back. Give it a bounded cleanup window before DQX resumes. If managed
+        // committed at the deadline, the same window covers its imminent ready signal.
+        if (g_managed_ready)
+            result = WaitForSingleObject(g_managed_ready, kCancellationGraceMs);
+        if (result != WAIT_OBJECT_0)
+            dbg("[barrier] managed cancellation did not settle in %lu ms; resuming\n",
+                kCancellationGraceMs);
+    }
+    // Do not unregister the VEH from inside its own callback. Windows waits for
+    // active callbacks to drain during removal, which deadlocks this thread. The
+    // inert handler remains safe because Talon.Boot stays loaded for the process
+    // lifetime and g_armed now makes later dispatches continue immediately.
     return EXCEPTION_CONTINUE_EXECUTION;
 }
 
@@ -148,65 +199,49 @@ static void clear_barrier_dr0_all_threads(DWORD self_tid) {
     CloseHandle(snap);
 }
 
-static DWORD WINAPI barrier_worker(LPVOID) {
-    DWORD result = g_barrier_event
-        ? WaitForSingleObject(g_barrier_event, kBarrierTimeoutMs) : WAIT_FAILED;
-    if (result != WAIT_OBJECT_0) {
-        // Keep the VEH armed while removing DR0. If g_armed were cleared first,
-        // another thread could hit the still-live breakpoint during this sweep and
-        // have its EXCEPTION_SINGLE_STEP propagated as unhandled.
-        clear_barrier_dr0_all_threads(GetCurrentThreadId());
-        InterlockedExchange(&g_armed, 0);
-        dbg("[barrier] no exact bulk-unpack transition in %lu ms; "
-            "Talon DR0 cleared, no hooks installed\n", kBarrierTimeoutMs);
-        return 0;
-    }
-
-    bool resolved = vfs_resolve_and_register();
-    int installed = resolved ? hook_install_all() : 0;
-    dbg("[barrier] bulk unpack complete; scanner resolved=%d, hooks installed=%d\n",
-        resolved ? 1 : 0, installed);
-    if (g_barrier_done) SetEvent(g_barrier_done);
-    return 0;
-}
-
-void start_unpack_barrier() {
+bool start_unpack_barrier(
+    HANDLE unpack_complete,
+    HANDLE managed_ready,
+    HANDLE initialization_cancelled,
+    volatile LONG* initialization_state) {
     uint8_t* base = (uint8_t*)GetModuleHandleA(nullptr);
     HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
     g_ntprotect_va = ntdll
         ? (uintptr_t)GetProcAddress(ntdll, "NtProtectVirtualMemory") : 0;
     if (!base || !g_ntprotect_va || !find_text_range(base)) {
         dbg("[barrier] could not resolve NtProtectVirtualMemory or .text; no hooks installed\n");
-        return;
+        return false;
     }
 
-    g_barrier_event = CreateEventA(nullptr, FALSE, FALSE, nullptr);
-    g_barrier_done = CreateEventA(nullptr, FALSE, FALSE, nullptr);
-    if (!g_barrier_event || !g_barrier_done) {
-        dbg("[barrier] CreateEvent failed (err=%lu)\n", GetLastError());
-        if (g_barrier_event) { CloseHandle(g_barrier_event); g_barrier_event = nullptr; }
-        if (g_barrier_done) { CloseHandle(g_barrier_done); g_barrier_done = nullptr; }
-        return;
-    }
+    if (!unpack_complete || !managed_ready || !initialization_cancelled ||
+        !initialization_state)
+        return false;
+    g_unpack_complete = unpack_complete;
+    g_managed_ready = managed_ready;
+    g_initialization_cancelled = initialization_cancelled;
+    g_initialization_state = initialization_state;
 
-    PVOID veh_handle = AddVectoredExceptionHandler(1, unpack_veh);
-    if (!veh_handle) {
+    g_veh_handle = AddVectoredExceptionHandler(1, unpack_veh);
+    if (!g_veh_handle) {
         dbg("[barrier] AddVectoredExceptionHandler failed (err=%lu)\n", GetLastError());
-        return;
+        return false;
     }
-    InterlockedExchange(&g_stage, 1);
+    InterlockedExchange(&g_stage, kStageAwaitingEntrypoint);
     InterlockedExchange(&g_armed, 1);
-
-    HANDLE thread = CreateThread(nullptr, 0, barrier_worker, nullptr, 0, nullptr);
-    if (!thread) {
-        dbg("[barrier] CreateThread(worker) failed (err=%lu)\n", GetLastError());
-        return;
-    }
-    CloseHandle(thread);
-    InterlockedExchange(&g_worker_ready, 1);
 
     dbg("[barrier] awaiting injector entrypoint rendezvous=%p; "
         "NtProtectVirtualMemory=%p; .text=[%p,%p)\n",
         (void*)g_entrypoint_va, (void*)g_ntprotect_va,
         (void*)g_text_begin, (void*)g_text_end);
+    return true;
+}
+
+void cancel_unpack_barrier() {
+    cancel_initialization();
+    // Publish cancellation before sweeping live thread contexts. A concurrent
+    // VEH clears its saved exception context, which the sweep cannot modify.
+    // Keep the VEH registered afterward to consume any already-pending trap.
+    InterlockedExchange(&g_stage, kStageCancelled);
+    clear_barrier_dr0_all_threads(GetCurrentThreadId());
+    InterlockedExchange(&g_armed, 0);
 }

@@ -1,0 +1,69 @@
+using System.Diagnostics;
+using Talon.Interop;
+
+// API shape adapted from Dalamud.Plugin.Services.IGameInteropProvider;
+// see THIRD_PARTY_NOTICES.md.
+
+namespace Talon.Hooking;
+
+/// <summary>Creates hooks for game code, imports, exports, and signatures.</summary>
+/// <remarks>
+/// Detours execute on native game threads and are not wrapped automatically.
+/// A detour must catch all managed exceptions before they cross the unmanaged
+/// boundary and call its original function when auxiliary work fails.
+/// </remarks>
+public interface IGameInteropProvider
+{
+    /// <summary>Initializes members marked with <see cref="SignatureAttribute"/>.</summary>
+    void InitializeFromAttributes(object self);
+
+    /// <summary>
+    /// Hooks a function pointer stored at <paramref name="address"/>. Delegate types
+    /// must declare matching Reloaded <c>Function</c> and
+    /// <see cref="System.Runtime.InteropServices.UnmanagedFunctionPointerAttribute"/>
+    /// conventions.
+    /// </summary>
+    Hook<T> HookFromFunctionPointerVariable<T>(nint address, T detour) where T : Delegate;
+
+    /// <summary>Hooks an entry in a module's import address table.</summary>
+    Hook<T> HookFromImport<T>(
+        ProcessModule? module,
+        string moduleName,
+        string functionName,
+        uint hintOrOrdinal,
+        T detour) where T : Delegate;
+
+    /// <summary>Hooks an exported function from a loaded module.</summary>
+    Hook<T> HookFromSymbol<T>(
+        string moduleName,
+        string exportName,
+        T detour,
+        HookBackend backend = HookBackend.Automatic) where T : Delegate;
+
+    /// <summary>
+    /// Hooks code at a signed native address. Delegate types must declare matching
+    /// Reloaded and unmanaged calling-convention attributes.
+    /// </summary>
+    Hook<T> HookFromAddress<T>(
+        nint procAddress,
+        T detour,
+        HookBackend backend = HookBackend.Automatic) where T : Delegate;
+
+    /// <summary>Hooks code at an unsigned native address.</summary>
+    Hook<T> HookFromAddress<T>(
+        nuint procAddress,
+        T detour,
+        HookBackend backend = HookBackend.Automatic) where T : Delegate;
+
+    /// <summary>Hooks code at a native pointer.</summary>
+    unsafe Hook<T> HookFromAddress<T>(
+        void* procAddress,
+        T detour,
+        HookBackend backend = HookBackend.Automatic) where T : Delegate;
+
+    /// <summary>Scans executable code and hooks the resolved address.</summary>
+    Hook<T> HookFromSignature<T>(
+        string signature,
+        T detour,
+        HookBackend backend = HookBackend.Automatic) where T : Delegate;
+}

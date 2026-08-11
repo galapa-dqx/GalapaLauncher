@@ -1,6 +1,7 @@
+using System.Text.Json;
 using Talon.Injector;
 
-// Talon.Injector — Phase 0 CLI.
+// Talon.Injector CLI.
 //
 // Usage:
 //   Talon.Injector.exe [--working-dir <dir>] [--boot-dll <path>]
@@ -11,12 +12,8 @@ using Talon.Injector;
 // This is deliberate: DQX's -StartupToken can contain spaces/quotes, and round-tripping
 // through a split-then-rejoined argv would corrupt it. See the plan's handoff section.
 //
-// --override-dir points Talon.Boot at a folder of loose files to serve in place of the
-// game's packed .dat archive contents. Talon.Boot hooks the game's own VFS resource
-// loader, so it needs only this folder — the game reads its .idx/.dat archives itself.
-// The folder is handed to the injected DLL through the TALON_OVERRIDE_DIR environment
-// variable: we set it here and the launched game inherits our environment (CreateProcessW
-// is called with a null environment block).
+// Talon options are serialized as versioned JSON in the same remote allocation as the
+// DLL path and target-side APC thunk.
 
 const string marker = " -- ";
 var raw = Environment.CommandLine;
@@ -50,6 +47,9 @@ foreach (var a in args)
 string? workingDir = null;
 string? bootDll = null;
 string? overrideDir = null;
+string? packetCapturePath = null;
+var networkSmokeTest = false;
+var vfsCensus = false;
 for (var i = 0; i < injectorArgs.Count; i++)
 {
     switch (injectorArgs[i])
@@ -62,6 +62,15 @@ for (var i = 0; i < injectorArgs.Count; i++)
             break;
         case "--override-dir" when i + 1 < injectorArgs.Count:
             overrideDir = injectorArgs[++i];
+            break;
+        case "--packet-capture" when i + 1 < injectorArgs.Count:
+            packetCapturePath = injectorArgs[++i];
+            break;
+        case "--network-smoke-test":
+            networkSmokeTest = true;
+            break;
+        case "--vfs-census":
+            vfsCensus = true;
             break;
         case "-h" or "--help":
             PrintUsage();
@@ -81,16 +90,23 @@ bootDll = Path.GetFullPath(bootDll);
 var gameExe = FirstToken(gameCommandLine);
 workingDir ??= Path.GetDirectoryName(gameExe) is { Length: > 0 } dir ? dir : Environment.CurrentDirectory;
 
-// Hand the override/data directories to the injected boot DLL via environment
-// variables. This works precisely because LaunchAndInject calls CreateProcessW
-// with a null environment block, so the launched game inherits our environment.
 if (overrideDir is { Length: > 0 })
 {
     overrideDir = Path.GetFullPath(overrideDir);
-    Environment.SetEnvironmentVariable("TALON_OVERRIDE_DIR", overrideDir);
     if (!Directory.Exists(overrideDir))
         Console.Error.WriteLine($"[talon] warning: override dir does not exist yet: {overrideDir}");
 }
+if (packetCapturePath is { Length: > 0 })
+    packetCapturePath = Path.GetFullPath(packetCapturePath);
+
+var startInfoJson = JsonSerializer.Serialize(new TalonStartInfo
+{
+    Version = 1,
+    OverrideDirectory = overrideDir,
+    PacketCapturePath = packetCapturePath,
+    NetworkSmokeTest = networkSmokeTest,
+    VfsCensus = vfsCensus,
+});
 
 try
 {
@@ -98,9 +114,14 @@ try
     Console.WriteLine($"[talon] working dir: {workingDir}");
     if (overrideDir is { Length: > 0 })
         Console.WriteLine($"[talon] override   : {overrideDir}");
+    if (packetCapturePath is { Length: > 0 })
+        Console.WriteLine($"[talon] capture    : {packetCapturePath}");
+    if (networkSmokeTest)
+        Console.WriteLine("[talon] network smoke test enabled");
     Console.WriteLine($"[talon] launching  : {gameCommandLine}");
 
-    using var result = Injector.LaunchAndInject(gameCommandLine, workingDir, bootDll);
+    using var result = Injector.LaunchAndInject(
+        gameCommandLine, workingDir, bootDll, startInfoJson);
 
     Console.WriteLine($"[talon] injected. pid={result.ProcessId}. APC queued; process resumed.");
     Console.WriteLine($"[talon] check %TEMP%\\talon-boot.log for the boot proof-of-life line.");
@@ -130,7 +151,9 @@ static void PrintUsage()
     Console.Error.WriteLine(
         "usage: Talon.Injector.exe [--working-dir <dir>] [--boot-dll <path>]");
     Console.Error.WriteLine(
-        "                          [--override-dir <dir>] -- <game command line...>");
+        "                          [--override-dir <dir>] [--packet-capture <path>]");
+    Console.Error.WriteLine(
+        "                          [--network-smoke-test] [--vfs-census] -- <game command line...>");
     Console.Error.WriteLine(
         "  everything after '--' is the target command line, passed verbatim to CreateProcessW.");
     Console.Error.WriteLine(
