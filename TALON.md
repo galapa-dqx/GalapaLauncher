@@ -126,7 +126,13 @@ protocol work. Capture records can be dropped if disk I/O falls behind the
 ## Diagnostics
 
 - `--override-dir <dir>` enables loose VFS replacements.
-- `--vfs-census` logs the first 400 VFS paths.
+- `--vfs-census` adds observed paths to the TexTools-compatible catalog at
+  `%LocalAppData%\Galapa\DQX\dat_db.db`. Talon keeps per-session request counts,
+  first/last observation times, expansion/mount pairs, and original, override,
+  fallback, miss, or error outcomes in `talon_sessions` and
+  `talon_vfs_observations`; `talon_vfs_totals` provides a cumulative view.
+  Batched SQLite writes run outside game VFS threads and accumulate across
+  launches.
 - `--packet-capture <path>` writes passive PCAPNG with `LINKTYPE_USER0` (147).
 - `--network-smoke-test` registers a one-shot selector for opcode `0x47`, marker
   `0x3CA8`. The first match per connection generation is held for 250 ms and

@@ -11,6 +11,6 @@ public sealed class TalonStartInfo
     public string? PacketCapturePath { get; init; }
     /// <summary>Gets whether the packet hold-and-replay smoke test is enabled.</summary>
     public bool NetworkSmokeTest { get; init; }
-    /// <summary>Gets whether VFS path census logging is enabled.</summary>
+    /// <summary>Gets whether VFS observations are added to the persistent path catalog.</summary>
     public bool VfsCensus { get; init; }
 }
