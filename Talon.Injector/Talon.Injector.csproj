@@ -70,6 +70,10 @@
                Text="Talon.dll is missing from the Injector output." />
         <Error Condition="!Exists('$(OutDir)goatcorp.Reloaded.Hooks.dll')"
                Text="goatcorp.Reloaded.Hooks.dll is missing from the Injector output." />
+        <Error Condition="!Exists('$(OutDir)Microsoft.Data.Sqlite.dll') or !Exists('$(OutDir)SQLitePCLRaw.batteries_v2.dll') or !Exists('$(OutDir)SQLitePCLRaw.core.dll') or !Exists('$(OutDir)SQLitePCLRaw.provider.e_sqlite3.dll') or !Exists('$(OutDir)e_sqlite3.dll')"
+               Text="The SQLite path-catalog payload is incomplete." />
+        <Error Condition="!Exists('$(OutDir)licenses\Microsoft.Data.Sqlite.MIT.txt') or !Exists('$(OutDir)licenses\SQLitePCLRaw.Apache-2.0.txt') or !Exists('$(OutDir)licenses\SQLite.Public-Domain.txt')"
+               Text="The SQLite path-catalog license notices are missing." />
         <Error Condition="!Exists('$(OutDir)licenses\dotnet-runtime\LICENSE.TXT') or !Exists('$(OutDir)licenses\dotnet-runtime\THIRD-PARTY-NOTICES.TXT')"
                Text="The .NET runtime license notices are missing from the Injector output." />
     </Target>
@@ -97,6 +101,10 @@
               SkipUnchangedFiles="true" />
         <Error Condition="!Exists('$(PublishDir)Talon.dll') or !Exists('$(PublishDir)goatcorp.Reloaded.Hooks.dll') or !Exists('$(PublishDir)Talon.Boot.dll')"
                Text="The published Talon payload is incomplete." />
+        <Error Condition="!Exists('$(PublishDir)Microsoft.Data.Sqlite.dll') or !Exists('$(PublishDir)SQLitePCLRaw.batteries_v2.dll') or !Exists('$(PublishDir)SQLitePCLRaw.core.dll') or !Exists('$(PublishDir)SQLitePCLRaw.provider.e_sqlite3.dll') or !Exists('$(PublishDir)e_sqlite3.dll')"
+               Text="The published SQLite path-catalog payload is incomplete." />
+        <Error Condition="!Exists('$(PublishDir)licenses\Microsoft.Data.Sqlite.MIT.txt') or !Exists('$(PublishDir)licenses\SQLitePCLRaw.Apache-2.0.txt') or !Exists('$(PublishDir)licenses\SQLite.Public-Domain.txt')"
+               Text="The published SQLite path-catalog license notices are missing." />
         <Error Condition="!Exists('$(PublishDir)licenses\dotnet-runtime\LICENSE.TXT') or !Exists('$(PublishDir)licenses\dotnet-runtime\THIRD-PARTY-NOTICES.TXT')"
                Text="The published .NET runtime license notices are incomplete." />
     </Target>

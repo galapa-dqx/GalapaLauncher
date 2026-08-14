@@ -20,7 +20,6 @@ internal sealed partial class VfsHooks(
         "8B EC B8 ?? ?? ?? ?? E8 ?? ?? ?? ?? A1 ?? ?? ?? ?? 33 C5 89 45 FC " +
         "8B 43 0C 8B 53 08");
 
-    private const int CensusCap = 400;
     private static readonly Encoding GamePathEncoding = CreateGamePathEncoding();
     private readonly LooseFileAssetProvider? provider =
         string.IsNullOrWhiteSpace(startInfo.OverrideDirectory)
@@ -29,7 +28,7 @@ internal sealed partial class VfsHooks(
     private Hook<VfsLoadResourceDelegate>? hook;
     private VfsLoadResourceDelegate? original;
     private readonly ConcurrentDictionary<nint, VfsCallbacks> callbacks = [];
-    private int censusCount;
+    private readonly VfsCensus? census = CreateCensus(startInfo.VfsCensus);
 
     public void Initialize()
     {
@@ -46,7 +45,11 @@ internal sealed partial class VfsHooks(
         Log.Info($"VFS hook enabled at 0x{matches[0]:X8}");
     }
 
-    public void Dispose() => hook?.Dispose();
+    public void Dispose()
+    {
+        hook?.Dispose();
+        census?.Dispose();
+    }
 
     private nint VfsLoadResourceDetour(
         nint self,
@@ -57,25 +60,37 @@ internal sealed partial class VfsHooks(
     {
         var originalCall = original;
         if (originalCall is null) return 0;
+        string? path = null;
+        var overrideAttempted = false;
         try
         {
-            var path = pathPointer == 0 ? null : DecodeGamePath(pathPointer);
-            if (startInfo.VfsCensus && path is not null &&
-                Interlocked.Increment(ref censusCount) <= CensusCap)
-                Log.Info($"VFS census exp={expansion} mount={mount} path={path}");
+            path = pathPointer == 0 ? null : DecodeGamePath(pathPointer);
 
             // Overrides are keyed by the logical VFS path, intentionally not by
             // expansion or mount. One translated asset replaces that path in any
             // archive layer from which DQX requests it.
-            if (self == 0 || path is null || provider is null ||
-                !provider.TryOpen(path, out var overrideStream))
-                return TryCallOriginal(
+            if (self == 0 || path is null || provider is null)
+                return CallOriginalAndRecord(
                     originalCall,
                     self,
                     pathPointer,
                     expansion,
                     mount,
-                    mustBeZero);
+                    mustBeZero,
+                    path,
+                    overrideFallback: false);
+
+            overrideAttempted = true;
+            if (!provider.TryOpen(path, out var overrideStream))
+                return CallOriginalAndRecord(
+                    originalCall,
+                    self,
+                    pathPointer,
+                    expansion,
+                    mount,
+                    mustBeZero,
+                    path,
+                    overrideFallback: true);
 
             using (overrideStream)
             {
@@ -87,6 +102,12 @@ internal sealed partial class VfsHooks(
                         out var size))
                 {
                     Log.Info($"VFS override {path} ({size} bytes) -> 0x{resource:X8}");
+                    census?.Record(
+                        path,
+                        expansion,
+                        mount,
+                        VfsResolutionOutcome.OverrideHit,
+                        size);
                     return resource;
                 }
             }
@@ -95,13 +116,15 @@ internal sealed partial class VfsHooks(
         {
             Log.Error("VFS detour failed open", exception);
         }
-        return TryCallOriginal(
+        return CallOriginalAndRecord(
             originalCall,
             self,
             pathPointer,
             expansion,
             mount,
-            mustBeZero);
+            mustBeZero,
+            path,
+            overrideAttempted);
     }
 
     private bool TryConstructOverride(
@@ -158,7 +181,45 @@ internal sealed partial class VfsHooks(
         }
     }
 
-    private static nint TryCallOriginal(
+    private nint CallOriginalAndRecord(
+        VfsLoadResourceDelegate original,
+        nint self,
+        nint path,
+        int expansion,
+        int mount,
+        int mustBeZero,
+        string? decodedPath,
+        bool overrideFallback)
+    {
+        var result = TryCallOriginal(original, self, path, expansion, mount, mustBeZero);
+        if (decodedPath is not null)
+            census?.Record(
+                decodedPath,
+                expansion,
+                mount,
+                ClassifyOriginalResult(overrideFallback, result.Resource, result.Failed));
+        return result.Resource;
+    }
+
+    internal static VfsResolutionOutcome ClassifyOriginalResult(
+        bool overrideFallback,
+        nint resource,
+        bool failed)
+    {
+        if (failed)
+            return overrideFallback
+                ? VfsResolutionOutcome.OverrideFallbackError
+                : VfsResolutionOutcome.OriginalError;
+        if (resource != 0)
+            return overrideFallback
+                ? VfsResolutionOutcome.OverrideFallbackHit
+                : VfsResolutionOutcome.OriginalHit;
+        return overrideFallback
+            ? VfsResolutionOutcome.OverrideFallbackMiss
+            : VfsResolutionOutcome.OriginalMiss;
+    }
+
+    private static OriginalCallResult TryCallOriginal(
         VfsLoadResourceDelegate original,
         nint self,
         nint path,
@@ -166,11 +227,27 @@ internal sealed partial class VfsHooks(
         int mount,
         int mustBeZero)
     {
-        try { return original(self, path, expansion, mount, mustBeZero); }
+        try
+        {
+            return new OriginalCallResult(
+                original(self, path, expansion, mount, mustBeZero),
+                Failed: false);
+        }
         catch (Exception exception)
         {
             Log.Error("VFS original call failed", exception);
-            return 0;
+            return new OriginalCallResult(0, Failed: true);
+        }
+    }
+
+    private static VfsCensus? CreateCensus(bool enabled)
+    {
+        if (!enabled) return null;
+        try { return new VfsCensus(); }
+        catch (Exception exception)
+        {
+            Log.Error("VFS census initialization failed; continuing without it", exception);
+            return null;
         }
     }
 
@@ -270,6 +347,8 @@ internal sealed partial class VfsHooks(
         VfsAllocateDelegate Allocate,
         VfsFreeDelegate Free,
         VfsConstructDelegate Construct);
+
+    private readonly record struct OriginalCallResult(nint Resource, bool Failed);
 
     [Function(CallingConventions.MicrosoftThiscall)]
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]

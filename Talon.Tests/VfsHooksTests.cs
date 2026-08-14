@@ -6,6 +6,22 @@ namespace Talon.Tests;
 
 public sealed class VfsHooksTests
 {
+    [Theory]
+    [InlineData(false, 1, false, (int)VfsResolutionOutcome.OriginalHit)]
+    [InlineData(false, 0, false, (int)VfsResolutionOutcome.OriginalMiss)]
+    [InlineData(false, 0, true, (int)VfsResolutionOutcome.OriginalError)]
+    [InlineData(true, 1, false, (int)VfsResolutionOutcome.OverrideFallbackHit)]
+    [InlineData(true, 0, false, (int)VfsResolutionOutcome.OverrideFallbackMiss)]
+    [InlineData(true, 0, true, (int)VfsResolutionOutcome.OverrideFallbackError)]
+    public void ClassifiesOriginalResolutionOutcome(
+        bool overrideFallback,
+        int resource,
+        bool failed,
+        int expected) =>
+        Assert.Equal(
+            expected,
+            (int)VfsHooks.ClassifyOriginalResult(overrideFallback, resource, failed));
+
     [Fact]
     public void DecodesReadableNullTerminatedGamePath()
     {

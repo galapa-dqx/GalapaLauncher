@@ -44,6 +44,17 @@ Talon's self-contained package also redistributes the .NET x86 runtime. The
 exact runtime pack's `LICENSE.TXT` and `THIRD-PARTY-NOTICES.TXT` are copied into
 `licenses/dotnet-runtime/` during build and publish.
 
+## Microsoft.Data.Sqlite and SQLitePCLRaw
+
+Talon redistributes `Microsoft.Data.Sqlite.Core` under the MIT license shipped
+as `licenses/Microsoft.Data.Sqlite.MIT.txt`.
+
+Talon also redistributes SQLitePCLRaw, Copyright 2014-2026 SourceGear, LLC,
+under the Apache License 2.0 shipped as
+`licenses/SQLitePCLRaw.Apache-2.0.txt`, and its bundled native SQLite library.
+SQLite is dedicated to the public domain; its package notice is shipped as
+`licenses/SQLite.Public-Domain.txt`.
+
 ## MinHook
 
 `Talon.Recon` contains a vendored copy of MinHook for the separate reverse-
