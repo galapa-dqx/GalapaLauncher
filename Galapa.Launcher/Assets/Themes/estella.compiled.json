@@ -1,0 +1,409 @@
+{
+  "label": "Estella",
+  "mode": "light",
+  "focusRing": {
+    "color": "#3878aa",
+    "width": 2,
+    "offset": -2
+  },
+  "controls": {
+    "window": {
+      "shape": "Window",
+      "fill": "#eef4f8",
+      "content": "#0e1e28",
+      "borderColor": "#b8ccd8"
+    },
+    "panel": {
+      "shape": "Path",
+      "fill": "#f5f9fc",
+      "borderColor": "#b8ccd8",
+      "borderThickness": 1
+    },
+    "button": {
+      "shape": "Path",
+      "fill": "transparent",
+      "content": "#3878aa",
+      "borderColor": "#b8ccd8",
+      "borderThickness": 1,
+      "radius": 4,
+      "padding": [
+        6,
+        20,
+        6,
+        20
+      ],
+      "text": {
+        "family": "Playfair Display",
+        "fallback": "serif",
+        "weight": 700,
+        "style": "normal",
+        "size": 16,
+        "case": "uppercase"
+      },
+      "states": {
+        "hover": {
+          "borderColor": "#3878aa"
+        },
+        "pressed": {
+          "fill": "rgba(56, 120, 170, 0.08)"
+        },
+        "disabled": {
+          "opacity": 0.5
+        }
+      }
+    },
+    "input": {
+      "shape": "Path",
+      "content": "#0e1e28",
+      "borderColor": "#b8ccd8",
+      "borderThickness": 1,
+      "padding": [
+        6,
+        10,
+        6,
+        10
+      ],
+      "text": {
+        "family": "Source Sans 3",
+        "fallback": "sans-serif",
+        "weight": 400,
+        "style": "normal",
+        "size": 16
+      },
+      "states": {
+        "focused": {
+          "borderColor": "#3878aa",
+          "borderThickness": 2
+        },
+        "disabled": {
+          "opacity": 0.5
+        }
+      }
+    },
+    "tab": {
+      "shape": "Path",
+      "content": "#4a6a80",
+      "borderColor": "transparent",
+      "borderThickness": [
+        0,
+        0,
+        2,
+        0
+      ],
+      "padding": [
+        0,
+        10,
+        0,
+        10
+      ],
+      "text": {
+        "family": "Playfair Display",
+        "fallback": "serif",
+        "weight": 600,
+        "style": "italic",
+        "size": 14
+      },
+      "states": {
+        "hover": {
+          "content": "#3878aa"
+        },
+        "selected": {
+          "content": "#3878aa",
+          "borderColor": "#3878aa"
+        }
+      }
+    },
+    "carousel": {
+      "shape": "Path",
+      "borderColor": "#b8ccd8",
+      "borderThickness": 1,
+      "radius": 4,
+      "padding": 2
+    },
+    "pip": {
+      "shape": "Path",
+      "fill": "transparent",
+      "borderColor": "#b8ccd8",
+      "borderThickness": 1,
+      "radius": 6.5,
+      "corner": "bevel",
+      "size": {
+        "width": 13,
+        "height": 13
+      },
+      "states": {
+        "selected": {
+          "fill": "#3878aa",
+          "borderColor": "#3878aa"
+        }
+      }
+    },
+    "switch.track": {
+      "shape": "Path",
+      "fill": "#dde8f0",
+      "borderColor": "#b8ccd8",
+      "borderThickness": 1,
+      "radius": "pill",
+      "padding": 2,
+      "size": {
+        "width": 34,
+        "height": 17
+      },
+      "states": {
+        "disabled": {
+          "opacity": 0.5
+        }
+      }
+    },
+    "switch.thumb": {
+      "shape": "Path",
+      "fill": "#b8ccd8",
+      "radius": "pill",
+      "size": {
+        "width": 13,
+        "height": 13
+      },
+      "states": {
+        "checked": {
+          "fill": "#3878aa"
+        }
+      }
+    },
+    "carousel.nav": {
+      "shape": "Path",
+      "fill": "#f5f9fc",
+      "content": "#b8ccd8",
+      "borderColor": "#b8ccd8",
+      "borderThickness": 1,
+      "radius": "pill",
+      "size": {
+        "width": 31,
+        "height": 31
+      },
+      "states": {
+        "hover": {
+          "content": "#3878aa",
+          "borderColor": "#3878aa"
+        }
+      }
+    },
+    "titlebar.caption": {
+      "shape": "Path",
+      "content": "#4a6a80",
+      "size": {
+        "width": 34,
+        "height": 34
+      },
+      "states": {
+        "hover": {
+          "fill": "#f5f9fc"
+        }
+      }
+    },
+    "titlebar.close": {
+      "shape": "Path",
+      "content": "#c04040",
+      "size": {
+        "width": 34,
+        "height": 34
+      },
+      "states": {
+        "hover": {
+          "fill": "#c04040",
+          "content": "#f5f9fc"
+        }
+      }
+    },
+    "news-item": {
+      "shape": "Path",
+      "fill": "#f5f9fc",
+      "content": "#4a6a80",
+      "borderColor": "#b8ccd8",
+      "borderThickness": 1,
+      "padding": [
+        0,
+        12,
+        0,
+        12
+      ],
+      "text": {
+        "family": "Playfair Display",
+        "fallback": "serif",
+        "weight": 700,
+        "style": "normal",
+        "size": 16
+      },
+      "size": {
+        "height": 43
+      },
+      "states": {
+        "hover": {
+          "borderColor": "#4a6a80"
+        }
+      }
+    },
+    "setting-row": {
+      "shape": "Path",
+      "fill": "#f5f9fc",
+      "content": "#4a6a80",
+      "borderColor": "#b8ccd8",
+      "borderThickness": 1,
+      "padding": [
+        0,
+        13,
+        0,
+        13
+      ],
+      "text": {
+        "family": "Playfair Display",
+        "fallback": "serif",
+        "weight": 600,
+        "style": "italic",
+        "size": 14
+      },
+      "size": {
+        "height": 43
+      },
+      "states": {
+        "selected": {
+          "content": "#3878aa",
+          "borderColor": "#3878aa",
+          "borderThickness": 2
+        }
+      }
+    },
+    "titlebar": {
+      "shape": "Path",
+      "fill": "#dde8f0",
+      "borderColor": "#b8ccd8",
+      "borderThickness": [
+        0,
+        0,
+        1,
+        0
+      ],
+      "padding": [
+        0,
+        0,
+        0,
+        23
+      ],
+      "size": {
+        "height": 34
+      }
+    },
+    "subtabs": {
+      "shape": "Path",
+      "fill": "#dde8f0",
+      "borderColor": "#b8ccd8",
+      "borderThickness": [
+        0,
+        0,
+        1,
+        0
+      ],
+      "size": {
+        "height": 34
+      }
+    },
+    "scrollbar.track": {
+      "shape": "Path",
+      "fill": "#dde8f0",
+      "radius": 4,
+      "corner": "bevel",
+      "size": {
+        "width": 8
+      }
+    },
+    "scrollbar.thumb": {
+      "shape": "Path",
+      "fill": "#4a6a80",
+      "radius": 4,
+      "corner": "bevel",
+      "size": {
+        "width": 8
+      }
+    },
+    "play-ornament": {
+      "shape": "Path"
+    },
+    "input.label": {
+      "shape": "Text",
+      "content": "#7590a2",
+      "text": {
+        "family": "Playfair Display",
+        "fallback": "serif",
+        "weight": 600,
+        "style": "italic",
+        "size": 12
+      },
+      "leftInset": 10
+    },
+    "news-item.date": {
+      "shape": "Text",
+      "content": "#7590a2",
+      "text": {
+        "size": 13
+      }
+    },
+    "news-item.gem": {
+      "shape": "Text"
+    },
+    "titlebar.wordmark": {
+      "shape": "Text",
+      "content": "#3878aa",
+      "text": {
+        "family": "Playfair Display",
+        "fallback": "serif",
+        "weight": 600,
+        "style": "italic",
+        "size": 20
+      }
+    },
+    "tab-bar": {
+      "shape": "Text",
+      "content": "#4a6a80"
+    },
+    "settings.heading": {
+      "shape": "Text",
+      "content": "#4a6a80",
+      "text": {
+        "family": "Playfair Display",
+        "fallback": "serif",
+        "weight": 600,
+        "style": "italic",
+        "size": 16
+      }
+    },
+    "setting-help.title": {
+      "shape": "Text",
+      "content": "#0e1e28",
+      "text": {
+        "family": "Playfair Display",
+        "fallback": "serif",
+        "weight": 600,
+        "style": "italic",
+        "size": 16
+      }
+    },
+    "setting-help.body": {
+      "shape": "Text",
+      "content": "#0e1e28",
+      "text": {
+        "size": 13
+      }
+    },
+    "input.placeholder": {
+      "shape": "Text",
+      "content": "rgba(74, 106, 128, 0.6)"
+    },
+    "input.caret": {
+      "shape": "Text",
+      "content": "#3878aa"
+    },
+    "play-row": {
+      "shape": "Text",
+      "content": "#b8ccd8"
+    }
+  }
+}

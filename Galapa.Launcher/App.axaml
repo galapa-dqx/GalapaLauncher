@@ -9,6 +9,8 @@
 
     <Application.Styles>
         <FluentTheme />
+        <StyleInclude Source="avares://Galapa.UI/Themes/Launcher.axaml" />
+        <StyleInclude Source="avares://Galapa.Launcher/Styles/CompiledThemeStyles.axaml" />
     </Application.Styles>
 
     <Application.Resources>

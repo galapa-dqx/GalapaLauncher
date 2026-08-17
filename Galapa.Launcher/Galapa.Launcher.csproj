@@ -3,6 +3,7 @@
         <OutputType>WinExe</OutputType>
         <TargetFramework>net10.0-windows10.0.17763.0</TargetFramework>
         <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
         <RootNamespace>Galapa.Launcher</RootNamespace>
         <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
         <ApplicationManifest>app.manifest</ApplicationManifest>
@@ -10,8 +11,20 @@
         <LangVersion>14</LangVersion>
     </PropertyGroup>
 
+    <!--
+        ThisAssembly.Git 2.1.2 assumes .git is a directory when RepositoryBranch is empty.
+        In a linked Git worktree .git is instead a pointer file, so its fallback tries to read
+        the nonexistent path .git/HEAD. Supplying a branch label only in that case skips the
+        broken fallback; commit information still comes from the SDK's SourceRevisionId.
+    -->
+    <PropertyGroup Condition="'$(RepositoryBranch)' == '' And $([System.IO.File]::Exists('$(MSBuildProjectDirectory)\..\.git'))">
+        <RepositoryBranch>worktree</RepositoryBranch>
+    </PropertyGroup>
+
     <ItemGroup>
-        <AvaloniaResource Include="Assets\**" />
+        <AvaloniaResource Include="Assets\**" Exclude="Assets\Themes\**" />
+        <Content Include="Assets\Themes\*.galapatheme" CopyToOutputDirectory="PreserveNewest" />
+        <Content Include="Assets\Themes\*.compiled.json" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
 
     <ItemGroup>

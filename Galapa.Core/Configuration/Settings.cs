@@ -13,6 +13,8 @@ public partial class Settings : ObservableValidator
 
     [ObservableProperty] [Required] private bool? _errorReporting;
 
+    [ObservableProperty] [Required] private string _themeId = "estella";
+
     private static Settings GetDefaults()
     {
         return new Settings
@@ -20,7 +22,8 @@ public partial class Settings : ObservableValidator
             GameFolderPath = InstallInfo.Location,
             SaveFolderPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
                 "My Games", "Dragon Quest X"),
-            ErrorReporting = false
+            ErrorReporting = false,
+            ThemeId = "estella"
         };
     }
 
@@ -31,7 +34,9 @@ public partial class Settings : ObservableValidator
             try
             {
                 var json = File.ReadAllText(Paths.Settings);
-                return JsonSerializer.Deserialize<Settings>(json) ?? GetDefaults();
+                var loaded = JsonSerializer.Deserialize<Settings>(json) ?? GetDefaults();
+                if (string.IsNullOrWhiteSpace(loaded.ThemeId)) loaded.ThemeId = "estella";
+                return loaded;
             }
             catch (JsonException)
             {

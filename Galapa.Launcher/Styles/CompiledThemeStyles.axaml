@@ -1,0 +1,171 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="using:Galapa.Launcher.Views.Controls"
+        xmlns:theming="using:Galapa.Launcher.Theming">
+    <!-- Only app buttons opt into this template. Windows caption buttons keep
+         Avalonia's native-style managed template and hit-test behavior. -->
+    <Style Selector="Button.themed">
+        <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.button.ContentBrush}" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.Control.button.Family}" />
+        <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.Control.button.Size}" />
+        <Setter Property="FontWeight" Value="{DynamicResource Galapa.Type.Control.button.Weight}" />
+        <Setter Property="FontStyle" Value="{DynamicResource Galapa.Type.Control.button.Style}" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <local:ThemePart Name="PART_ThemeFrame"
+                                 PartStyle="{DynamicResource Galapa.Part.button}"
+                                 FallbackPadding="16,7"
+                                 HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                 VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}">
+                    <ContentPresenter Content="{TemplateBinding Content}"
+                                      ContentTemplate="{TemplateBinding ContentTemplate}"
+                                      HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                      VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                </local:ThemePart>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+    <Style Selector="Button.themed TextBlock">
+        <Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+    </Style>
+    <Style Selector="Button.themed:pointerover /template/ local|ThemePart#PART_ThemeFrame">
+        <Setter Property="State" Value="Hover" />
+    </Style>
+    <Style Selector="Button.themed:pressed /template/ local|ThemePart#PART_ThemeFrame">
+        <Setter Property="State" Value="Pressed" />
+    </Style>
+    <Style Selector="Button.themed:disabled /template/ local|ThemePart#PART_ThemeFrame">
+        <Setter Property="State" Value="Disabled" />
+    </Style>
+    <Style Selector="Button.themed.setting-row /template/ local|ThemePart#PART_ThemeFrame">
+        <Setter Property="PartStyle" Value="{DynamicResource Galapa.Part.setting-row}" />
+        <Setter Property="FallbackPadding" Value="13,0" />
+    </Style>
+    <Style Selector="Button.themed.setting-row">
+        <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.setting-row.ContentBrush}" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    </Style>
+    <Style Selector="Button.themed.setting-row.active /template/ local|ThemePart#PART_ThemeFrame">
+        <Setter Property="State" Value="Selected" />
+    </Style>
+    <Style Selector="Button.themed.setting-row.active">
+        <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.setting-row.selected.ContentBrush}" />
+    </Style>
+    <Style Selector="Button.themed.chrome /template/ local|ThemePart#PART_ThemeFrame">
+        <Setter Property="PartStyle" Value="{DynamicResource Galapa.Part.carousel.nav}" />
+        <Setter Property="FallbackPadding" Value="0" />
+    </Style>
+    <Style Selector="Button.themed.chrome">
+        <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.carousel.nav.ContentBrush}" />
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="MinHeight" Value="0" />
+        <Setter Property="Padding" Value="0" />
+    </Style>
+
+    <Style Selector="TabStripItem">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.tab.ContentBrush}" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Grid Background="Transparent">
+                    <local:ThemePart Name="PART_TabFrame"
+                                     PartStyle="{DynamicResource Galapa.Part.tab}"
+                                     FallbackPadding="10,0"
+                                     HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                     VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}">
+                        <ContentPresenter Content="{TemplateBinding Content}"
+                                          ContentTemplate="{TemplateBinding ContentTemplate}"
+                                          HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                          VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                    </local:ThemePart>
+                    <Border Name="PART_TabUnderline" Height="2"
+                            Background="{TemplateBinding BorderBrush}"
+                            VerticalAlignment="Bottom" ZIndex="10"
+                            IsHitTestVisible="False" />
+                </Grid>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+    <Style Selector="TabStripItem:pointerover /template/ local|ThemePart#PART_TabFrame">
+        <Setter Property="State" Value="Hover" />
+    </Style>
+    <Style Selector="TabStripItem:selected /template/ local|ThemePart#PART_TabFrame">
+        <Setter Property="State" Value="Selected" />
+    </Style>
+    <Style Selector="TabStripItem:selected">
+        <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.tab.selected.ContentBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Galapa.Part.tab.selected.BorderBrush}" />
+    </Style>
+    <Style Selector="TabStrip.top-tabs TabStripItem">
+        <Setter Property="MinWidth" Value="87" />
+        <Setter Property="MinHeight" Value="34" />
+        <Setter Property="MaxHeight" Value="34" />
+        <Setter Property="Height" Value="34" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="TabStrip.sub-tabs TabStripItem">
+        <Setter Property="MinHeight" Value="34" />
+        <Setter Property="MaxHeight" Value="34" />
+        <Setter Property="Height" Value="34" />
+        <Setter Property="MinWidth" Value="72" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
+    <Style Selector="TextBox">
+        <Setter Property="Background" Value="{DynamicResource Galapa.Part.input.FillBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.input.ContentBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Galapa.Part.input.BorderBrush}" />
+        <Setter Property="BorderThickness" Value="{DynamicResource Galapa.Geometry.input.BorderThickness}" />
+        <Setter Property="CornerRadius" Value="{DynamicResource Galapa.Geometry.input.Radius}" />
+        <Setter Property="Padding" Value="{DynamicResource Galapa.Metric.input.Padding}" />
+        <Setter Property="CaretBrush" Value="{DynamicResource Galapa.Part.input.caret.ContentBrush}" />
+    </Style>
+    <Style Selector="TextBox:focus-within">
+        <Setter Property="BorderBrush" Value="{DynamicResource Galapa.Part.input.focused.BorderBrush}" />
+        <Setter Property="BorderThickness" Value="{DynamicResource Galapa.Part.input.focused.BorderThickness}" />
+    </Style>
+    <Style Selector="TextBox:disabled">
+        <Setter Property="Opacity" Value="0.5" />
+    </Style>
+
+    <Style Selector="ToggleButton.themed-switch">
+        <Setter Property="Width" Value="{DynamicResource Galapa.Metric.switch.track.Width}" />
+        <Setter Property="Height" Value="{DynamicResource Galapa.Metric.switch.track.Height}" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <local:ThemePart Name="PART_SwitchTrack"
+                                 PartStyle="{DynamicResource Galapa.Part.switch.track}"
+                                 FallbackPadding="2">
+                    <local:ThemePart Name="PART_SwitchThumb"
+                                     PartStyle="{DynamicResource Galapa.Part.switch.thumb}"
+                                     Width="{DynamicResource Galapa.Metric.switch.InnerWidth}"
+                                     Height="{DynamicResource Galapa.Metric.switch.thumb.Height}"
+                                     VisualWidth="{DynamicResource Galapa.Metric.switch.thumb.Width}"
+                                     VisualHeight="{DynamicResource Galapa.Metric.switch.thumb.Height}"
+                                     HorizontalAlignment="Left" VerticalAlignment="Center">
+                        <local:ThemePart.Transitions>
+                            <Transitions>
+                                <DoubleTransition Property="AnimatedOffset" Duration="0:0:0.15" />
+                            </Transitions>
+                        </local:ThemePart.Transitions>
+                    </local:ThemePart>
+                </local:ThemePart>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+    <Style Selector="ToggleButton.themed-switch:checked /template/ local|ThemePart#PART_SwitchThumb">
+        <Setter Property="AnimatedOffset" Value="{DynamicResource Galapa.Metric.switch.Travel}" />
+        <Setter Property="State" Value="Checked" />
+    </Style>
+    <Style Selector="ToggleButton.themed-switch:disabled /template/ local|ThemePart#PART_SwitchTrack">
+        <Setter Property="State" Value="Disabled" />
+    </Style>
+</Styles>

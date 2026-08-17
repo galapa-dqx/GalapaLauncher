@@ -1,0 +1,408 @@
+{
+  "label": "Aurelia",
+  "mode": "light",
+  "focusRing": {
+    "color": "#a83232",
+    "width": 2,
+    "offset": -2
+  },
+  "controls": {
+    "window": {
+      "shape": "Window",
+      "fill": "#f6eedb",
+      "content": "#3a2a10",
+      "borderColor": "#c2a05a"
+    },
+    "button": {
+      "shape": "Path",
+      "fill": "#a83232",
+      "content": "#fdf8ec",
+      "borderColor": "#c2a05a",
+      "borderThickness": 1,
+      "radius": 6,
+      "corner": "bevel",
+      "padding": [
+        6,
+        20,
+        6,
+        20
+      ],
+      "text": {
+        "family": "Crimson Pro",
+        "fallback": "serif",
+        "weight": 700,
+        "style": "normal",
+        "size": 16,
+        "case": "uppercase"
+      },
+      "states": {
+        "hover": {
+          "fill": "#b54e4a"
+        },
+        "pressed": {
+          "fill": "#8d2929"
+        },
+        "disabled": {
+          "opacity": 0.5
+        }
+      }
+    },
+    "input": {
+      "shape": "Path",
+      "content": "#3a2a10",
+      "borderColor": "#c2a05a",
+      "borderThickness": 1,
+      "padding": [
+        6,
+        10,
+        6,
+        10
+      ],
+      "text": {
+        "family": "Source Sans 3",
+        "fallback": "sans-serif",
+        "weight": 400,
+        "style": "normal",
+        "size": 16
+      },
+      "states": {
+        "focused": {
+          "borderColor": "#a83232",
+          "borderThickness": 2
+        },
+        "disabled": {
+          "opacity": 0.5
+        }
+      }
+    },
+    "tab": {
+      "shape": "Path",
+      "content": "#8a6c38",
+      "borderColor": "transparent",
+      "borderThickness": [
+        0,
+        0,
+        2,
+        0
+      ],
+      "padding": [
+        0,
+        10,
+        0,
+        10
+      ],
+      "text": {
+        "family": "Crimson Pro",
+        "fallback": "serif",
+        "weight": 700,
+        "style": "normal",
+        "case": "uppercase"
+      },
+      "states": {
+        "hover": {
+          "content": "#a83232"
+        },
+        "selected": {
+          "content": "#a83232",
+          "borderColor": "#a83232"
+        }
+      }
+    },
+    "carousel": {
+      "shape": "Path",
+      "borderColor": "#c2a05a",
+      "borderThickness": 1,
+      "radius": 0,
+      "padding": 2
+    },
+    "switch.track": {
+      "shape": "Path",
+      "fill": "#efe3c4",
+      "borderColor": "#c2a05a",
+      "borderThickness": 1,
+      "radius": "pill",
+      "padding": 2,
+      "size": {
+        "width": 34,
+        "height": 17
+      },
+      "states": {
+        "disabled": {
+          "opacity": 0.5
+        }
+      }
+    },
+    "switch.thumb": {
+      "shape": "Path",
+      "fill": "#c2a05a",
+      "radius": "pill",
+      "size": {
+        "width": 13,
+        "height": 13
+      },
+      "states": {
+        "checked": {
+          "fill": "#a83232"
+        }
+      }
+    },
+    "titlebar.caption": {
+      "shape": "Path",
+      "content": "#8a6c38",
+      "size": {
+        "width": 34,
+        "height": 34
+      },
+      "states": {
+        "hover": {
+          "fill": "#fdf8ec"
+        }
+      }
+    },
+    "titlebar.close": {
+      "shape": "Path",
+      "content": "#c03020",
+      "size": {
+        "width": 34,
+        "height": 34
+      },
+      "states": {
+        "hover": {
+          "fill": "#c03020",
+          "content": "#fdf8ec"
+        }
+      }
+    },
+    "news-item": {
+      "shape": "Path",
+      "fill": "#fdf8ec",
+      "content": "#8a6c38",
+      "borderColor": "#c2a05a",
+      "borderThickness": 1,
+      "padding": [
+        0,
+        12,
+        0,
+        12
+      ],
+      "text": {
+        "family": "Crimson Pro",
+        "fallback": "serif",
+        "weight": 700,
+        "style": "normal",
+        "size": 16
+      },
+      "size": {
+        "height": 43
+      },
+      "states": {
+        "hover": {
+          "borderColor": "#a83232"
+        }
+      }
+    },
+    "setting-row": {
+      "shape": "Path",
+      "fill": "#fdf8ec",
+      "content": "#8a6c38",
+      "borderColor": "#c2a05a",
+      "borderThickness": 1,
+      "padding": [
+        0,
+        13,
+        0,
+        13
+      ],
+      "text": {
+        "family": "Crimson Pro",
+        "fallback": "serif",
+        "weight": 700,
+        "style": "normal",
+        "size": 14,
+        "case": "uppercase"
+      },
+      "size": {
+        "height": 43
+      },
+      "states": {
+        "selected": {
+          "content": "#a83232",
+          "borderColor": "#a83232",
+          "borderThickness": 2
+        }
+      }
+    },
+    "titlebar": {
+      "shape": "Path",
+      "fill": "#efe3c4",
+      "borderColor": "#c2a05a",
+      "borderThickness": [
+        0,
+        0,
+        1,
+        0
+      ],
+      "padding": [
+        0,
+        0,
+        0,
+        23
+      ],
+      "size": {
+        "height": 34
+      }
+    },
+    "subtabs": {
+      "shape": "Path",
+      "fill": "#efe3c4",
+      "borderColor": "#c2a05a",
+      "borderThickness": [
+        0,
+        0,
+        1,
+        0
+      ],
+      "size": {
+        "height": 34
+      }
+    },
+    "scrollbar.track": {
+      "shape": "Path",
+      "fill": "#efe3c4",
+      "radius": 4,
+      "corner": "bevel",
+      "size": {
+        "width": 8
+      }
+    },
+    "scrollbar.thumb": {
+      "shape": "Path",
+      "fill": "#8a6c38",
+      "radius": 4,
+      "corner": "bevel",
+      "size": {
+        "width": 8
+      }
+    },
+    "play-ornament": {
+      "shape": "Path"
+    },
+    "input.label": {
+      "shape": "Text",
+      "content": "#a08045",
+      "text": {
+        "family": "Crimson Pro",
+        "fallback": "serif",
+        "weight": 700,
+        "style": "normal",
+        "size": 12
+      },
+      "leftInset": 10
+    },
+    "news-item.date": {
+      "shape": "Text",
+      "content": "#a08045",
+      "text": {
+        "size": 13
+      }
+    },
+    "news-item.gem": {
+      "shape": "Text"
+    },
+    "titlebar.wordmark": {
+      "shape": "Text",
+      "content": "#a83232",
+      "text": {
+        "family": "Crimson Pro",
+        "fallback": "serif",
+        "weight": 700,
+        "style": "normal",
+        "size": 20,
+        "case": "uppercase"
+      }
+    },
+    "tab-bar": {
+      "shape": "Text",
+      "content": "#8a6c38"
+    },
+    "settings.heading": {
+      "shape": "Text",
+      "content": "#8a6c38",
+      "text": {
+        "family": "Crimson Pro",
+        "fallback": "serif",
+        "weight": 700,
+        "style": "normal",
+        "size": 16,
+        "case": "uppercase"
+      }
+    },
+    "setting-help.title": {
+      "shape": "Text",
+      "content": "#3a2a10",
+      "text": {
+        "family": "Crimson Pro",
+        "fallback": "serif",
+        "weight": 700,
+        "style": "normal",
+        "size": 16,
+        "case": "uppercase"
+      }
+    },
+    "setting-help.body": {
+      "shape": "Text",
+      "content": "#3a2a10",
+      "text": {
+        "size": 13
+      }
+    },
+    "input.placeholder": {
+      "shape": "Text",
+      "content": "rgba(138, 108, 56, 0.6)"
+    },
+    "input.caret": {
+      "shape": "Text",
+      "content": "#a83232"
+    },
+    "play-row": {
+      "shape": "Text",
+      "content": "#c2a05a"
+    },
+    "carousel.nav": {
+      "shape": "Path",
+      "fill": "#fdf8ec",
+      "content": "#c2a05a",
+      "borderColor": "#c2a05a",
+      "borderThickness": 1,
+      "radius": "pill",
+      "size": {
+        "width": 31,
+        "height": 31
+      },
+      "image": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"26\" height=\"26\" viewBox=\"0 0 26 26\" fill=\"none\" aria-hidden=\"true\">\r\n  <path d=\"M10 5 L18 13 L10 21\" stroke=\"currentColor\" stroke-width=\"2.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\r\n  <circle cx=\"13\" cy=\"13\" r=\"1.5\" fill=\"currentColor\"/>\r\n</svg>\r\n",
+      "states": {
+        "hover": {
+          "content": "#a83232",
+          "borderColor": "#a83232"
+        }
+      }
+    },
+    "panel": {
+      "shape": "Asset",
+      "art": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 96\" width=\"96\" height=\"96\">\r\n  <!-- .9.svg profile: nested svg id=\"col_row\" slices; rect id=\"content\" is\r\n       the safe area; colours reference theme tokens (var(theme-x) form,\r\n       written with the double-dash prefix in attributes below) and are\r\n       substituted at load. NB: XML comments cannot contain double dashes. -->\r\n  <rect id=\"content\" x=\"18\" y=\"18\" width=\"60\" height=\"60\" fill=\"none\"/>\r\n\r\n  <!-- top-left corner -->\r\n  <svg id=\"0_0\" x=\"0\" y=\"0\" width=\"24\" height=\"24\">\r\n    <path d=\"M24 0 H8 Q0 0 0 8 V24 H24 Z\" fill=\"#fdf8ec\"/>\r\n    <path d=\"M24 3 H10 Q3 3 3 10 V24\" fill=\"none\" stroke=\"#c2a05a\" stroke-width=\"1\"/>\r\n    <path d=\"M24 7 H12.5 Q7 7 7 12.5 V24\" fill=\"none\" stroke=\"#c2a05a\" stroke-width=\"0.5\"/>\r\n    <path d=\"M10.5 6 L15 10.5 L10.5 15 L6 10.5 Z\" fill=\"#a83232\" stroke=\"#fdf8ec\" stroke-width=\"1\"/>\r\n    <circle cx=\"10.5\" cy=\"10.5\" r=\"1.2\" fill=\"#fdf8ec\"/>\r\n    <circle cx=\"18\" cy=\"5\" r=\"0.9\" fill=\"#c2a05a\"/>\r\n    <circle cx=\"5\" cy=\"18\" r=\"0.9\" fill=\"#c2a05a\"/>\r\n  </svg>\r\n\r\n  <!-- top edge -->\r\n  <svg id=\"1_0\" x=\"24\" y=\"0\" width=\"48\" height=\"24\" data-slice-repeat=\"stretch\">\r\n    <rect width=\"48\" height=\"24\" fill=\"#fdf8ec\"/>\r\n    <line x1=\"0\" y1=\"3\" x2=\"48\" y2=\"3\" stroke=\"#c2a05a\" stroke-width=\"1\"/>\r\n    <line x1=\"0\" y1=\"7\" x2=\"48\" y2=\"7\" stroke=\"#c2a05a\" stroke-width=\"0.5\"/>\r\n  </svg>\r\n\r\n  <!-- top-right corner (mirrored top-left) -->\r\n  <svg id=\"2_0\" x=\"72\" y=\"0\" width=\"24\" height=\"24\">\r\n    <g transform=\"translate(24 0) scale(-1 1)\">\r\n      <path d=\"M24 0 H8 Q0 0 0 8 V24 H24 Z\" fill=\"#fdf8ec\"/>\r\n      <path d=\"M24 3 H10 Q3 3 3 10 V24\" fill=\"none\" stroke=\"#c2a05a\" stroke-width=\"1\"/>\r\n      <path d=\"M24 7 H12.5 Q7 7 7 12.5 V24\" fill=\"none\" stroke=\"#c2a05a\" stroke-width=\"0.5\"/>\r\n      <path d=\"M10.5 6 L15 10.5 L10.5 15 L6 10.5 Z\" fill=\"#a83232\" stroke=\"#fdf8ec\" stroke-width=\"1\"/>\r\n      <circle cx=\"10.5\" cy=\"10.5\" r=\"1.2\" fill=\"#fdf8ec\"/>\r\n      <circle cx=\"18\" cy=\"5\" r=\"0.9\" fill=\"#c2a05a\"/>\r\n      <circle cx=\"5\" cy=\"18\" r=\"0.9\" fill=\"#c2a05a\"/>\r\n    </g>\r\n  </svg>\r\n\r\n  <!-- left edge -->\r\n  <svg id=\"0_1\" x=\"0\" y=\"24\" width=\"24\" height=\"48\">\r\n    <rect width=\"24\" height=\"48\" fill=\"#fdf8ec\"/>\r\n    <line x1=\"3\" y1=\"0\" x2=\"3\" y2=\"48\" stroke=\"#c2a05a\" stroke-width=\"1\"/>\r\n    <line x1=\"7\" y1=\"0\" x2=\"7\" y2=\"48\" stroke=\"#c2a05a\" stroke-width=\"0.5\"/>\r\n  </svg>\r\n\r\n  <!-- centre -->\r\n  <svg id=\"1_1\" x=\"24\" y=\"24\" width=\"48\" height=\"48\">\r\n    <rect width=\"48\" height=\"48\" fill=\"#fdf8ec\"/>\r\n  </svg>\r\n\r\n  <!-- right edge (mirrored left) -->\r\n  <svg id=\"2_1\" x=\"72\" y=\"24\" width=\"24\" height=\"48\">\r\n    <g transform=\"translate(24 0) scale(-1 1)\">\r\n      <rect width=\"24\" height=\"48\" fill=\"#fdf8ec\"/>\r\n      <line x1=\"3\" y1=\"0\" x2=\"3\" y2=\"48\" stroke=\"#c2a05a\" stroke-width=\"1\"/>\r\n      <line x1=\"7\" y1=\"0\" x2=\"7\" y2=\"48\" stroke=\"#c2a05a\" stroke-width=\"0.5\"/>\r\n    </g>\r\n  </svg>\r\n\r\n  <!-- bottom-left corner (mirrored top-left) -->\r\n  <svg id=\"0_2\" x=\"0\" y=\"72\" width=\"24\" height=\"24\">\r\n    <g transform=\"translate(0 24) scale(1 -1)\">\r\n      <path d=\"M24 0 H8 Q0 0 0 8 V24 H24 Z\" fill=\"#fdf8ec\"/>\r\n      <path d=\"M24 3 H10 Q3 3 3 10 V24\" fill=\"none\" stroke=\"#c2a05a\" stroke-width=\"1\"/>\r\n      <path d=\"M24 7 H12.5 Q7 7 7 12.5 V24\" fill=\"none\" stroke=\"#c2a05a\" stroke-width=\"0.5\"/>\r\n      <path d=\"M10.5 6 L15 10.5 L10.5 15 L6 10.5 Z\" fill=\"#a83232\" stroke=\"#fdf8ec\" stroke-width=\"1\"/>\r\n      <circle cx=\"10.5\" cy=\"10.5\" r=\"1.2\" fill=\"#fdf8ec\"/>\r\n      <circle cx=\"18\" cy=\"5\" r=\"0.9\" fill=\"#c2a05a\"/>\r\n      <circle cx=\"5\" cy=\"18\" r=\"0.9\" fill=\"#c2a05a\"/>\r\n    </g>\r\n  </svg>\r\n\r\n  <!-- bottom edge (mirrored top) -->\r\n  <svg id=\"1_2\" x=\"24\" y=\"72\" width=\"48\" height=\"24\">\r\n    <g transform=\"translate(0 24) scale(1 -1)\">\r\n      <rect width=\"48\" height=\"24\" fill=\"#fdf8ec\"/>\r\n      <line x1=\"0\" y1=\"3\" x2=\"48\" y2=\"3\" stroke=\"#c2a05a\" stroke-width=\"1\"/>\r\n      <line x1=\"0\" y1=\"7\" x2=\"48\" y2=\"7\" stroke=\"#c2a05a\" stroke-width=\"0.5\"/>\r\n    </g>\r\n  </svg>\r\n\r\n  <!-- bottom-right corner (mirrored top-left, both axes) -->\r\n  <svg id=\"2_2\" x=\"72\" y=\"72\" width=\"24\" height=\"24\">\r\n    <g transform=\"translate(24 24) scale(-1 -1)\">\r\n      <path d=\"M24 0 H8 Q0 0 0 8 V24 H24 Z\" fill=\"#fdf8ec\"/>\r\n      <path d=\"M24 3 H10 Q3 3 3 10 V24\" fill=\"none\" stroke=\"#c2a05a\" stroke-width=\"1\"/>\r\n      <path d=\"M24 7 H12.5 Q7 7 7 12.5 V24\" fill=\"none\" stroke=\"#c2a05a\" stroke-width=\"0.5\"/>\r\n      <path d=\"M10.5 6 L15 10.5 L10.5 15 L6 10.5 Z\" fill=\"#a83232\" stroke=\"#fdf8ec\" stroke-width=\"1\"/>\r\n      <circle cx=\"10.5\" cy=\"10.5\" r=\"1.2\" fill=\"#fdf8ec\"/>\r\n      <circle cx=\"18\" cy=\"5\" r=\"0.9\" fill=\"#c2a05a\"/>\r\n      <circle cx=\"5\" cy=\"18\" r=\"0.9\" fill=\"#c2a05a\"/>\r\n    </g>\r\n  </svg>\r\n</svg>\r\n"
+    },
+    "pip": {
+      "shape": "Path",
+      "size": {
+        "width": 12,
+        "height": 12
+      },
+      "image": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"12\" height=\"12\" viewBox=\"0 0 12 12\" aria-hidden=\"true\">\r\n  <path d=\"M6 1 L11 6 L6 11 L1 6 Z\" fill=\"#efe3c4\" stroke=\"#c2a05a\" stroke-width=\"1\"/>\r\n</svg>\r\n",
+      "states": {
+        "selected": {
+          "image": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"12\" height=\"12\" viewBox=\"0 0 12 12\" aria-hidden=\"true\">\r\n  <path d=\"M6 0.6 L11.4 6 L6 11.4 L0.6 6 Z\" fill=\"#a83232\" stroke=\"#c2a05a\" stroke-width=\"1\"/>\r\n  <circle cx=\"6\" cy=\"6\" r=\"1.7\" fill=\"#fdf8ec\"/>\r\n</svg>\r\n"
+        }
+      }
+    }
+  }
+}

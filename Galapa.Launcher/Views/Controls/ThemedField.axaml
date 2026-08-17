@@ -1,0 +1,59 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:Galapa.Launcher.Views.Controls"
+             xmlns:ui="using:Galapa.UI.Controls"
+             x:Class="Galapa.Launcher.Views.Controls.ThemedField"
+             x:Name="Root" Height="38" ClipToBounds="False">
+    <UserControl.Styles>
+        <Style Selector="TextBox.field-editor">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="FocusAdorner" Value="{x:Null}" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.Control.input.Family}" />
+            <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.Control.input.Size}" />
+            <Setter Property="FontWeight" Value="{DynamicResource Galapa.Type.Control.input.Weight}" />
+            <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.input.ContentBrush}" />
+        </Style>
+        <Style Selector="TextBox.field-editor:focus, TextBox.field-editor:focus-within">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+        <Style Selector="TextBox.field-editor /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+        <Style Selector="TextBox.field-editor:focus-within /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+        <Style Selector="local|ThemedField:focus-within local|ThemePart#PART_FieldFrame">
+            <Setter Property="State" Value="Focused" />
+        </Style>
+        <Style Selector="local|ThemedField:focus-within ui|ThemedTextBlock#PART_FieldLabel">
+            <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.input.focused.BorderBrush}" />
+        </Style>
+    </UserControl.Styles>
+    <Grid>
+        <local:ThemePart Name="PART_FieldFrame" PartStyle="{DynamicResource Galapa.Part.input}"
+                         FallbackPadding="10,6"
+                         TopBorderGapStart="{DynamicResource Galapa.Metric.input.label.LeftInset}"
+                         TopBorderGapWidth="{Binding Bounds.Width, ElementName=PART_FieldLabelSeat}">
+            <TextBox Classes="field-editor" Text="{Binding Text, ElementName=Root, Mode=TwoWay}"
+                     IsReadOnly="{Binding IsReadOnly, ElementName=Root}"
+                     PasswordChar="{Binding PasswordChar, ElementName=Root}" />
+        </local:ThemePart>
+        <Canvas ClipToBounds="False" IsHitTestVisible="False">
+            <Border Name="PART_FieldLabelSeat" Padding="5,0"
+                    Canvas.Left="{DynamicResource Galapa.Metric.input.label.LeftInset}" Canvas.Top="-7">
+                <ui:ThemedTextBlock Name="PART_FieldLabel" Classes="field-label"
+                                    SourceText="{Binding Label, ElementName=Root}" />
+            </Border>
+        </Canvas>
+    </Grid>
+</UserControl>

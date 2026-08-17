@@ -22,10 +22,10 @@
 
     <!-- SettingsCard Template -->
     <ControlTheme x:Key="{x:Type controls:SettingsCard}" TargetType="controls:SettingsCard">
-        <Setter Property="Background" Value="{DynamicResource GalapaCardBackgroundBrush}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource GalapaCardBorderBrush}" />
-        <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="Background" Value="{DynamicResource Galapa.Brush.Surface}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Galapa.Brush.Border}" />
+        <Setter Property="BorderThickness" Value="{DynamicResource Galapa.Geometry.card.BorderThickness}" />
+        <Setter Property="CornerRadius" Value="{DynamicResource Galapa.Geometry.card.Radius}" />
         <Setter Property="Padding" Value="16" />
         <Setter Property="MinHeight" Value="68" />
         <Setter Property="Template">
@@ -72,20 +72,20 @@
             <Setter Property="Cursor" Value="Hand" />
         </Style>
         <Style Selector="^:clickable:pointerover">
-            <Setter Property="Background" Value="{DynamicResource GalapaCardHoverBrush}" />
+            <Setter Property="Background" Value="{DynamicResource Galapa.Brush.SecondarySurface}" />
         </Style>
         <Style Selector="^:clickable:pressed">
-            <Setter Property="Background" Value="{DynamicResource GalapaCardBackgroundBrush}" />
+            <Setter Property="Background" Value="{DynamicResource Galapa.Brush.Surface}" />
             <Setter Property="Opacity" Value="0.8" />
         </Style>
     </ControlTheme>
 
     <!-- SettingsExpander Template -->
     <ControlTheme x:Key="{x:Type controls:SettingsExpander}" TargetType="controls:SettingsExpander">
-        <Setter Property="Background" Value="{DynamicResource GalapaCardBackgroundBrush}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource GalapaCardBorderBrush}" />
-        <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="Background" Value="{DynamicResource Galapa.Brush.Surface}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Galapa.Brush.Border}" />
+        <Setter Property="BorderThickness" Value="{DynamicResource Galapa.Geometry.card.BorderThickness}" />
+        <Setter Property="CornerRadius" Value="{DynamicResource Galapa.Geometry.card.Radius}" />
         <Setter Property="Padding" Value="16" />
         <Setter Property="Template">
             <ControlTemplate>
@@ -145,7 +145,7 @@
                         <Border Name="PART_ExpanderContent"
                                 IsVisible="False"
                                 BorderThickness="0,1,0,0"
-                                BorderBrush="{DynamicResource GalapaCardBorderBrush}"
+                                BorderBrush="{DynamicResource Galapa.Brush.Border}"
                                 Padding="{TemplateBinding Padding}">
                             <ContentPresenter Content="{TemplateBinding ExpanderContent}" />
                         </Border>
