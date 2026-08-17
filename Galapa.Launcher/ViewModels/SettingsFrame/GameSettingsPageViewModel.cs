@@ -9,9 +9,6 @@ namespace Galapa.Launcher.ViewModels.SettingsFrame;
 /// </summary>
 public partial class GameSettingsPageViewModel(Settings settings) : SettingsFramePageViewModel
 {
-    public override string Title => "Game";
-    public override string Icon => "/Assets/Icons/solar--rocket-bold-duotone.svg";
-
     [ObservableProperty] private Settings _settings = settings;
 
     [RelayCommand]

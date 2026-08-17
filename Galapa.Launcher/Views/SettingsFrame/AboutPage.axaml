@@ -1,60 +1,48 @@
-<UserControl xmlns="https://github.com/avaloniaui"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:vm="using:Galapa.Launcher.ViewModels.SettingsFrame"
-             xmlns:ui="using:Galapa.UI.Controls"
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Galapa.Launcher.ViewModels.SettingsFrame" xmlns:ui="using:Galapa.UI.Controls"
              xmlns:local="using:Galapa.Launcher.Views.Controls"
-             x:Class="Galapa.Launcher.Views.SettingsFrame.AboutPage"
-             x:DataType="vm:AboutPageViewModel">
-    <Grid Margin="34,26,34,34" ColumnDefinitions="*,35,280">
-        <ScrollViewer Name="AboutScroll" VerticalScrollBarVisibility="Hidden">
-            <StackPanel Spacing="10">
-                <ui:ThemedTextBlock Classes="section" SourceText="Application" Margin="0,0,0,1" />
-
-                <Button Classes="themed setting-row" Click="OnCopyVersionClick" AutomationProperties.Name="Copy version">
-                    <Grid ColumnDefinitions="*,Auto">
-                        <ui:ThemedTextBlock Classes="field-label" SourceText="Galapa Launcher" VerticalAlignment="Center" />
-                        <TextBlock Grid.Column="1" Classes="muted" Text="{Binding VersionDisplay}" VerticalAlignment="Center" />
-                    </Grid>
-                </Button>
-
-                <Button Classes="themed setting-row" Command="{Binding OpenUrlCommand}"
-                        CommandParameter="{x:Static vm:AboutPageViewModel.RepositoryUrl}"
-                        AutomationProperties.Name="Open GitHub repository">
-                    <Grid ColumnDefinitions="*,Auto">
-                        <ui:ThemedTextBlock Classes="field-label" SourceText="GitHub repository" VerticalAlignment="Center" />
-                        <TextBlock Grid.Column="1" Classes="muted" Text="Open" VerticalAlignment="Center" />
-                    </Grid>
-                </Button>
-
-                <Button Classes="themed setting-row" Command="{Binding OpenLogLocationCommand}"
-                        AutomationProperties.Name="Open data folder">
-                    <Grid ColumnDefinitions="*,Auto">
-                        <ui:ThemedTextBlock Classes="field-label" SourceText="Data folder" VerticalAlignment="Center" />
-                        <TextBlock Grid.Column="1" Classes="muted" Text="Open" VerticalAlignment="Center" />
-                    </Grid>
-                </Button>
-
-                <ui:ThemedTextBlock Classes="section" SourceText="Open source" Margin="0,8,0,1" />
-                <ItemsControl ItemsSource="{Binding Libraries}">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="vm:LibraryInfo">
-                            <Button Classes="themed setting-row" Margin="0,0,0,10"
-                                    Command="{Binding $parent[ItemsControl].((vm:AboutPageViewModel)DataContext).OpenUrlCommand}"
-                                    CommandParameter="{Binding Url}">
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <ui:ThemedTextBlock Classes="field-label" SourceText="{Binding Name}" VerticalAlignment="Center" />
-                                    <TextBlock Grid.Column="1" Classes="muted" Text="Open" VerticalAlignment="Center" />
-                                </Grid>
-                            </Button>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </StackPanel>
-        </ScrollViewer>
-
-        <local:ThemedScrollbar Grid.Column="1" HorizontalAlignment="Center" Target="{Binding #AboutScroll}" />
-
-        <Border Grid.Column="2" Classes="panel" Padding="15">
+             x:Class="Galapa.Launcher.Views.SettingsFrame.AboutPage" x:DataType="vm:AboutPageViewModel">
+    <local:SettingsPageShell>
+        <StackPanel Spacing="10">
+            <ui:ThemedTextBlock Classes="section" SourceText="Application" Margin="0,0,0,1" />
+            <Button Classes="themed setting-row" Click="OnCopyVersionClick" AutomationProperties.Name="Copy version">
+                <Grid ColumnDefinitions="*,Auto">
+                    <ui:ThemedTextBlock Classes="field-label" SourceText="Galapa Launcher" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="1" Classes="muted" Text="{Binding VersionDisplay}" VerticalAlignment="Center" />
+                </Grid>
+            </Button>
+            <Button Classes="themed setting-row" Command="{Binding OpenUrlCommand}"
+                    CommandParameter="{x:Static vm:AboutPageViewModel.RepositoryUrl}"
+                    AutomationProperties.Name="Open GitHub repository">
+                <Grid ColumnDefinitions="*,Auto">
+                    <ui:ThemedTextBlock Classes="field-label" SourceText="GitHub repository" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="1" Classes="muted" Text="Open" VerticalAlignment="Center" />
+                </Grid>
+            </Button>
+            <Button Classes="themed setting-row" Command="{Binding OpenLogLocationCommand}"
+                    AutomationProperties.Name="Open data folder">
+                <Grid ColumnDefinitions="*,Auto">
+                    <ui:ThemedTextBlock Classes="field-label" SourceText="Data folder" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="1" Classes="muted" Text="Open" VerticalAlignment="Center" />
+                </Grid>
+            </Button>
+            <ui:ThemedTextBlock Classes="section" SourceText="Open source" Margin="0,8,0,1" />
+            <ItemsControl ItemsSource="{Binding Libraries}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:LibraryInfo">
+                        <Button Classes="themed setting-row" Margin="0,0,0,10"
+                                Command="{Binding $parent[ItemsControl].((vm:AboutPageViewModel)DataContext).OpenUrlCommand}"
+                                CommandParameter="{Binding Url}">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <ui:ThemedTextBlock Classes="field-label" SourceText="{Binding Name}" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="1" Classes="muted" Text="Open" VerticalAlignment="Center" />
+                            </Grid>
+                        </Button>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
+        <local:SettingsPageShell.HelpContent>
             <StackPanel Spacing="10">
                 <ui:ThemedTextBlock Classes="section" SourceText="About" />
                 <TextBlock TextWrapping="Wrap"
@@ -62,6 +50,6 @@
                 <TextBlock Classes="muted" TextWrapping="Wrap" Margin="0,6,0,0"
                            Text="Select a row to copy the version or open its destination." />
             </StackPanel>
-        </Border>
-    </Grid>
+        </local:SettingsPageShell.HelpContent>
+    </local:SettingsPageShell>
 </UserControl>

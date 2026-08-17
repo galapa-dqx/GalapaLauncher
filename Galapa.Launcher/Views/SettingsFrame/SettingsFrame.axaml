@@ -2,13 +2,17 @@
              xmlns:vm="using:Galapa.Launcher.ViewModels.SettingsFrame" xmlns:ui="using:Galapa.UI.Controls"
              xmlns:local="using:Galapa.Launcher.Views.Controls"
              x:Class="Galapa.Launcher.Views.SettingsFrame.SettingsFrame" x:DataType="vm:SettingsFrameViewModel">
-    <Grid RowDefinitions="34,*">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="{StaticResource Galapa.TitleBarHeight}" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
         <local:ThemePart PartStyle="{DynamicResource Galapa.Part.subtabs}">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Stretch">
                 <local:ThemedSvg InlineSvg="{x:Static local:ThemeGlyphs.TriggerLeft}" Width="16" Height="16"
                                  Margin="0,0,8,0" VerticalAlignment="Center" IsHitTestVisible="False"
                                  CurrentColor="{DynamicResource Galapa.Part.tab-bar.ContentBrush}" />
-                <TabStrip Classes="sub-tabs" Height="34" ItemsSource="{Binding Pages}" SelectedItem="{Binding SelectedPage}">
+                <TabStrip Classes="sub-tabs" Height="{StaticResource Galapa.TitleBarHeight}" ItemsSource="{Binding Pages}" SelectedItem="{Binding SelectedPage}">
                     <TabStrip.ItemTemplate>
                         <DataTemplate x:DataType="vm:SettingsFrameTab">
                             <ui:ThemedTextBlock Classes="navigation" SourceText="{Binding Title}" FontSize="14" />

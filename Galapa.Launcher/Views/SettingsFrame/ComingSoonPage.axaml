@@ -2,28 +2,23 @@
              xmlns:vm="using:Galapa.Launcher.ViewModels.SettingsFrame" xmlns:ui="using:Galapa.UI.Controls"
              xmlns:local="using:Galapa.Launcher.Views.Controls"
              x:Class="Galapa.Launcher.Views.SettingsFrame.ComingSoonPage" x:DataType="vm:ComingSoonPageViewModel">
-    <Grid Margin="34,26,34,34" ColumnDefinitions="*,35,280">
-        <ScrollViewer Name="ComingSoonScroll" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled">
+    <local:SettingsPageShell>
         <StackPanel Spacing="10">
             <ui:ThemedTextBlock Classes="section" SourceText="{Binding Title}" Margin="0,0,0,1" />
-            <Border Classes="panel" Height="146" Padding="24">
+            <local:ThemedPanel Height="146" FallbackPadding="24">
                 <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="8">
                     <ui:ThemedTextBlock Classes="card-title" SourceText="Coming soon" HorizontalAlignment="Center" />
                     <TextBlock Classes="muted" Text="{Binding Description}" TextWrapping="Wrap"
                                TextAlignment="Center" MaxWidth="340" />
                 </StackPanel>
-            </Border>
+            </local:ThemedPanel>
         </StackPanel>
-        </ScrollViewer>
-
-        <local:ThemedScrollbar Grid.Column="1" HorizontalAlignment="Center" Target="{Binding #ComingSoonScroll}" />
-
-        <Border Grid.Column="2" Classes="panel" Padding="15">
+        <local:SettingsPageShell.HelpContent>
             <StackPanel Spacing="10">
                 <ui:ThemedTextBlock Classes="section" SourceText="{Binding Title}" />
                 <TextBlock TextWrapping="Wrap"
                            Text="This section is ready for its future controls without showing options that do not work yet." />
             </StackPanel>
-        </Border>
-    </Grid>
+        </local:SettingsPageShell.HelpContent>
+    </local:SettingsPageShell>
 </UserControl>

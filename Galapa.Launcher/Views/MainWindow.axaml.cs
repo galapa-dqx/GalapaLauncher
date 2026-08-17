@@ -1,10 +1,8 @@
 using System;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
-using Avalonia.VisualTree;
 using Galapa.Launcher.Services;
 using Galapa.Launcher.ViewModels;
 
@@ -31,7 +29,7 @@ public partial class MainWindow : Window
         this._activeControllerService = activeControllerService;
 
         InitializeComponent();
-        AddHandler(PointerPressedEvent, TitleBar_PointerPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
+        PART_TitleBar.AddHandler(PointerPressedEvent, TitleBar_PointerPressed, RoutingStrategies.Bubble);
 
         // Start controller services
         this._pollingService.Start();
@@ -54,16 +52,6 @@ public partial class MainWindow : Window
     {
         if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
             return;
-
-        var position = e.GetPosition(this);
-        if (position.Y < 0 || position.Y > 34)
-            return;
-
-        for (var current = e.Source as Visual; current is not null; current = current.GetVisualParent())
-        {
-            if (current is TabStrip or TabStripItem or Button)
-                return;
-        }
 
         if (e.ClickCount == 2)
         {

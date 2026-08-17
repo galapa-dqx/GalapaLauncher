@@ -24,16 +24,17 @@ public partial class GeneralSettingsPageViewModel : SettingsFramePageViewModel
     {
         _settings = settings;
         _themeManager = themeManager;
+        var selectedId = catalog.Find(settings.ThemeId) is not null
+            ? settings.ThemeId
+            : themeManager.ActiveTheme?.Manifest.Id;
         Themes = catalog.Themes.Select(x => new ThemeChoice(
             x.Manifest.Id,
             x.Manifest.DisplayName,
             x.Manifest.Author,
             x.Manifest.BaseVariant,
-            string.Equals(x.Manifest.Id, settings.ThemeId, StringComparison.OrdinalIgnoreCase))).ToList();
+            string.Equals(x.Manifest.Id, selectedId, StringComparison.OrdinalIgnoreCase))).ToList();
     }
 
-    public override string Title => "Launcher";
-    public override string Icon => "/Assets/Icons/solar--settings-bold-duotone.svg";
     public IReadOnlyList<ThemeChoice> Themes { get; }
 
     [RelayCommand]

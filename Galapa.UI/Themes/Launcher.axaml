@@ -2,23 +2,23 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:controls="using:Galapa.UI.Controls">
     <Style Selector="Window">
-        <Setter Property="Background" Value="{DynamicResource Galapa.Brush.Background}" />
-        <Setter Property="Foreground" Value="{DynamicResource Galapa.Brush.Text}" />
+        <Setter Property="Background" Value="{DynamicResource Galapa.Part.window.FillBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.window.ContentBrush}" />
         <Setter Property="FontFamily" Value="{DynamicResource Galapa.Font.Body}" />
         <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.body.Size}" />
     </Style>
     <Style Selector="UserControl">
-        <Setter Property="Foreground" Value="{DynamicResource Galapa.Brush.Text}" />
+        <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.window.ContentBrush}" />
         <Setter Property="FontFamily" Value="{DynamicResource Galapa.Font.Body}" />
         <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.body.Size}" />
     </Style>
     <Style Selector="TextBlock">
-        <Setter Property="Foreground" Value="{DynamicResource Galapa.Brush.Text}" />
+        <Setter Property="Foreground" Value="{DynamicResource Galapa.Type.body.ContentBrush}" />
         <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.body.Family}" />
         <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.body.Size}" />
     </Style>
     <Style Selector="controls|ThemedTextBlock.brand, TextBlock.brand">
-        <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.titlebar.wordmark.ContentBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource Galapa.Type.brand.ContentBrush}" />
         <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.brand.Family}" />
         <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.brand.Size}" />
         <Setter Property="FontWeight" Value="{DynamicResource Galapa.Type.brand.Weight}" />
@@ -27,6 +27,7 @@
         <Setter Property="controls:ThemedTextBlock.TextTransform" Value="{DynamicResource Galapa.Type.brand.Transform}" />
     </Style>
     <Style Selector="controls|ThemedTextBlock.navigation, TextBlock.navigation">
+        <Setter Property="Foreground" Value="{DynamicResource Galapa.Type.navigation.ContentBrush}" />
         <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.navigation.Family}" />
         <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.navigation.Size}" />
         <Setter Property="FontWeight" Value="{DynamicResource Galapa.Type.navigation.Weight}" />
@@ -35,7 +36,7 @@
         <Setter Property="controls:ThemedTextBlock.TextTransform" Value="{DynamicResource Galapa.Type.navigation.Transform}" />
     </Style>
     <Style Selector="controls|ThemedTextBlock.section, TextBlock.section">
-        <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.settings.heading.ContentBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource Galapa.Type.sectionHeading.ContentBrush}" />
         <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.sectionHeading.Family}" />
         <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.sectionHeading.Size}" />
         <Setter Property="FontWeight" Value="{DynamicResource Galapa.Type.sectionHeading.Weight}" />
@@ -44,7 +45,7 @@
         <Setter Property="controls:ThemedTextBlock.TextTransform" Value="{DynamicResource Galapa.Type.sectionHeading.Transform}" />
     </Style>
     <Style Selector="controls|ThemedTextBlock.field-label, TextBlock.field-label">
-        <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.input.label.ContentBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource Galapa.Type.fieldLabel.ContentBrush}" />
         <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.fieldLabel.Family}" />
         <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.fieldLabel.Size}" />
         <Setter Property="FontWeight" Value="{DynamicResource Galapa.Type.fieldLabel.Weight}" />
@@ -53,7 +54,7 @@
         <Setter Property="controls:ThemedTextBlock.TextTransform" Value="{DynamicResource Galapa.Type.fieldLabel.Transform}" />
     </Style>
     <Style Selector="controls|ThemedTextBlock.card-title, TextBlock.card-title">
-        <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.news-item.ContentBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource Galapa.Type.cardTitle.ContentBrush}" />
         <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.cardTitle.Family}" />
         <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.cardTitle.Size}" />
         <Setter Property="FontWeight" Value="{DynamicResource Galapa.Type.cardTitle.Weight}" />
@@ -62,7 +63,7 @@
         <Setter Property="controls:ThemedTextBlock.TextTransform" Value="{DynamicResource Galapa.Type.cardTitle.Transform}" />
     </Style>
     <Style Selector="controls|ThemedTextBlock.setting-value, TextBlock.setting-value">
-        <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.setting-row.ContentBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource Galapa.Type.settingValue.ContentBrush}" />
         <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.settingValue.Family}" />
         <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.settingValue.Size}" />
         <Setter Property="FontWeight" Value="{DynamicResource Galapa.Type.settingValue.Weight}" />
@@ -71,7 +72,7 @@
         <Setter Property="controls:ThemedTextBlock.TextTransform" Value="{DynamicResource Galapa.Type.settingValue.Transform}" />
     </Style>
     <Style Selector="controls|ThemedTextBlock.metadata, TextBlock.metadata">
-        <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.news-item.date.ContentBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource Galapa.Type.metadata.ContentBrush}" />
         <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.metadata.Family}" />
         <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.metadata.Size}" />
         <Setter Property="FontWeight" Value="{DynamicResource Galapa.Type.metadata.Weight}" />
@@ -80,94 +81,6 @@
         <Setter Property="controls:ThemedTextBlock.TextTransform" Value="{DynamicResource Galapa.Type.metadata.Transform}" />
     </Style>
     <Style Selector="TextBlock.muted">
-        <Setter Property="Foreground" Value="{DynamicResource Galapa.Brush.Muted}" />
-    </Style>
-    <Style Selector="Border.panel">
-        <Setter Property="Background" Value="{DynamicResource Galapa.Brush.Surface}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource Galapa.Brush.Border}" />
-        <Setter Property="BorderThickness" Value="{DynamicResource Galapa.Geometry.panel.BorderThickness}" />
-        <Setter Property="CornerRadius" Value="{DynamicResource Galapa.Geometry.panel.Radius}" />
-    </Style>
-    <Style Selector="Border.card">
-        <Setter Property="Background" Value="{DynamicResource Galapa.Brush.SecondarySurface}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource Galapa.Brush.Border}" />
-        <Setter Property="BorderThickness" Value="{DynamicResource Galapa.Geometry.card.BorderThickness}" />
-        <Setter Property="CornerRadius" Value="{DynamicResource Galapa.Geometry.card.Radius}" />
-    </Style>
-    <Style Selector="Button">
-        <Setter Property="Background" Value="{DynamicResource Galapa.Brush.SecondarySurface}" />
-        <Setter Property="Foreground" Value="{DynamicResource Galapa.Brush.Text}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource Galapa.Brush.Border}" />
-        <Setter Property="BorderThickness" Value="{DynamicResource Galapa.Geometry.button.BorderThickness}" />
-        <Setter Property="CornerRadius" Value="{DynamicResource Galapa.Geometry.button.Radius}" />
-        <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.button.Family}" />
-        <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.button.Size}" />
-        <Setter Property="FontWeight" Value="{DynamicResource Galapa.Type.button.Weight}" />
-        <Setter Property="Padding" Value="16,7" />
-    </Style>
-    <Style Selector="Button.setting-row">
-        <Setter Property="Height" Value="43" />
-        <Setter Property="Padding" Value="12,0" />
-        <Setter Property="HorizontalAlignment" Value="Stretch" />
-        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-        <Setter Property="Background" Value="{DynamicResource Galapa.Brush.Surface}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource Galapa.Brush.Border}" />
-        <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="CornerRadius" Value="0" />
-    </Style>
-    <Style Selector="Button.setting-row.active">
-        <Setter Property="BorderBrush" Value="{DynamicResource Galapa.Brush.Accent}" />
-        <Setter Property="BorderThickness" Value="2" />
-    </Style>
-    <Style Selector="Button.primary">
-        <Setter Property="Background" Value="{DynamicResource Galapa.Brush.Accent}" />
-        <Setter Property="Foreground" Value="White" />
-    </Style>
-    <Style Selector="Button.chrome">
-        <Setter Property="Background" Value="Transparent" />
-        <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="CornerRadius" Value="{DynamicResource Galapa.Geometry.iconButton.Radius}" />
-        <Setter Property="Padding" Value="9,6" />
-        <Setter Property="MinWidth" Value="34" />
-        <Setter Property="MinHeight" Value="28" />
-    </Style>
-    <Style Selector="TextBox, ComboBox">
-        <Setter Property="Background" Value="{DynamicResource Galapa.Brush.Surface}" />
-        <Setter Property="Foreground" Value="{DynamicResource Galapa.Brush.Text}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource Galapa.Brush.Border}" />
-        <Setter Property="BorderThickness" Value="{DynamicResource Galapa.Geometry.input.BorderThickness}" />
-        <Setter Property="CornerRadius" Value="{DynamicResource Galapa.Geometry.input.Radius}" />
-        <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.input.Family}" />
-        <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.input.Size}" />
-    </Style>
-    <Style Selector="TabStripItem">
-        <Setter Property="Background" Value="Transparent" />
-        <Setter Property="Foreground" Value="{DynamicResource Galapa.Brush.Muted}" />
-        <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.navigation.Family}" />
-        <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.navigation.Size}" />
-        <Setter Property="FontWeight" Value="{DynamicResource Galapa.Type.navigation.Weight}" />
-        <Setter Property="Padding" Value="12,0" />
-        <Setter Property="HorizontalContentAlignment" Value="Center" />
-        <Setter Property="VerticalContentAlignment" Value="Center" />
-        <Setter Property="Template">
-            <ControlTemplate>
-                <Border Name="PART_SelectionBorder"
-                        Background="{TemplateBinding Background}"
-                        BorderBrush="Transparent"
-                        BorderThickness="0,0,0,2"
-                        Padding="{TemplateBinding Padding}">
-                    <ContentPresenter Content="{TemplateBinding Content}"
-                                      ContentTemplate="{TemplateBinding ContentTemplate}"
-                                      HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                      VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
-                </Border>
-            </ControlTemplate>
-        </Setter>
-    </Style>
-    <Style Selector="TabStripItem:selected">
-        <Setter Property="Foreground" Value="{DynamicResource Galapa.Brush.Accent}" />
-    </Style>
-    <Style Selector="TabStripItem:selected /template/ Border#PART_SelectionBorder">
-        <Setter Property="BorderBrush" Value="{DynamicResource Galapa.Brush.Accent}" />
+        <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.setting-help.body.ContentBrush}" />
     </Style>
 </Styles>

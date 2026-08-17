@@ -22,9 +22,6 @@ public sealed partial class GraphicsSettingItem(
 
 public sealed partial class GraphicsSettingsPageViewModel : SettingsFramePageViewModel
 {
-    public override string Title => "Graphics";
-    public override string Icon => "/Assets/Icons/solar--settings-bold-duotone.svg";
-
     [ObservableProperty] private GraphicsSettingItem _selectedSetting;
 
     public GraphicsSettingsPageViewModel()

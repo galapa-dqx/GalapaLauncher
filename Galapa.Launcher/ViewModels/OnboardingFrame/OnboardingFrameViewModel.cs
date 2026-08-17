@@ -14,15 +14,24 @@ public partial class OnboardingFrameViewModel(Settings settings) : ObservableObj
     [RelayCommand]
     private void Complete()
     {
-        if (!AppFrameViewModel.IsValidGameFolder(GameFolderPath))
+        if (!Settings.IsValidGameFolder(GameFolderPath))
         {
             ValidationMessage = "Choose the Dragon Quest X folder containing Game\\DQXGame.exe.";
             return;
         }
 
-        settings.GameFolderPath = GameFolderPath;
-        settings.Save();
-        ValidationMessage = null;
-        Completed?.Invoke(this, EventArgs.Empty);
+        var previous = settings.GameFolderPath;
+        try
+        {
+            settings.GameFolderPath = GameFolderPath;
+            settings.Save();
+            ValidationMessage = null;
+            Completed?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex)
+        {
+            settings.GameFolderPath = previous;
+            ValidationMessage = $"Galapa could not save this folder: {ex.Message}";
+        }
     }
 }

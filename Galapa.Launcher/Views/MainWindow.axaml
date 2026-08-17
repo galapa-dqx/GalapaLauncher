@@ -12,15 +12,15 @@
         SystemDecorations="Full" CanResize="True"
         ExtendClientAreaToDecorationsHint="True"
         ExtendClientAreaChromeHints="PreferSystemChrome"
-        ExtendClientAreaTitleBarHeightHint="34"
+        ExtendClientAreaTitleBarHeightHint="{StaticResource Galapa.TitleBarHeight}"
         XYFocus.NavigationModes="Enabled" Title="Galapa Launcher">
     <Window.Styles>
         <!-- Keep Avalonia's single managed caption surface (and its window-state logic),
              but own the small visual template so hover/pressed paints remain reliable
              while the client area is extended beneath it. -->
         <Style Selector="chrome|CaptionButtons">
-            <Setter Property="Height" Value="34" />
-            <Setter Property="MaxHeight" Value="34" />
+            <Setter Property="Height" Value="{StaticResource Galapa.TitleBarHeight}" />
+            <Setter Property="MaxHeight" Value="{StaticResource Galapa.TitleBarHeight}" />
             <Setter Property="VerticalAlignment" Value="Stretch" />
             <Setter Property="Opacity" Value="1" />
             <Setter Property="Template">
@@ -69,9 +69,9 @@
                 </ControlTemplate>
             </Setter>
             <Setter Property="Width" Value="46" />
-            <Setter Property="Height" Value="34" />
-            <Setter Property="MinHeight" Value="34" />
-            <Setter Property="MaxHeight" Value="34" />
+            <Setter Property="Height" Value="{StaticResource Galapa.TitleBarHeight}" />
+            <Setter Property="MinHeight" Value="{StaticResource Galapa.TitleBarHeight}" />
+            <Setter Property="MaxHeight" Value="{StaticResource Galapa.TitleBarHeight}" />
             <Setter Property="VerticalAlignment" Value="Stretch" />
             <Setter Property="Padding" Value="0" />
             <Setter Property="Background" Value="Transparent" />
@@ -97,8 +97,12 @@
         </Style>
     </Window.Styles>
     <Border BorderBrush="{DynamicResource Galapa.Part.window.BorderBrush}" BorderThickness="1">
-    <Grid RowDefinitions="34,*" Background="{DynamicResource Galapa.Brush.Background}">
-        <local:ThemePart PartStyle="{DynamicResource Galapa.Part.titlebar}" FallbackPadding="0" UseThemePadding="False">
+    <Grid Background="{DynamicResource Galapa.Part.window.FillBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="{StaticResource Galapa.TitleBarHeight}" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <local:ThemePart Name="PART_TitleBar" PartStyle="{DynamicResource Galapa.Part.titlebar}" FallbackPadding="0" UseThemePadding="False">
             <!-- Paint beneath native chrome without intercepting Windows title-bar hit testing. -->
             <Grid ColumnDefinitions="Auto,*,138">
                 <ui:ThemedTextBlock Classes="brand" SourceText="Galapa" VerticalAlignment="Center"
@@ -108,7 +112,7 @@
                     <local:ThemedSvg InlineSvg="{x:Static local:ThemeGlyphs.BumperLeft}" Width="16" Height="16"
                                      Margin="0,0,4,0" VerticalAlignment="Center" IsHitTestVisible="False"
                                      CurrentColor="{DynamicResource Galapa.Part.tab-bar.ContentBrush}" />
-                    <TabStrip Classes="top-tabs" Height="34" ItemsSource="{Binding AppFrameViewModel.Pages}"
+                    <TabStrip Classes="top-tabs" Height="{StaticResource Galapa.TitleBarHeight}" ItemsSource="{Binding AppFrameViewModel.Pages}"
                               SelectedItem="{Binding AppFrameViewModel.SelectedPage}">
                         <TabStrip.ItemTemplate>
                             <DataTemplate x:DataType="appvm:AppFrameTab">

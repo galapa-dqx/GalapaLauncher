@@ -20,9 +20,6 @@ public partial class AboutPageViewModel : SettingsFramePageViewModel
 {
     public const string RepositoryUrl = "https://github.com/dqx-tools/galapalauncher";
 
-    public override string Title => "About";
-    public override string Icon => "/Assets/Icons/info-circle.svg";
-
     /// <summary>
     ///     The application version, e.g. "1.0.0".
     /// </summary>

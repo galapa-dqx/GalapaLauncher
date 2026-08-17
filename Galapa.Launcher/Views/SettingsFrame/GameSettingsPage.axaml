@@ -2,35 +2,17 @@
              xmlns:vm="using:Galapa.Launcher.ViewModels.SettingsFrame" xmlns:ui="using:Galapa.UI.Controls"
              xmlns:local="using:Galapa.Launcher.Views.Controls"
              x:Class="Galapa.Launcher.Views.SettingsFrame.GameSettingsPage" x:DataType="vm:GameSettingsPageViewModel">
-    <Grid Margin="34,26,34,34" ColumnDefinitions="*,35,280">
-        <ScrollViewer Name="GameScroll" VerticalScrollBarVisibility="Hidden">
-            <StackPanel Spacing="10">
-                <ui:ThemedTextBlock Classes="section" SourceText="Folders" Margin="0,0,0,1" />
-                <StackPanel Spacing="4">
-                    <ui:ThemedTextBlock Classes="field-label" SourceText="Dragon Quest X folder" />
-                    <TextBox Height="43" Padding="12,0" VerticalContentAlignment="Center"
-                             Text="{Binding Settings.GameFolderPath}" AutomationProperties.Name="Dragon Quest X folder" />
-                </StackPanel>
-                <StackPanel Spacing="4">
-                    <ui:ThemedTextBlock Classes="field-label" SourceText="Save and configuration folder" />
-                    <TextBox Height="43" Padding="12,0" VerticalContentAlignment="Center"
-                             Text="{Binding Settings.SaveFolderPath}" AutomationProperties.Name="Save and configuration folder" />
-                </StackPanel>
-                <Button Classes="themed primary" Height="43" HorizontalAlignment="Stretch"
-                        Command="{Binding SaveCommand}">
-                    <ui:ThemedTextBlock SourceText="Save folders"
-                                        FontFamily="{DynamicResource Galapa.Type.Control.button.Family}"
-                                        FontSize="{DynamicResource Galapa.Type.Control.button.Size}"
-                                        FontWeight="{DynamicResource Galapa.Type.Control.button.Weight}"
-                                        FontStyle="{DynamicResource Galapa.Type.Control.button.Style}"
-                                        ui:ThemedTextBlock.TextTransform="{DynamicResource Galapa.Type.Control.button.Transform}" />
-                </Button>
-            </StackPanel>
-        </ScrollViewer>
-
-        <local:ThemedScrollbar Grid.Column="1" HorizontalAlignment="Center" Target="{Binding #GameScroll}" />
-
-        <Border Grid.Column="2" Classes="panel" Padding="15">
+    <local:SettingsPageShell>
+        <StackPanel Spacing="10">
+            <ui:ThemedTextBlock Classes="section" SourceText="Folders" Margin="0,0,0,1" />
+            <local:ThemedField Label="Dragon Quest X folder" Text="{Binding Settings.GameFolderPath}"
+                               AutomationProperties.Name="Dragon Quest X folder" />
+            <local:ThemedField Label="Save and configuration folder" Text="{Binding Settings.SaveFolderPath}"
+                               AutomationProperties.Name="Save and configuration folder" />
+            <Button Classes="themed label" Height="43" HorizontalAlignment="Stretch"
+                    Content="Save folders" Command="{Binding SaveCommand}" />
+        </StackPanel>
+        <local:SettingsPageShell.HelpContent>
             <StackPanel Spacing="10">
                 <ui:ThemedTextBlock Classes="section" SourceText="Game folders" />
                 <TextBlock TextWrapping="Wrap"
@@ -38,6 +20,6 @@
                 <TextBlock Classes="muted" TextWrapping="Wrap" Margin="0,6,0,0"
                            Text="The install folder must contain Game\DQXGame.exe." />
             </StackPanel>
-        </Border>
-    </Grid>
+        </local:SettingsPageShell.HelpContent>
+    </local:SettingsPageShell>
 </UserControl>

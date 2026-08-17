@@ -2,8 +2,7 @@
              xmlns:vm="using:Galapa.Launcher.ViewModels.SettingsFrame" xmlns:ui="using:Galapa.UI.Controls"
              xmlns:local="using:Galapa.Launcher.Views.Controls"
              x:Class="Galapa.Launcher.Views.SettingsFrame.GeneralSettingsPage" x:DataType="vm:GeneralSettingsPageViewModel">
-    <Grid Margin="34,26,34,34" ColumnDefinitions="*,35,280">
-        <ScrollViewer Name="GeneralScroll" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled">
+    <local:SettingsPageShell>
         <StackPanel Spacing="10">
             <ui:ThemedTextBlock Classes="section" SourceText="Appearance" Margin="0,0,0,1" />
             <ItemsControl ItemsSource="{Binding Themes}">
@@ -20,13 +19,9 @@
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
-            <TextBlock Foreground="{DynamicResource Galapa.Brush.Danger}" Text="{Binding ThemeError}" TextWrapping="Wrap" />
+            <TextBlock Text="{Binding ThemeError}" TextWrapping="Wrap" />
         </StackPanel>
-        </ScrollViewer>
-
-        <local:ThemedScrollbar Grid.Column="1" HorizontalAlignment="Center" Target="{Binding #GeneralScroll}" />
-
-        <local:ThemePart Grid.Column="2" PartStyle="{DynamicResource Galapa.Part.panel}" FallbackPadding="15">
+        <local:SettingsPageShell.HelpContent>
             <StackPanel Spacing="10">
                 <ui:ThemedTextBlock Classes="section" SourceText="Theme" />
                 <TextBlock TextWrapping="Wrap"
@@ -36,6 +31,6 @@
                 <TextBlock Classes="muted" TextWrapping="Wrap" Margin="0,6,0,0"
                            Text="Theme packages contain data and assets only; they cannot execute AXAML or code." />
             </StackPanel>
-        </local:ThemePart>
-    </Grid>
+        </local:SettingsPageShell.HelpContent>
+    </local:SettingsPageShell>
 </UserControl>

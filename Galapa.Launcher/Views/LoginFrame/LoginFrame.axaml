@@ -8,8 +8,7 @@
         <TransitioningContentControl Content="{Binding CanReturnToPlayerSelect, Converter={StaticResource BoolToObjectOrNull}}">
             <TransitioningContentControl.ContentTemplate>
                 <DataTemplate DataType="{x:Type conv:ShowObject}">
-                    <Button Classes="chrome" HorizontalAlignment="Left" Padding="8,4"
-                            Foreground="{DynamicResource Galapa.Brush.Accent}"
+                    <Button Classes="themed label" HorizontalAlignment="Left"
                             Command="{Binding $parent[UserControl].DataContext.ReturnToPlayerSelect}"
                             Content="← Players" AutomationProperties.Name="Back to player selection" />
                 </DataTemplate>
