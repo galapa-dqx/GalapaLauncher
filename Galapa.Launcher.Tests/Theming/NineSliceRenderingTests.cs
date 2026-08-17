@@ -1,4 +1,6 @@
 using Avalonia;
+using Avalonia.Automation.Peers;
+using Avalonia.Automation.Provider;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
@@ -38,6 +40,12 @@ public sealed class SkiaHeadlessFixture : IDisposable
 
     public Task<TabRenderInspection> RenderSelectedTabAsync() =>
         _session.Dispatch(RenderSelectedTab, CancellationToken.None);
+
+    public Task<ScrollbarInspection> InspectScrollbarAsync() =>
+        _session.Dispatch(InspectScrollbar, CancellationToken.None);
+
+    public Task<T> DispatchAsync<T>(Func<Task<T>> action) =>
+        _session.Dispatch(action, CancellationToken.None);
 
     public void Dispose() => _session.Dispose();
 
@@ -79,18 +87,7 @@ public sealed class SkiaHeadlessFixture : IDisposable
 
     private static TabRenderInspection RenderSelectedTab()
     {
-        var app = Application.Current ?? throw new InvalidOperationException("The test application is not running.");
-        if (!app.Styles.OfType<FluentTheme>().Any()) app.Styles.Add(new FluentTheme());
-        if (!app.Styles.OfType<StyleInclude>().Any(x => x.Source?.AbsoluteUri.Contains("Galapa.UI/Themes/Launcher") == true))
-            app.Styles.Add(new StyleInclude(new Uri("avares://Galapa.Launcher.Tests/"))
-            {
-                Source = new Uri("avares://Galapa.UI/Themes/Launcher.axaml")
-            });
-        if (!app.Styles.OfType<StyleInclude>().Any(x => x.Source?.AbsoluteUri.Contains("CompiledThemeStyles") == true))
-            app.Styles.Add(new StyleInclude(new Uri("avares://Galapa.Launcher.Tests/"))
-            {
-                Source = new Uri("avares://Galapa.Launcher/Styles/CompiledThemeStyles.axaml")
-            });
+        var app = EnsureThemeStyles();
 
         var selectedState = new CompiledControl { BorderColor = "#22AA78", Content = "#22AA78" };
         var tabStyle = new CompiledControl
@@ -154,6 +151,85 @@ public sealed class SkiaHeadlessFixture : IDisposable
         }
     }
 
+    private static ScrollbarInspection InspectScrollbar()
+    {
+        _ = EnsureThemeStyles();
+        var first = new ScrollViewer
+        {
+            Width = 100,
+            Height = 100,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Hidden,
+            Content = new Border { Width = 100, Height = 400 }
+        };
+        var second = new ScrollViewer
+        {
+            Width = 100,
+            Height = 100,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Hidden,
+            Content = new Border { Width = 100, Height = 250 }
+        };
+        var bar = new ThemedScrollbar { Height = 100, Target = first };
+        var host = new Grid { ColumnDefinitions = new ColumnDefinitions("100,100,20"), Children = { first, second, bar } };
+        Grid.SetColumn(second, 1);
+        Grid.SetColumn(bar, 2);
+        var window = new Window
+        {
+            Width = 220,
+            Height = 100,
+            SystemDecorations = SystemDecorations.None,
+            CanResize = false,
+            Content = host
+        };
+        window.Show();
+        try
+        {
+            window.UpdateLayout();
+            var initialMaximum = bar.Maximum;
+            var initialViewport = bar.ViewportSize;
+            bar.Value = 45;
+            window.UpdateLayout();
+            var firstOffset = first.Offset.Y;
+
+            first.Offset = new Vector(0, 80);
+            window.UpdateLayout();
+            var valueAfterTargetScroll = bar.Value;
+
+            bar.Target = second;
+            window.UpdateLayout();
+            var replacementMaximum = bar.Maximum;
+            first.Offset = new Vector(0, 120);
+            window.UpdateLayout();
+            var valueAfterOldTargetScroll = bar.Value;
+
+            var peer = ControlAutomationPeer.CreatePeerForElement(bar);
+            var hasRangeAutomation = peer is IRangeValueProvider;
+            window.Close();
+            return new ScrollbarInspection(initialMaximum, initialViewport, firstOffset, valueAfterTargetScroll,
+                replacementMaximum, valueAfterOldTargetScroll, bar.Maximum, bar.IsEnabled, hasRangeAutomation);
+        }
+        finally
+        {
+            if (window.IsVisible) window.Close();
+        }
+    }
+
+    private static Application EnsureThemeStyles()
+    {
+        var app = Application.Current ?? throw new InvalidOperationException("The test application is not running.");
+        if (!app.Styles.OfType<FluentTheme>().Any()) app.Styles.Add(new FluentTheme());
+        if (!app.Styles.OfType<StyleInclude>().Any(x => x.Source?.AbsoluteUri.Contains("Galapa.UI/Themes/Launcher") == true))
+            app.Styles.Add(new StyleInclude(new Uri("avares://Galapa.Launcher.Tests/"))
+            {
+                Source = new Uri("avares://Galapa.UI/Themes/Launcher.axaml")
+            });
+        if (!app.Styles.OfType<StyleInclude>().Any(x => x.Source?.AbsoluteUri.Contains("CompiledThemeStyles") == true))
+            app.Styles.Add(new StyleInclude(new Uri("avares://Galapa.Launcher.Tests/"))
+            {
+                Source = new Uri("avares://Galapa.Launcher/Styles/CompiledThemeStyles.axaml")
+            });
+        return app;
+    }
+
     private static byte[] Render(Control visual, PixelSize pixelSize)
     {
         visual.Measure(pixelSize.ToSize(1));
@@ -201,6 +277,17 @@ public sealed record TabRenderInspection(
     bool UnderlineIsEffectivelyVisible,
     double UnderlineOpacity,
     Rect ItemBounds);
+
+public sealed record ScrollbarInspection(
+    double InitialMaximum,
+    double InitialViewport,
+    double FirstOffset,
+    double ValueAfterTargetScroll,
+    double ReplacementMaximum,
+    double ValueAfterOldTargetScroll,
+    double DetachedMaximum,
+    bool DetachedIsEnabled,
+    bool HasRangeAutomation);
 
 public static class SkiaHeadlessTestApplication
 {
@@ -274,6 +361,25 @@ public sealed class NineSliceRenderingTests(SkiaHeadlessFixture skia)
 
         Assert.All(slices.Cells, cell => Assert.Equal("stretch", cell.Repeat));
     }
+
+    [Theory]
+    [InlineData("xMinYMin meet", false, 0, 0)]
+    [InlineData("xMidYMid meet", false, .5, .5)]
+    [InlineData("xMaxYMax slice", true, 1, 1)]
+    [InlineData("defer xMaxYMin meet", false, 1, 0)]
+    public void PreserveAspectRatioAlignmentIsParsed(string source, bool slice, double x, double y)
+    {
+        var alignment = NineSliceSvg.ParseAspectRatio(source);
+
+        Assert.False(alignment.None);
+        Assert.Equal(slice, alignment.Slice);
+        Assert.Equal(x, alignment.X);
+        Assert.Equal(y, alignment.Y);
+    }
+
+    [Fact]
+    public void InvalidPreserveAspectRatioIsRejected() =>
+        Assert.Throws<InvalidDataException>(() => NineSliceSvg.ParseAspectRatio("xMaybeYMid meet"));
 
     [Fact]
     public void FixedTracksShrinkByOneUniformFactor()

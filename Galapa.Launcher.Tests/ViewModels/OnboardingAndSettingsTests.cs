@@ -50,16 +50,61 @@ public sealed class OnboardingAndSettingsTests : IDisposable
     }
 
     [Fact]
+    public void OnboardingSaveFailureRetainsThePreviousFolderAndDoesNotComplete()
+    {
+        var folder = Path.Combine(_temp.Path, "DQX");
+        Directory.CreateDirectory(Path.Combine(folder, "Game"));
+        File.WriteAllText(Path.Combine(folder, "Game", "DQXGame.exe"), string.Empty);
+        var previous = Path.Combine(_temp.Path, "previous");
+        var settings = new Settings { GameFolderPath = previous };
+        var onboarding = new OnboardingFrameViewModel(settings) { GameFolderPath = folder };
+        var completed = false;
+        onboarding.Completed += (_, _) => completed = true;
+        var blockedSettingsPath = Path.Combine(_temp.Path, "not-a-directory");
+        File.WriteAllText(blockedSettingsPath, string.Empty);
+        Paths.AppData = blockedSettingsPath;
+
+        onboarding.CompleteCommand.Execute(null);
+
+        Assert.False(completed);
+        Assert.Equal(previous, settings.GameFolderPath);
+        Assert.Contains("could not save", onboarding.ValidationMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void SettingsFrameContainsAllEightDestinations()
     {
         var vm = new SettingsFrameViewModel(
             new Lazy<GeneralSettingsPageViewModel>(() => null!),
             new Lazy<GameSettingsPageViewModel>(() => null!),
+            new Lazy<GraphicsSettingsPageViewModel>(() => null!),
             new Lazy<AboutPageViewModel>(() => null!));
 
         Assert.Equal(8, vm.Pages.Count);
         Assert.Equal(new[] { "Players", "Graphics", "Controls", "Sound", "Clarity" },
             vm.Pages.Skip(2).Take(5).Select(x => x.Title));
         Assert.Same(vm.Pages[0], vm.SelectedPage);
+    }
+
+    [Fact]
+    public void SettingsFrameDoesNotConstructPagesToReadNavigationMetadata()
+    {
+        var launcherConstructed = 0;
+        var gameConstructed = 0;
+        var graphicsConstructed = 0;
+        var aboutConstructed = 0;
+        var vm = new SettingsFrameViewModel(
+            new Lazy<GeneralSettingsPageViewModel>(() => { launcherConstructed++; return null!; }),
+            new Lazy<GameSettingsPageViewModel>(() => { gameConstructed++; return null!; }),
+            new Lazy<GraphicsSettingsPageViewModel>(() => { graphicsConstructed++; return null!; }),
+            new Lazy<AboutPageViewModel>(() => { aboutConstructed++; return null!; }));
+
+        Assert.Equal(new[] { "Launcher", "Game", "Players", "Graphics", "Controls", "Sound", "Clarity", "About" },
+            vm.Pages.Select(page => page.Title));
+        Assert.Equal(0, launcherConstructed + gameConstructed + graphicsConstructed + aboutConstructed);
+
+        _ = vm.SelectedPage!.ViewModel.Value;
+        Assert.Equal(1, launcherConstructed);
+        Assert.Equal(0, gameConstructed + graphicsConstructed + aboutConstructed);
     }
 }

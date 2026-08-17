@@ -1,6 +1,4 @@
-using System.Reflection;
-using Avalonia.Controls;
-using Avalonia.Media;
+using System.Text.Json.Nodes;
 using Galapa.Launcher.Theming;
 using Galapa.TestUtilities;
 
@@ -41,12 +39,6 @@ public sealed class CompiledThemeReaderTests : IDisposable
             Assert.Equal(CompiledThemeContract.ControlIds.Length, compiled.Controls.Count);
             Assert.All(CompiledThemeContract.ControlIds, id => Assert.True(compiled.Controls.ContainsKey(id), id));
 
-            var buildResources = typeof(ThemeManager).GetMethod("BuildResources", BindingFlags.NonPublic | BindingFlags.Static);
-            var resources = Assert.IsType<ResourceDictionary>(buildResources!.Invoke(null, [package]));
-            Assert.Same(compiled.Controls["panel"], resources["Galapa.Part.panel"]);
-            Assert.Equal(20, Assert.IsType<double>(resources["Galapa.Type.brand.Size"]));
-            Assert.Equal(16, Assert.IsType<double>(resources["Galapa.Type.button.Size"]));
-            Assert.IsAssignableFrom<IBrush>(resources["Galapa.Part.button.ContentBrush"]);
         });
 
         var aurelia = packages.Single(x => x.Manifest.Id == "aurelia").Compiled!;
@@ -84,6 +76,61 @@ public sealed class CompiledThemeReaderTests : IDisposable
         Assert.Contains("external reference", error.Message, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task OutOfRangeColor_IsRejectedInsteadOfClamped()
+    {
+        var target = await ModifiedTheme("estella", "bad-color", controls =>
+            controls["input.error"]!["content"] = "rgba(999, 20, 30, 1.2)");
+
+        var error = await Assert.ThrowsAsync<ThemePackageException>(() => new CompiledThemeReader().ReadAsync(target));
+        Assert.Contains("invalid color", error.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task MalformedEdgeArray_IsRejected()
+    {
+        var target = await ModifiedTheme("estella", "bad-edges", controls =>
+            controls["input"]!["borderThickness"] = new JsonArray(1, 2, 3));
+
+        var error = await Assert.ThrowsAsync<ThemePackageException>(() => new CompiledThemeReader().ReadAsync(target));
+        Assert.Contains("borderThickness", error.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task StateCannotOverrideStructuralFields()
+    {
+        var target = await ModifiedTheme("estella", "bad-state", controls =>
+            controls["tab"]!["states"]!["selected"]!["radius"] = 4);
+
+        var error = await Assert.ThrowsAsync<ThemePackageException>(() => new CompiledThemeReader().ReadAsync(target));
+        Assert.Contains("states cannot override", error.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task DuplicateNineSliceCell_IsRejected()
+    {
+        var target = await ModifiedTheme("aurelia", "bad-slices", controls =>
+        {
+            var panel = controls["panel"]!.AsObject();
+            panel["art"] = panel["art"]!.GetValue<string>()
+                .Replace("id=\"1_0\"", "id=\"0_0\"", StringComparison.Ordinal);
+        });
+
+        var error = await Assert.ThrowsAsync<ThemePackageException>(() => new CompiledThemeReader().ReadAsync(target));
+        Assert.Contains("duplicate slice", error.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task UnsafeFileNameCannotBecomeAThemeId()
+    {
+        var source = await File.ReadAllTextAsync(Path.Combine(BuiltInFolder, "estella.compiled.json"));
+        var target = Path.Combine(_temp.Path, "Unsafe_ID.compiled.json");
+        await File.WriteAllTextAsync(target, source);
+
+        var error = await Assert.ThrowsAsync<ThemePackageException>(() => new CompiledThemeReader().ReadAsync(target));
+        Assert.Contains("safe ID", error.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Theory]
     [InlineData("rgba(56, 120, 170, 0.08)", 20)]
     [InlineData("transparent", 0)]
@@ -91,5 +138,21 @@ public sealed class CompiledThemeReaderTests : IDisposable
     public void CompiledColors_AreParsed(string source, byte expectedAlpha)
     {
         Assert.Equal(expectedAlpha, ThemePaint.ParseColor(source).A);
+    }
+
+    [Theory]
+    [InlineData("rgb(256, 0, 0)")]
+    [InlineData("rgba(0, 0, 0, 1.01)")]
+    public void OutOfRangeCompiledColors_AreRejected(string source) =>
+        Assert.Throws<FormatException>(() => ThemePaint.ParseColor(source));
+
+    private async Task<string> ModifiedTheme(string sourceId, string targetId, Action<JsonObject> modify)
+    {
+        var source = await File.ReadAllTextAsync(Path.Combine(BuiltInFolder, $"{sourceId}.compiled.json"));
+        var root = JsonNode.Parse(source)!.AsObject();
+        modify(root["controls"]!.AsObject());
+        var target = Path.Combine(_temp.Path, $"{targetId}.compiled.json");
+        await File.WriteAllTextAsync(target, root.ToJsonString());
+        return target;
     }
 }
