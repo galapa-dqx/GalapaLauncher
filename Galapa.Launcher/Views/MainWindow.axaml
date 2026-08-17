@@ -99,10 +99,14 @@
     <Border BorderBrush="{DynamicResource Galapa.Part.window.BorderBrush}" BorderThickness="1">
     <Grid Background="{DynamicResource Galapa.Part.window.FillBrush}">
         <Grid.RowDefinitions>
-            <RowDefinition Height="{StaticResource Galapa.TitleBarHeight}" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
-        <local:ThemePart Name="PART_TitleBar" PartStyle="{DynamicResource Galapa.Part.titlebar}" FallbackPadding="0" UseThemePadding="False">
+        <local:ThemePart Name="PART_TitleBar"
+                         Height="{StaticResource Galapa.TitleBarHeight}"
+                         PartStyle="{DynamicResource Galapa.Part.titlebar}"
+                         FallbackPadding="0"
+                         UseThemePadding="False">
             <!-- Paint beneath native chrome without intercepting Windows title-bar hit testing. -->
             <Grid ColumnDefinitions="Auto,*,138">
                 <ui:ThemedTextBlock Classes="brand" SourceText="Galapa" VerticalAlignment="Center"

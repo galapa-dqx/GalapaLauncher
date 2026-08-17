@@ -4,7 +4,7 @@
              x:Class="Galapa.Launcher.Views.SettingsFrame.SettingsFrame" x:DataType="vm:SettingsFrameViewModel">
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="{StaticResource Galapa.TitleBarHeight}" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
         <local:ThemePart PartStyle="{DynamicResource Galapa.Part.subtabs}">
