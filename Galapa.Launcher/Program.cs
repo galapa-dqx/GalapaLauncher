@@ -62,13 +62,13 @@ internal sealed class Program
         container.Register<SettingsFrameViewModel>(Reuse.Singleton);
         container.Register<GeneralSettingsPageViewModel>(Reuse.Singleton);
         container.Register<GameSettingsPageViewModel>(Reuse.Singleton);
+        container.Register<GraphicsSettingsPageViewModel>(Reuse.Singleton);
         container.Register<AboutPageViewModel>(Reuse.Singleton);
         container.Register<LoginFlowState>(Reuse.Singleton);
         container.Register<LoginNavigationService>(Reuse.Singleton);
         container.Register<IPlayerCredentialFactory, WindowsCredentialManagerFactory>(Reuse.Singleton);
         container.Register<PlayerList>(Reuse.Singleton);
         container.Register<OnboardingFrameViewModel>(Reuse.Singleton);
-        container.Register<ThemePackageReader>(Reuse.Singleton);
         container.Register<CompiledThemeReader>(Reuse.Singleton);
         container.Register<IThemeCatalog, ThemeCatalog>(Reuse.Singleton);
         container.Register<IThemeManager, ThemeManager>(Reuse.Singleton);

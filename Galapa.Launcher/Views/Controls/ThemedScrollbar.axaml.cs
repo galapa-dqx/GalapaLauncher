@@ -1,15 +1,14 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Input;
+using Avalonia.Controls.Primitives;
+using Avalonia.VisualTree;
 
 namespace Galapa.Launcher.Views.Controls;
 
-public partial class ThemedScrollbar : UserControl
+public sealed class ThemedScrollbar : ScrollBar
 {
     private ScrollViewer? _subscribedTarget;
-    private bool _dragging;
-    private double _dragStartY;
-    private double _dragStartOffset;
+    private bool _synchronizing;
 
     public static readonly StyledProperty<ScrollViewer?> TargetProperty =
         AvaloniaProperty.Register<ThemedScrollbar, ScrollViewer?>(nameof(Target));
@@ -18,96 +17,77 @@ public partial class ThemedScrollbar : UserControl
 
     public ThemedScrollbar()
     {
-        InitializeComponent();
-        PART_Track.PointerPressed += TrackOnPointerPressed;
-        PART_Thumb.PointerPressed += ThumbOnPointerPressed;
-        PART_Thumb.PointerMoved += ThumbOnPointerMoved;
-        PART_Thumb.PointerReleased += ThumbOnPointerReleased;
-        PART_Thumb.PointerCaptureLost += (_, _) => _dragging = false;
-        SizeChanged += (_, _) => SyncThumb();
+        Orientation = Avalonia.Layout.Orientation.Vertical;
+        SmallChange = 16;
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
-        if (change.Property == TargetProperty) SubscribeTarget(change.GetNewValue<ScrollViewer?>());
+        if (change.Property == TargetProperty && this.GetVisualRoot() is not null)
+            SubscribeTarget(change.GetNewValue<ScrollViewer?>());
+        else if (change.Property == ValueProperty && !_synchronizing)
+            ScrollTargetTo(Value);
+    }
+
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        SubscribeTarget(Target);
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        SubscribeTarget(null);
+        base.OnDetachedFromVisualTree(e);
     }
 
     private void SubscribeTarget(ScrollViewer? target)
     {
         if (_subscribedTarget is not null)
-        {
             _subscribedTarget.ScrollChanged -= TargetOnScrollChanged;
-            _subscribedTarget.LayoutUpdated -= TargetOnLayoutUpdated;
-        }
+
         _subscribedTarget = target;
         if (target is not null)
-        {
             target.ScrollChanged += TargetOnScrollChanged;
-            target.LayoutUpdated += TargetOnLayoutUpdated;
+
+        SynchronizeFromTarget();
+    }
+
+    private void TargetOnScrollChanged(object? sender, ScrollChangedEventArgs e) => SynchronizeFromTarget();
+
+    private void SynchronizeFromTarget()
+    {
+        var target = _subscribedTarget;
+        if (target is null)
+        {
+            Maximum = ViewportSize = LargeChange = Value = 0;
+            IsEnabled = false;
+            return;
         }
-        SyncThumb();
+
+        var maximum = Math.Max(0, target.Extent.Height - target.Viewport.Height);
+        _synchronizing = true;
+        try
+        {
+            Maximum = maximum;
+            ViewportSize = target.Viewport.Height;
+            LargeChange = Math.Max(1, target.Viewport.Height);
+            Value = Math.Clamp(target.Offset.Y, 0, maximum);
+            IsEnabled = maximum > .5;
+        }
+        finally
+        {
+            _synchronizing = false;
+        }
     }
 
-    private void TargetOnScrollChanged(object? sender, ScrollChangedEventArgs e) => SyncThumb();
-    private void TargetOnLayoutUpdated(object? sender, EventArgs e) => SyncThumb();
-
-    private void SyncThumb()
+    private void ScrollTargetTo(double value)
     {
-        var target = Target;
-        var trackHeight = Bounds.Height;
-        if (target is null || trackHeight <= 0) return;
-        var extent = target.Extent.Height;
-        var viewport = target.Viewport.Height;
-        var ratio = extent <= 0 ? 1 : Math.Clamp(viewport / extent, 0, 1);
-        var thumbHeight = Math.Clamp(trackHeight * ratio, trackHeight * .12, trackHeight);
-        var maxScroll = Math.Max(0, extent - viewport);
-        var maxTravel = Math.Max(0, trackHeight - thumbHeight);
-        var top = maxScroll <= 0 ? 0 : Math.Clamp(target.Offset.Y / maxScroll, 0, 1) * maxTravel;
-        PART_Thumb.Height = thumbHeight;
-        Canvas.SetTop(PART_Thumb, top);
-        IsEnabled = maxScroll > .5;
-        Opacity = maxScroll > .5 ? 1 : .45;
-    }
-
-    private void TrackOnPointerPressed(object? sender, PointerPressedEventArgs e)
-    {
-        if (Target is null || _dragging || e.GetCurrentPoint(this).Properties.PointerUpdateKind != PointerUpdateKind.LeftButtonPressed)
+        var target = _subscribedTarget;
+        if (target is null)
             return;
-        var trackHeight = Bounds.Height;
-        var maxScroll = Math.Max(0, Target.Extent.Height - Target.Viewport.Height);
-        if (trackHeight <= 0 || maxScroll <= 0) return;
-        var fraction = Math.Clamp(e.GetPosition(this).Y / trackHeight, 0, 1);
-        Target.Offset = new Vector(Target.Offset.X, fraction * maxScroll);
-        e.Handled = true;
-    }
 
-    private void ThumbOnPointerPressed(object? sender, PointerPressedEventArgs e)
-    {
-        if (Target is null || e.GetCurrentPoint(this).Properties.PointerUpdateKind != PointerUpdateKind.LeftButtonPressed)
-            return;
-        _dragging = true;
-        _dragStartY = e.GetPosition(this).Y;
-        _dragStartOffset = Target.Offset.Y;
-        e.Pointer.Capture(PART_Thumb);
-        e.Handled = true;
-    }
-
-    private void ThumbOnPointerMoved(object? sender, PointerEventArgs e)
-    {
-        if (!_dragging || Target is null) return;
-        var maxScroll = Math.Max(0, Target.Extent.Height - Target.Viewport.Height);
-        var travel = Math.Max(1, Bounds.Height - PART_Thumb.Bounds.Height);
-        Target.Offset = new Vector(Target.Offset.X,
-            Math.Clamp(_dragStartOffset + (e.GetPosition(this).Y - _dragStartY) * maxScroll / travel, 0, maxScroll));
-        e.Handled = true;
-    }
-
-    private void ThumbOnPointerReleased(object? sender, PointerReleasedEventArgs e)
-    {
-        if (!_dragging) return;
-        _dragging = false;
-        e.Pointer.Capture(null);
-        e.Handled = true;
+        target.Offset = new Vector(target.Offset.X, Math.Clamp(value, 0, Maximum));
     }
 }

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Runtime.CompilerServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
@@ -11,9 +12,13 @@ namespace Galapa.Launcher.Views.Controls;
 /// Avalonia renderer for one compiled theme control. It paints outside the
 /// content layout, so state borders can change thickness without moving text.
 /// </summary>
-public sealed class ThemePart : ContentControl
+public class ThemePart : ContentControl
 {
-    private NineSliceSvg? _slices;
+    private ThemePartPresentation? _presentation;
+    private Geometry? _cachedGeometry;
+    private Size _cachedGeometrySize;
+    private double _cachedGeometryRadius = double.NaN;
+    private string? _cachedGeometryCorner;
 
     public static readonly StyledProperty<CompiledControl?> PartStyleProperty =
         AvaloniaProperty.Register<ThemePart, CompiledControl?>(nameof(PartStyle));
@@ -63,7 +68,8 @@ public sealed class ThemePart : ContentControl
     {
         base.Render(context);
         var style = PartStyle;
-        if (style is null || Bounds.Width <= 0 || Bounds.Height <= 0) return;
+        var presentation = _presentation;
+        if (style is null || presentation is null || Bounds.Width <= 0 || Bounds.Height <= 0) return;
         var visualWidth = double.IsNaN(VisualWidth) ? Bounds.Width : Math.Clamp(VisualWidth, 0, Bounds.Width);
         var visualHeight = double.IsNaN(VisualHeight) ? Bounds.Height : Math.Clamp(VisualHeight, 0, Bounds.Height);
         var drawRect = new Rect(
@@ -71,81 +77,86 @@ public sealed class ThemePart : ContentControl
             (Bounds.Height - visualHeight) / 2,
             visualWidth,
             visualHeight);
-        var active = ActiveState(style);
-        var contentBrush = ThemePaint.Brush(active?.Content ?? style.Content, Foreground);
+        var visual = presentation.Visual(State);
+        var contentBrush = visual.ContentInherited ? Foreground : visual.Content;
         if (style.Shape == "Asset")
         {
-            _slices?.Draw(context, drawRect, contentBrush);
+            visual.Slices?.Draw(context, drawRect, contentBrush);
             return;
         }
         if (style.Shape != "Path") return;
 
-        var fill = ThemePaint.Brush(active?.Fill ?? style.Fill);
-        var border = ThemePaint.Brush(active?.BorderColor ?? style.BorderColor);
-        var stateHasBorder = active is not null &&
-                             active.BorderThickness.ValueKind is not (JsonValueKind.Undefined or JsonValueKind.Null);
-        var edges = ThemeMetrics.ReadEdges(stateHasBorder ? active!.BorderThickness : style.BorderThickness);
         var radius = ThemeMetrics.ReadRadius(style.Radius, drawRect.Width, drawRect.Height);
-        var geometry = CreateGeometry(drawRect, radius, style.Corner ?? "round");
-        context.DrawGeometry(fill, null, geometry);
-        DrawBorder(context, geometry, border, edges, TopBorderGapStart, TopBorderGapWidth);
+        var corner = style.Corner ?? "round";
+        var geometry = GeometryFor(drawRect.Size, radius, corner);
+        using (context.PushTransform(Matrix.CreateTranslation(drawRect.X, drawRect.Y)))
+        {
+            context.DrawGeometry(visual.Fill, null, geometry);
+            DrawBorder(context, geometry, visual, TopBorderGapStart, TopBorderGapWidth);
+        }
     }
 
     private void ApplyStyle()
     {
         var style = PartStyle;
-        _slices = null;
-        if (style is null) return;
-        var active = ActiveState(style);
-        try
+        _presentation = null;
+        _cachedGeometry = null;
+        if (style is null)
         {
-            var art = active?.Art ?? style.Art;
-            if (style.Shape == "Asset" && art is not null) _slices = NineSliceSvg.Parse(art);
+            ClearTypography();
+            return;
         }
-        catch
-        {
-            // A bad optional visual never takes the launcher down. Built-ins
-            // are validated before this point; this is future import defense.
-        }
+        // Theme packages are validated before installation. Do not hide a
+        // renderer-contract violation here: a silent failure leaves an empty
+        // but interactive control and makes transactional application moot.
+        _presentation = ThemePartPresentation.For(style);
+        var presentation = _presentation;
+        var visual = presentation?.Visual(State);
 
         Thickness padding;
         if (!UseThemePadding)
             padding = FallbackPadding;
-        else if (_slices is not null)
-            padding = _slices.ContentPadding;
+        else if (visual?.Slices is not null)
+            padding = visual.Slices.ContentPadding;
         else if (style.Padding.ValueKind is not (JsonValueKind.Undefined or JsonValueKind.Null))
         {
-            var edges = ThemeMetrics.ReadEdges(style.Padding);
-            padding = new Thickness(edges[3], edges[0], edges[1], edges[2]);
+            padding = ThemeMetrics.ToThickness(style.Padding);
         }
         else padding = FallbackPadding;
-        SetCurrentValue(PaddingProperty, padding);
+        if (Padding != padding) SetCurrentValue(PaddingProperty, padding);
 
         var text = style.Text;
-        if (text?.Family is not null) SetCurrentValue(FontFamilyProperty, ThemeManager.FontFamilyFor(text.Family));
-        if (text?.Size is { } size) SetCurrentValue(FontSizeProperty, size);
-        if (text?.Weight is { } weight) SetCurrentValue(FontWeightProperty, (FontWeight)weight);
-        if (text?.Style is not null) SetCurrentValue(FontStyleProperty, text.Style == "italic" ? FontStyle.Italic : text.Style == "oblique" ? FontStyle.Oblique : FontStyle.Normal);
-        var content = ThemePaint.Brush(active?.Content ?? style.Content, Foreground);
-        if (content is not null) SetCurrentValue(ForegroundProperty, content);
-        SetCurrentValue(OpacityProperty, active?.Opacity ?? style.Opacity ?? 1);
-        InvalidateMeasure();
+        if (text?.Family is not null) SetCurrentValue(FontFamilyProperty, ThemeManager.FontFamilyFor(style.ThemeId, text.Family));
+        else ClearValue(FontFamilyProperty);
+        if (text?.Size is { } size) SetCurrentValue(FontSizeProperty, size); else ClearValue(FontSizeProperty);
+        if (text?.Weight is { } weight) SetCurrentValue(FontWeightProperty, (FontWeight)weight); else ClearValue(FontWeightProperty);
+        if (text?.Style is not null) SetCurrentValue(FontStyleProperty, ThemeTypography.ToFontStyle(text.Style));
+        else ClearValue(FontStyleProperty);
+        if (visual?.ContentInherited == false && visual.Content is not null) SetCurrentValue(ForegroundProperty, visual.Content);
+        else ClearValue(ForegroundProperty);
+        SetCurrentValue(OpacityProperty, visual?.Opacity ?? 1);
         InvalidateVisual();
     }
 
-    private CompiledControl? ActiveState(CompiledControl style)
+    private void ClearTypography()
     {
-        var key = State switch
-        {
-            ThemePartState.Hover => "hover",
-            ThemePartState.Pressed => "pressed",
-            ThemePartState.Focused => "focused",
-            ThemePartState.Disabled => "disabled",
-            ThemePartState.Selected => "selected",
-            ThemePartState.Checked => "checked",
-            _ => null
-        };
-        return key is null ? null : style.States?.GetValueOrDefault(key);
+        ClearValue(FontFamilyProperty);
+        ClearValue(FontSizeProperty);
+        ClearValue(FontWeightProperty);
+        ClearValue(FontStyleProperty);
+        ClearValue(ForegroundProperty);
+        ClearValue(OpacityProperty);
+    }
+
+    private Geometry GeometryFor(Size size, double radius, string corner)
+    {
+        if (_cachedGeometry is not null && _cachedGeometrySize == size &&
+            Math.Abs(_cachedGeometryRadius - radius) < .001 && _cachedGeometryCorner == corner)
+            return _cachedGeometry;
+        _cachedGeometrySize = size;
+        _cachedGeometryRadius = radius;
+        _cachedGeometryCorner = corner;
+        return _cachedGeometry = CreateGeometry(new Rect(size), radius, corner);
     }
 
     private static Geometry CreateGeometry(Rect rect, double radius, string corner)
@@ -238,9 +249,11 @@ public sealed class ThemePart : ContentControl
         return points.ToArray();
     }
 
-    private static void DrawBorder(DrawingContext context, Geometry geometry, IBrush? brush,
-        IReadOnlyList<double> edges, double gapStart, double gapWidth)
+    private static void DrawBorder(DrawingContext context, Geometry geometry, ThemePartVisual visual,
+        double gapStart, double gapWidth)
     {
+        var brush = visual.Border;
+        var edges = visual.BorderEdges;
         if (brush is null || edges.All(x => x <= 0)) return;
         var bounds = geometry.Bounds;
         var hasTopGap = edges[0] > 0 && double.IsFinite(gapStart) && gapWidth > 0 &&
@@ -249,7 +262,7 @@ public sealed class ThemePart : ContentControl
         var gapRight = bounds.Left + Math.Clamp(gapStart + gapWidth, 0, bounds.Width);
         if (edges.All(x => Math.Abs(x - edges[0]) < .001))
         {
-            var pen = new Pen(brush, edges[0]);
+            var pen = visual.UniformBorderPen!;
             if (!hasTopGap)
             {
                 context.DrawGeometry(null, pen, geometry);
@@ -291,5 +304,74 @@ public sealed class ThemePart : ContentControl
         if (edges[1] > 0) context.FillRectangle(brush, new Rect(bounds.Right - edges[1], bounds.Top, edges[1], bounds.Height));
         if (edges[2] > 0) context.FillRectangle(brush, new Rect(bounds.Left, bounds.Bottom - edges[2], bounds.Width, edges[2]));
         if (edges[3] > 0) context.FillRectangle(brush, new Rect(bounds.Left, bounds.Top, edges[3], bounds.Height));
+    }
+}
+
+internal sealed class ThemePartPresentation
+{
+    private static readonly ConditionalWeakTable<CompiledControl, ThemePartPresentation> Cache = new();
+    private readonly ThemePartVisual _normal;
+    private readonly IReadOnlyDictionary<string, ThemePartVisual> _states;
+
+    private ThemePartPresentation(CompiledControl control)
+    {
+        _normal = ThemePartVisual.Create(control, null);
+        _states = control.States?.ToDictionary(
+            pair => pair.Key,
+            pair => ThemePartVisual.Create(control, pair.Value),
+            StringComparer.Ordinal) ?? new Dictionary<string, ThemePartVisual>();
+    }
+
+    public static ThemePartPresentation For(CompiledControl control) =>
+        Cache.GetValue(control, static value => new ThemePartPresentation(value));
+
+    public ThemePartVisual Visual(ThemePartState state)
+    {
+        var key = CompiledThemeContract.StateName(state);
+        return key is not null && _states.TryGetValue(key, out var visual) ? visual : _normal;
+    }
+}
+
+internal sealed class ThemePartVisual
+{
+    private ThemePartVisual(IBrush? fill, IBrush? content, bool contentInherited, IBrush? border,
+        double[] borderEdges, double opacity, NineSliceSvg? slices)
+    {
+        Fill = fill;
+        Content = content;
+        ContentInherited = contentInherited;
+        Border = border;
+        BorderEdges = borderEdges;
+        Opacity = opacity;
+        Slices = slices;
+        if (border is not null && borderEdges.All(x => Math.Abs(x - borderEdges[0]) < .001) && borderEdges[0] > 0)
+            UniformBorderPen = new Pen(border, borderEdges[0]);
+    }
+
+    public IBrush? Fill { get; }
+    public IBrush? Content { get; }
+    public bool ContentInherited { get; }
+    public IBrush? Border { get; }
+    public double[] BorderEdges { get; }
+    public Pen? UniformBorderPen { get; }
+    public double Opacity { get; }
+    public NineSliceSvg? Slices { get; }
+
+    public static ThemePartVisual Create(CompiledControl control, CompiledControl? state)
+    {
+        var content = state?.Content ?? control.Content;
+        var borderValue = state is not null &&
+                          state.BorderThickness.ValueKind is not (JsonValueKind.Undefined or JsonValueKind.Null)
+            ? state.BorderThickness
+            : control.BorderThickness;
+        var art = state?.Art ?? control.Art;
+        return new ThemePartVisual(
+            ThemePaint.Brush(state?.Fill ?? control.Fill),
+            content == "inherit" ? null : ThemePaint.Brush(content),
+            content == "inherit",
+            ThemePaint.Brush(state?.BorderColor ?? control.BorderColor),
+            ThemeMetrics.ReadEdges(borderValue),
+            state?.Opacity ?? control.Opacity ?? 1,
+            control.Shape == "Asset" && art is not null ? ThemeSvgCache.NineSlice(art) : null);
     }
 }

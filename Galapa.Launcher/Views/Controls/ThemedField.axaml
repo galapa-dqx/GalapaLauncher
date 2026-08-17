@@ -15,7 +15,9 @@
             <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.Control.input.Family}" />
             <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.Control.input.Size}" />
             <Setter Property="FontWeight" Value="{DynamicResource Galapa.Type.Control.input.Weight}" />
+            <Setter Property="FontStyle" Value="{DynamicResource Galapa.Type.Control.input.Style}" />
             <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.input.ContentBrush}" />
+            <Setter Property="CaretBrush" Value="{DynamicResource Galapa.Part.input.caret.ContentBrush}" />
         </Style>
         <Style Selector="TextBox.field-editor:focus, TextBox.field-editor:focus-within">
             <Setter Property="Background" Value="Transparent" />
@@ -46,7 +48,8 @@
                          TopBorderGapWidth="{Binding Bounds.Width, ElementName=PART_FieldLabelSeat}">
             <TextBox Classes="field-editor" Text="{Binding Text, ElementName=Root, Mode=TwoWay}"
                      IsReadOnly="{Binding IsReadOnly, ElementName=Root}"
-                     PasswordChar="{Binding PasswordChar, ElementName=Root}" />
+                     PasswordChar="{Binding PasswordChar, ElementName=Root}"
+                     AutomationProperties.Name="{Binding Label, ElementName=Root}" />
         </local:ThemePart>
         <Canvas ClipToBounds="False" IsHitTestVisible="False">
             <Border Name="PART_FieldLabelSeat" Padding="5,0"

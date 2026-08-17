@@ -19,7 +19,11 @@ public sealed class AspectRatioBox : Decorator
         var ratio = double.IsFinite(Ratio) && Ratio > 0 ? Ratio : 1d;
         var width = double.IsFinite(availableSize.Width) ? availableSize.Width : 1d;
         var height = width / ratio;
-        if (double.IsFinite(availableSize.Height)) height = Math.Min(height, availableSize.Height);
+        if (double.IsFinite(availableSize.Height) && height > availableSize.Height)
+        {
+            height = availableSize.Height;
+            width = height * ratio;
+        }
         Child.Measure(new Size(width, height));
         return new Size(width, height);
     }

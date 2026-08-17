@@ -6,6 +6,8 @@ namespace Galapa.Core.Configuration;
 
 public partial class Settings : ObservableValidator
 {
+    public const string DefaultThemeId = "estella";
+
     [ObservableProperty] [Required] [CustomValidation(typeof(Settings), "ValidateGameFolderPath")]
     private string? _gameFolderPath;
 
@@ -13,7 +15,7 @@ public partial class Settings : ObservableValidator
 
     [ObservableProperty] [Required] private bool? _errorReporting;
 
-    [ObservableProperty] [Required] private string _themeId = "estella";
+    [ObservableProperty] [Required] private string _themeId = DefaultThemeId;
 
     private static Settings GetDefaults()
     {
@@ -23,7 +25,7 @@ public partial class Settings : ObservableValidator
             SaveFolderPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
                 "My Games", "Dragon Quest X"),
             ErrorReporting = false,
-            ThemeId = "estella"
+            ThemeId = DefaultThemeId
         };
     }
 
@@ -35,7 +37,7 @@ public partial class Settings : ObservableValidator
             {
                 var json = File.ReadAllText(Paths.Settings);
                 var loaded = JsonSerializer.Deserialize<Settings>(json) ?? GetDefaults();
-                if (string.IsNullOrWhiteSpace(loaded.ThemeId)) loaded.ThemeId = "estella";
+                if (string.IsNullOrWhiteSpace(loaded.ThemeId)) loaded.ThemeId = DefaultThemeId;
                 return loaded;
             }
             catch (JsonException)
@@ -53,11 +55,16 @@ public partial class Settings : ObservableValidator
         File.WriteAllText(Paths.Settings, JsonSerializer.Serialize(this));
     }
 
-    public static ValidationResult ValidateGameFolderPath(string gameFolderPath, ValidationContext context)
+    public static bool IsValidGameFolder(string? gameFolderPath) =>
+        !string.IsNullOrWhiteSpace(gameFolderPath) &&
+        Directory.Exists(gameFolderPath) &&
+        File.Exists(Path.Combine(gameFolderPath, "Game", "DQXGame.exe"));
+
+    public static ValidationResult ValidateGameFolderPath(string? gameFolderPath, ValidationContext context)
     {
-        if (!Directory.Exists(gameFolderPath))
+        if (string.IsNullOrWhiteSpace(gameFolderPath) || !Directory.Exists(gameFolderPath))
             return new ValidationResult("Folder does not exist");
-        if (!File.Exists(Path.Combine(gameFolderPath, "Game\\DQXGame.exe")))
+        if (!File.Exists(Path.Combine(gameFolderPath, "Game", "DQXGame.exe")))
             return new ValidationResult("DQXGame.exe does not exist");
 
         return ValidationResult.Success!;

@@ -23,8 +23,9 @@
 
     <ItemGroup>
         <AvaloniaResource Include="Assets\**" Exclude="Assets\Themes\**" />
-        <Content Include="Assets\Themes\*.galapatheme" CopyToOutputDirectory="PreserveNewest" />
         <Content Include="Assets\Themes\*.compiled.json" CopyToOutputDirectory="PreserveNewest" />
+        <EmbeddedResource Include="Assets\Themes\estella.compiled.json"
+                          LogicalName="Galapa.Launcher.Recovery.estella.compiled.json" />
     </ItemGroup>
 
     <ItemGroup>

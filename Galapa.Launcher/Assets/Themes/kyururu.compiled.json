@@ -318,6 +318,26 @@
         "width": 8
       }
     },
+    "progress.track": {
+      "shape": "Path",
+      "fill": "#d8f4ec",
+      "radius": "pill",
+      "size": {
+        "height": 4
+      }
+    },
+    "progress.indicator": {
+      "shape": "Path",
+      "fill": "#22aa78",
+      "radius": "pill",
+      "size": {
+        "height": 4
+      }
+    },
+    "play-ornament": {
+      "shape": "Path",
+      "image": "<svg width=\"41\" height=\"7\" viewBox=\"0 0 41 7\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\">\r\n<rect x=\"0\" y=\"0\" width=\"7\" height=\"7\" fill=\"#a8e0cc\"/>\r\n<rect x=\"17\" y=\"0\" width=\"7\" height=\"7\" fill=\"#a8e0cc\"/>\r\n<rect x=\"34\" y=\"0\" width=\"7\" height=\"7\" fill=\"#a8e0cc\"/>\r\n</svg>\r\n"
+    },
     "input.label": {
       "shape": "Text",
       "content": "#65a089",
@@ -395,13 +415,20 @@
       "shape": "Text",
       "content": "#22aa78"
     },
+    "input.error": {
+      "shape": "Text",
+      "content": "#c03040",
+      "text": {
+        "family": "Source Sans 3",
+        "fallback": "sans-serif",
+        "weight": 400,
+        "style": "normal",
+        "size": 13
+      }
+    },
     "play-row": {
       "shape": "Text",
       "content": "#a8e0cc"
-    },
-    "play-ornament": {
-      "shape": "Path",
-      "image": "<svg width=\"41\" height=\"7\" viewBox=\"0 0 41 7\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\">\r\n<rect x=\"0\" y=\"0\" width=\"7\" height=\"7\" fill=\"#a8e0cc\"/>\r\n<rect x=\"17\" y=\"0\" width=\"7\" height=\"7\" fill=\"#a8e0cc\"/>\r\n<rect x=\"34\" y=\"0\" width=\"7\" height=\"7\" fill=\"#a8e0cc\"/>\r\n</svg>\r\n"
     }
   }
 }

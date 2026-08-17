@@ -7,6 +7,7 @@ using DryIoc;
 using Galapa.Launcher.Views;
 using Galapa.Launcher.Theming;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Galapa.Launcher;
 
@@ -25,13 +26,24 @@ public partial class App : Application
     {
         var catalog = Program.Services.Resolve<IThemeCatalog>();
         // Avalonia's classic desktop lifetime decides whether to show MainWindow as soon as
-        // this callback returns, so initialization must finish synchronously. Run archive I/O
-        // on the pool to avoid blocking its awaits on Avalonia's UI synchronization context.
+        // this callback returns, so initialization must finish synchronously. Run compiled
+        // theme I/O on the pool to avoid blocking its awaits on Avalonia's UI context.
         Task.Run(() => catalog.LoadAsync()).GetAwaiter().GetResult();
+        catalog.PrepareRenderAssets();
         var settings = Program.Services.Resolve<Galapa.Core.Configuration.Settings>();
         var manager = Program.Services.Resolve<IThemeManager>();
         if (!manager.ApplyAsync(settings.ThemeId, persist: false).GetAwaiter().GetResult())
-            manager.ApplyAsync("estella", persist: true).GetAwaiter().GetResult();
+        {
+            if (!manager.ApplyAsync(Galapa.Core.Configuration.Settings.DefaultThemeId, persist: false).GetAwaiter().GetResult())
+                throw new ThemePackageException("The embedded Estella recovery theme could not be applied.");
+            settings.ThemeId = Galapa.Core.Configuration.Settings.DefaultThemeId;
+            try { settings.Save(); }
+            catch (Exception ex)
+            {
+                Program.Services.Resolve<ILogger<App>>().LogWarning(ex,
+                    "The recovery theme was applied, but its selection could not be persisted");
+            }
+        }
 
         if (this.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {

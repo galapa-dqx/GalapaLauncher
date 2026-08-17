@@ -1,7 +1,9 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Xml.Linq;
+using Avalonia;
 using Avalonia.Media;
+using Galapa.Launcher.Views.Controls;
 
 namespace Galapa.Launcher.Theming;
 
@@ -17,7 +19,19 @@ public sealed class CompiledThemeReader
         if (!File.Exists(path))
             throw new ThemePackageException($"Compiled theme not found: {path}");
 
+        var fileName = Path.GetFileName(path);
+        if (!fileName.EndsWith(".compiled.json", StringComparison.OrdinalIgnoreCase))
+            throw new ThemePackageException($"Compiled theme must use the '.compiled.json' suffix: {fileName}");
+        var id = fileName[..^".compiled.json".Length];
         await using var stream = File.OpenRead(path);
+        return await ReadAsync(stream, id, path, cancellationToken);
+    }
+
+    public async Task<ThemePackage> ReadAsync(Stream stream, string id, string source,
+        CancellationToken cancellationToken = default)
+    {
+        if (!stream.CanRead)
+            throw new ThemePackageException($"Compiled theme source is not readable: {source}");
         CompiledTheme theme;
         try
         {
@@ -30,9 +44,10 @@ public sealed class CompiledThemeReader
         }
 
         Validate(theme);
-        var id = Path.GetFileName(path).Replace(".compiled.json", string.Empty, StringComparison.OrdinalIgnoreCase);
         if (!IsSafeId(id))
-            throw new ThemePackageException($"Compiled theme filename does not contain a safe ID: {Path.GetFileName(path)}");
+            throw new ThemePackageException($"Compiled theme does not contain a safe ID: {id}");
+        foreach (var control in theme.Controls.Values)
+            AssignThemeId(control, id);
 
         var manifest = new ThemeManifest
         {
@@ -41,27 +56,27 @@ public sealed class CompiledThemeReader
             Author = theme.Meta?.Maintainer ?? "Galapa Project",
             PackageVersion = theme.Meta?.Version ?? "compiled",
             BaseVariant = theme.Mode == "dark" ? ThemeBaseVariant.Dark : ThemeBaseVariant.Light,
-            Colors = CompatibilityColors(theme),
-            Fonts = CompatibilityFonts(theme),
-            Typography = [],
-            Geometry = [],
-            Assets = []
         };
-        return new ThemePackage(manifest, path, string.Empty, new Dictionary<string, string>(), theme);
+        return new ThemePackage(manifest, source, theme);
     }
 
     public static void Validate(CompiledTheme theme)
     {
-        if (string.IsNullOrWhiteSpace(theme.Label))
+        if (string.IsNullOrWhiteSpace(theme.Label) || theme.Label.Length > 100)
             throw new ThemePackageException("Compiled theme label is required.");
         if (theme.Mode is not ("light" or "dark"))
             throw new ThemePackageException("Compiled theme mode must be 'light' or 'dark'.");
         if (theme.FocusRing is not null)
         {
+            if (string.IsNullOrWhiteSpace(theme.FocusRing.Color))
+                throw new ThemePackageException("Focus ring color is required when a focus ring is declared.");
             ValidateColor(theme.FocusRing.Color, "focus ring");
             if (!Finite(theme.FocusRing.Width, 0, 16) || !Finite(theme.FocusRing.Offset, -32, 32))
                 throw new ThemePackageException("Focus ring metrics are out of range.");
         }
+
+        if (theme.Controls is null)
+            throw new ThemePackageException("Compiled theme controls are required.");
 
         foreach (var id in CompiledThemeContract.ControlIds)
             if (!theme.Controls.ContainsKey(id))
@@ -76,9 +91,7 @@ public sealed class CompiledThemeReader
 
     private static void ValidateControl(string id, CompiledControl control)
     {
-        var expected = id == "window" ? "Window" : id is "input.label" or "news-item.date" or "news-item.gem" or
-            "titlebar.wordmark" or "tab-bar" or "settings.heading" or "setting-help.title" or
-            "setting-help.body" or "input.placeholder" or "input.caret" or "play-row" ? "Text" : null;
+        var expected = CompiledThemeContract.Controls[id].RequiredShape;
         if (control.Shape is not ("Window" or "Path" or "Asset" or "Text") || expected is not null && control.Shape != expected)
             throw new ThemePackageException($"Control '{id}' has invalid shape '{control.Shape}'.");
         if (expected is null && control.Shape is "Window" or "Text")
@@ -97,6 +110,8 @@ public sealed class CompiledThemeReader
         if (control.Size?.Width is { } width && !Finite(width, 0, 4096) || control.Size?.Height is { } height && !Finite(height, 0, 4096))
             throw new ThemePackageException($"Control '{id}' has invalid size.");
         ValidateText(control.Text, id);
+
+        ValidateFieldsForShape(id, control);
 
         if (control.Shape == "Asset")
         {
@@ -117,6 +132,7 @@ public sealed class CompiledThemeReader
         {
             if (!CompiledThemeContract.States.Contains(state))
                 throw new ThemePackageException($"Control '{id}' has unknown state '{state}'.");
+            ValidateStateFields(id, control.Shape, state, value);
             ValidateOptionalColor(value.Fill, $"{id}.{state}.fill", false);
             ValidateOptionalColor(value.Content, $"{id}.{state}.content", true);
             ValidateOptionalColor(value.BorderColor, $"{id}.{state}.borderColor", false);
@@ -126,6 +142,15 @@ public sealed class CompiledThemeReader
             if (value.Image is not null) ValidateSvg(value.Image, $"{id}.{state}.image", false);
             if (value.Art is not null) ValidateSvg(value.Art, $"{id}.{state}.art", true);
         }
+    }
+
+    private static void ValidateStateFields(string id, string? parentShape, string state, CompiledControl value)
+    {
+        static bool Has(JsonElement element) => element.ValueKind is not (JsonValueKind.Undefined or JsonValueKind.Null);
+        if (value.Shape is not null || Has(value.Radius) || value.Corner is not null || Has(value.Padding) ||
+            value.Text is not null || value.Size is not null || value.LeftInset is not null ||
+            value.Images is not null || value.States is not null || value.Art is not null && parentShape != "Asset")
+            throw new ThemePackageException($"Control '{id}' state '{state}' declares fields that states cannot override.");
     }
 
     private static void ValidateText(CompiledTextStyle? text, string id)
@@ -152,12 +177,18 @@ public sealed class CompiledThemeReader
             if (element.Name.LocalName is "script" or "foreignObject")
                 throw new ThemePackageException($"SVG '{label}' contains forbidden content.");
             foreach (var attribute in element.Attributes())
+            {
+                if (attribute.Name.LocalName.StartsWith("on", StringComparison.OrdinalIgnoreCase))
+                    throw new ThemePackageException($"SVG '{label}' contains an event handler.");
                 if ((attribute.Name.LocalName is "href" or "src") && !attribute.Value.StartsWith('#'))
                     throw new ThemePackageException($"SVG '{label}' contains an external reference.");
+                if (attribute.Value.Contains("url(", StringComparison.OrdinalIgnoreCase))
+                    throw new ThemePackageException($"SVG '{label}' contains a URL paint or reference.");
+            }
         }
-        if (nineSlice && !root.Descendants().Any(x => x.Name.LocalName == "svg" &&
-                System.Text.RegularExpressions.Regex.IsMatch(x.Attribute("id")?.Value ?? string.Empty, "^\\d+_\\d+$")))
-            throw new ThemePackageException($"Nine-slice SVG '{label}' has no slice viewports.");
+        try { ThemeSvgValidator.Validate(root, nineSlice); }
+        catch (Exception ex) when (ex is not ThemePackageException)
+        { throw new ThemePackageException($"SVG '{label}' cannot be rendered: {ex.Message}"); }
     }
 
     private static void ValidateOptionalColor(string? value, string label, bool allowInherit)
@@ -176,7 +207,9 @@ public sealed class CompiledThemeReader
     private static void ValidateEdges(JsonElement value, string label, double min, double max)
     {
         if (value.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null) return;
-        var edges = ThemeMetrics.ReadEdges(value);
+        double[] edges;
+        try { edges = ThemeMetrics.ReadEdges(value); }
+        catch (Exception ex) { throw new ThemePackageException($"'{label}' is invalid: {ex.Message}"); }
         if (edges.Any(x => !Finite(x, min, max))) throw new ThemePackageException($"'{label}' is out of range.");
     }
 
@@ -189,60 +222,39 @@ public sealed class CompiledThemeReader
     }
 
     private static bool Finite(double value, double min, double max) => double.IsFinite(value) && value >= min && value <= max;
-    private static bool IsSafeId(string id) => !string.IsNullOrWhiteSpace(id) && id.All(c => char.IsLower(c) || char.IsDigit(c) || c is '-' or '.');
+    private static bool IsSafeId(string id) => id is { Length: > 0 and <= 100 } &&
+        id.All(c => char.IsLower(c) || char.IsDigit(c) || c == '-');
 
-    private static ThemeColors CompatibilityColors(CompiledTheme theme)
+    private static void AssignThemeId(CompiledControl control, string themeId)
     {
-        var window = theme.Controls["window"];
-        var panel = theme.Controls["panel"];
-        var titlebar = theme.Controls["titlebar"];
-        var tab = theme.Controls["tab"];
-        var selected = tab.States?.GetValueOrDefault("selected");
-        var close = theme.Controls["titlebar.close"].States?.GetValueOrDefault("hover");
-        var accent = selected?.Content ?? selected?.BorderColor ?? theme.FocusRing?.Color ?? window.Content ?? "#0078d4";
-        var panelSurface = panel.Fill ?? AssetCenterFill(panel.Art);
-        return new ThemeColors
-        {
-            Background = window.Fill ?? "transparent",
-            Surface = panelSurface ?? titlebar.Fill ?? window.Fill ?? "transparent",
-            SecondarySurface = titlebar.Fill ?? panel.Fill ?? window.Fill ?? "transparent",
-            Border = panel.BorderColor ?? window.BorderColor ?? "transparent",
-            Text = window.Content is null or "inherit" ? "#000000" : window.Content,
-            Muted = tab.Content is null or "inherit" ? window.Content ?? "#666666" : tab.Content,
-            Accent = accent is "inherit" ? window.Content ?? "#0078d4" : accent,
-            Success = accent is "inherit" ? "#178343" : accent,
-            Danger = close?.Fill ?? "#c42b1c"
-        };
+        control.ThemeId = themeId;
+        if (control.States is null)
+            return;
+        foreach (var state in control.States.Values)
+            AssignThemeId(state, themeId);
     }
 
-    private static string? AssetCenterFill(string? art)
+    private static void ValidateFieldsForShape(string id, CompiledControl control)
     {
-        if (string.IsNullOrWhiteSpace(art)) return null;
-        try
+        static bool Has(JsonElement value) => value.ValueKind is not (JsonValueKind.Undefined or JsonValueKind.Null);
+        var invalid = control.Shape switch
         {
-            var root = XDocument.Parse(art).Root;
-            var center = root?.Descendants().FirstOrDefault(x => x.Name.LocalName == "svg" &&
-                x.Attribute("id")?.Value == "1_1");
-            return center?.Descendants().Select(x => x.Attribute("fill")?.Value)
-                .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x) && x != "none");
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private static ThemeFonts CompatibilityFonts(CompiledTheme theme)
-    {
-        var heading = theme.Controls["titlebar.wordmark"].Text?.Family ?? "Inter";
-        var body = theme.Controls["input"].Text?.Family ?? "Inter";
-        return new ThemeFonts
-        {
-            Heading = new ThemeFont { File = string.Empty, Family = heading },
-            Body = new ThemeFont { File = string.Empty, Family = body },
-            HeadingBaseSize = 16,
-            BodyBaseSize = 14
+            "Window" => Has(control.BorderThickness) || Has(control.Radius) || control.Corner is not null ||
+                        Has(control.Padding) || control.Opacity is not null || control.Text is not null ||
+                        control.Size is not null || control.Image is not null || control.Art is not null ||
+                        control.LeftInset is not null || control.Images is not null || control.States is not null,
+            "Text" => control.Fill is not null || Has(control.BorderThickness) || Has(control.Radius) ||
+                      control.Corner is not null || Has(control.Padding) || control.Opacity is not null ||
+                      control.Size is not null || control.Image is not null || control.Art is not null ||
+                      control.States is not null,
+            "Asset" => control.Fill is not null || control.BorderColor is not null || Has(control.BorderThickness) ||
+                       Has(control.Radius) || control.Corner is not null || Has(control.Padding) ||
+                       control.Image is not null || control.LeftInset is not null || control.Images is not null,
+            "Path" => control.Art is not null || control.LeftInset is not null || control.Images is not null,
+            _ => true
         };
+        if (invalid)
+            throw new ThemePackageException($"Control '{id}' declares fields that are not valid for shape '{control.Shape}'.");
     }
 }
 
@@ -269,6 +281,30 @@ public static class ThemeMetrics
         if (value.ValueKind == JsonValueKind.String && value.GetString() == "pill") return Math.Min(width, height) / 2;
         return value.ValueKind == JsonValueKind.Number ? value.GetDouble() : 0;
     }
+
+    public static Thickness ToThickness(JsonElement value, double fallback = 0)
+    {
+        var edges = ReadEdges(value, fallback);
+        return new Thickness(edges[3], edges[0], edges[1], edges[2]);
+    }
+}
+
+public static class ThemeTypography
+{
+    public static FontStyle ToFontStyle(string? value) => value switch
+    {
+        "italic" => FontStyle.Italic,
+        "oblique" => FontStyle.Oblique,
+        _ => FontStyle.Normal
+    };
+
+    public static string ToTransform(string? value) => value switch
+    {
+        "uppercase" => "Upper",
+        "lowercase" => "Lower",
+        "capitalize" => "Title",
+        _ => "Original"
+    };
 }
 
 public static class ThemePaint
@@ -276,16 +312,25 @@ public static class ThemePaint
     public static Color ParseColor(string value)
     {
         if (value.Equals("transparent", StringComparison.OrdinalIgnoreCase)) return Colors.Transparent;
-        if (Color.TryParse(value, out var color)) return color;
+        if (value.StartsWith('#') && Color.TryParse(value, out var color)) return color;
         var match = System.Text.RegularExpressions.Regex.Match(value,
             @"^rgba?\(\s*(\d+(?:\.\d+)?)\s*[, ]\s*(\d+(?:\.\d+)?)\s*[, ]\s*(\d+(?:\.\d+)?)(?:\s*[,/]\s*(\d*\.?\d+))?\s*\)$",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         if (!match.Success) throw new FormatException($"Invalid color: {value}");
-        var r = byte.CreateSaturating(double.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture));
-        var g = byte.CreateSaturating(double.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture));
-        var b = byte.CreateSaturating(double.Parse(match.Groups[3].Value, CultureInfo.InvariantCulture));
+        var red = double.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
+        var green = double.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture);
+        var blue = double.Parse(match.Groups[3].Value, CultureInfo.InvariantCulture);
         var alpha = match.Groups[4].Success ? double.Parse(match.Groups[4].Value, CultureInfo.InvariantCulture) : 1;
-        return Color.FromArgb(byte.CreateSaturating(alpha * 255), r, g, b);
+        if (!double.IsFinite(red) || red is < 0 or > 255 ||
+            !double.IsFinite(green) || green is < 0 or > 255 ||
+            !double.IsFinite(blue) || blue is < 0 or > 255 ||
+            !double.IsFinite(alpha) || alpha is < 0 or > 1)
+            throw new FormatException($"Color component is out of range: {value}");
+        return Color.FromArgb(
+            byte.CreateChecked(Math.Round(alpha * 255, MidpointRounding.AwayFromZero)),
+            byte.CreateChecked(Math.Round(red, MidpointRounding.AwayFromZero)),
+            byte.CreateChecked(Math.Round(green, MidpointRounding.AwayFromZero)),
+            byte.CreateChecked(Math.Round(blue, MidpointRounding.AwayFromZero)));
     }
 
     public static IBrush? Brush(string? value, IBrush? inherited = null) => value switch

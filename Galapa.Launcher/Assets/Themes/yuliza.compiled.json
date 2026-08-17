@@ -323,6 +323,22 @@
         "width": 8
       }
     },
+    "progress.track": {
+      "shape": "Path",
+      "fill": "#dce5f5",
+      "radius": "pill",
+      "size": {
+        "height": 4
+      }
+    },
+    "progress.indicator": {
+      "shape": "Path",
+      "fill": "#2854c8",
+      "radius": "pill",
+      "size": {
+        "height": 4
+      }
+    },
     "play-ornament": {
       "shape": "Path"
     },
@@ -402,6 +418,17 @@
     "input.caret": {
       "shape": "Text",
       "content": "#2854c8"
+    },
+    "input.error": {
+      "shape": "Text",
+      "content": "#c04040",
+      "text": {
+        "family": "Source Sans 3",
+        "fallback": "sans-serif",
+        "weight": 400,
+        "style": "normal",
+        "size": 13
+      }
     },
     "play-row": {
       "shape": "Text",
