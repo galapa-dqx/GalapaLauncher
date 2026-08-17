@@ -90,6 +90,7 @@ public class SettingsTests : IDisposable
         Assert.NotNull(settings.SaveFolderPath);
         Assert.NotNull(settings.ErrorReporting);
         Assert.False(settings.ErrorReporting.Value);
+        Assert.Equal("estella", settings.ThemeId);
 
         // GameFolderPath will be InstallInfo.Location which might be null
         // We just verify the settings object was created
@@ -103,7 +104,8 @@ public class SettingsTests : IDisposable
         {
             GameFolderPath = "C:\\TestGamePath",
             SaveFolderPath = "C:\\TestSavePath",
-            ErrorReporting = true
+            ErrorReporting = true,
+            ThemeId = "kyururu"
         };
 
         // Act
@@ -127,7 +129,8 @@ public class SettingsTests : IDisposable
         {
             GameFolderPath = "C:\\OriginalGamePath",
             SaveFolderPath = "C:\\OriginalSavePath",
-            ErrorReporting = true
+            ErrorReporting = true,
+            ThemeId = "kyururu"
         };
         originalSettings.Save();
 
@@ -139,6 +142,7 @@ public class SettingsTests : IDisposable
         Assert.Equal("C:\\OriginalGamePath", loadedSettings.GameFolderPath);
         Assert.Equal("C:\\OriginalSavePath", loadedSettings.SaveFolderPath);
         Assert.True(loadedSettings.ErrorReporting);
+        Assert.Equal("kyururu", loadedSettings.ThemeId);
     }
 
     [Fact]
@@ -150,6 +154,7 @@ public class SettingsTests : IDisposable
         // Assert
         Assert.NotNull(settings.ErrorReporting);
         Assert.False(settings.ErrorReporting.Value);
+        Assert.Equal("estella", settings.ThemeId);
 
         // Default save folder should contain "Dragon Quest X"
         Assert.NotNull(settings.SaveFolderPath);
@@ -244,7 +249,8 @@ public class SettingsTests : IDisposable
         {
             GameFolderPath = "C:\\RoundTripGame",
             SaveFolderPath = "C:\\RoundTripSave",
-            ErrorReporting = true
+            ErrorReporting = true,
+            ThemeId = "duston"
         };
 
         // Act
@@ -255,6 +261,7 @@ public class SettingsTests : IDisposable
         Assert.Equal(original.GameFolderPath, loaded.GameFolderPath);
         Assert.Equal(original.SaveFolderPath, loaded.SaveFolderPath);
         Assert.Equal(original.ErrorReporting, loaded.ErrorReporting);
+        Assert.Equal(original.ThemeId, loaded.ThemeId);
     }
 
     [Fact]
