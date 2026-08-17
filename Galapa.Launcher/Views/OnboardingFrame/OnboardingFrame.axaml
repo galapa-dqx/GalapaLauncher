@@ -1,0 +1,30 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Galapa.Launcher.ViewModels.OnboardingFrame"
+             xmlns:ui="using:Galapa.UI.Controls"
+             x:Class="Galapa.Launcher.Views.OnboardingFrame.OnboardingFrame"
+             x:DataType="vm:OnboardingFrameViewModel">
+    <Grid Margin="34,30" ColumnDefinitions="3*,2*">
+        <StackPanel VerticalAlignment="Center" MaxWidth="440" Spacing="16">
+            <ui:ThemedTextBlock Classes="brand" SourceText="Welcome to Galapa" FontSize="30" />
+            <TextBlock Classes="muted" TextWrapping="Wrap"
+                       Text="First, show Galapa where Dragon Quest X is installed. We’ll validate the folder before saving anything." />
+            <StackPanel Spacing="6" Margin="0,12,0,0">
+                <ui:ThemedTextBlock Classes="field-label" SourceText="Game folder" />
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                    <TextBox Text="{Binding GameFolderPath}" Watermark="C:\Program Files\Dragon Quest X" />
+                    <Button Grid.Column="1" Classes="themed" Content="Browse…" Click="Browse_Click" AutomationProperties.Name="Browse for Dragon Quest X folder" />
+                </Grid>
+                <TextBlock Foreground="{DynamicResource Galapa.Brush.Danger}" Text="{Binding ValidationMessage}" TextWrapping="Wrap" />
+            </StackPanel>
+            <Button Classes="themed primary" HorizontalAlignment="Left" Content="Continue" Command="{Binding CompleteCommand}" />
+        </StackPanel>
+        <Border Grid.Column="1" Classes="panel" Margin="30,0,0,0" Padding="24" VerticalAlignment="Stretch">
+            <StackPanel VerticalAlignment="Center" Spacing="10">
+                <TextBlock Classes="brand" Text="One quick setup" />
+                <TextBlock Classes="muted" TextWrapping="Wrap"
+                           Text="Your account credentials remain in Windows Credential Manager. Galapa only stores the folders needed to launch and configure the game." />
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

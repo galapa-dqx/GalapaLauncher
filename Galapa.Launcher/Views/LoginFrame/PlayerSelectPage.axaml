@@ -1,33 +1,25 @@
-﻿<UserControl xmlns="https://github.com/avaloniaui"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Galapa.Launcher.ViewModels.LoginFrame"
-             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
-             x:Class="Galapa.Launcher.Views.LoginFrame.PlayerSelectPage"
-             x:DataType="vm:PlayerSelectPageViewModel">
-    <Panel>
-        <ItemsControl ItemsSource="{Binding Players}">
-            <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                    <Button
-                        Command="{Binding $parent[ItemsControl].((vm:PlayerSelectPageViewModel)DataContext).SelectPlayer}"
-                        CommandParameter="{Binding}">
-                        <StackPanel Orientation="Horizontal">
-                            <Svg Path="{Binding Icon}" Height="16" Width="16" />
-                            <TextBlock Text="{Binding Text}" />
-                        </StackPanel>
-                    </Button>
-                </DataTemplate>
-            </ItemsControl.ItemTemplate>
-        </ItemsControl>
-        <ProgressBar IsIndeterminate="True">
-            <ProgressBar.IsVisible>
-                <MultiBinding Converter="{x:Static BoolConverters.Or}">
-                    <Binding Path="LoadCommand.IsRunning" />
-                    <Binding Path="SelectPlayerCommand.IsRunning" />
-                </MultiBinding>
-            </ProgressBar.IsVisible>
+             x:Class="Galapa.Launcher.Views.LoginFrame.PlayerSelectPage" x:DataType="vm:PlayerSelectPageViewModel">
+    <Grid>
+        <ScrollViewer>
+            <ItemsControl ItemsSource="{Binding Players}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Button Classes="themed" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Margin="0,0,0,8"
+                                Command="{Binding $parent[ItemsControl].((vm:PlayerSelectPageViewModel)DataContext).SelectPlayer}"
+                                CommandParameter="{Binding}">
+                            <StackPanel Orientation="Horizontal" Spacing="9">
+                                <Svg Path="{Binding Icon}" Height="18" Width="18" />
+                                <TextBlock Text="{Binding Text}" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+        <ProgressBar VerticalAlignment="Bottom" IsIndeterminate="True">
+            <ProgressBar.IsVisible><MultiBinding Converter="{x:Static BoolConverters.Or}"><Binding Path="LoadCommand.IsRunning"/><Binding Path="SelectPlayerCommand.IsRunning"/></MultiBinding></ProgressBar.IsVisible>
         </ProgressBar>
-    </Panel>
+    </Grid>
 </UserControl>

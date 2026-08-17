@@ -1,11 +1,99 @@
-﻿<UserControl xmlns="https://github.com/avaloniaui"
+<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:v="using:Galapa.Launcher.Views.LoginFrame"
              xmlns:vm="using:Galapa.Launcher.ViewModels.AppFrame"
-             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+             xmlns:ui="using:Galapa.UI.Controls"
+             xmlns:local="using:Galapa.Launcher.Views.Controls"
              x:DataType="vm:HomePageViewModel"
              x:Class="Galapa.Launcher.Views.AppFrame.HomePage">
-    <v:LoginFrame DataContext="{Binding LoginFrameViewModel}" />
+    <!-- The news viewport owns an 8-DIP left bleed. Other rows add that inset
+         back so their visible edges remain on the normal 34-DIP page line. -->
+    <Grid Margin="26,26,34,34" RowDefinitions="Auto,34,*">
+        <local:ThemePart PartStyle="{DynamicResource Galapa.Part.carousel}" FallbackPadding="2" Margin="8,0,0,0">
+            <local:AspectRatioBox Ratio="3.935135135">
+                <Image Source="/Assets/Banners/dqx-shop.jpg" Stretch="UniformToFill"
+                       AutomationProperties.Name="DQX Shop featured banner" />
+            </local:AspectRatioBox>
+        </local:ThemePart>
+
+        <Button Classes="themed chrome" Width="31" Height="31" Margin="-6,0,0,0"
+                HorizontalAlignment="Left" VerticalAlignment="Center" AutomationProperties.Name="Previous story">
+            <local:ThemedSvg InlineSvg="{DynamicResource Galapa.Image.carousel.nav}"
+                             CurrentColor="{DynamicResource Galapa.Part.carousel.nav.ContentBrush}"
+                             FallbackPathData="M15 5 L8 12 L15 19" Width="26" Height="26"
+                             RenderTransform="scaleX(-1)" />
+        </Button>
+        <Button Classes="themed chrome" Width="31" Height="31" Margin="0,0,-15,0"
+                HorizontalAlignment="Right" VerticalAlignment="Center" AutomationProperties.Name="Next story">
+            <local:ThemedSvg InlineSvg="{DynamicResource Galapa.Image.carousel.nav}"
+                             CurrentColor="{DynamicResource Galapa.Part.carousel.nav.ContentBrush}"
+                             FallbackPathData="M9 5 L16 12 L9 19" Width="26" Height="26" />
+        </Button>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center"
+                    VerticalAlignment="Center" Spacing="6">
+            <StackPanel.RenderTransform>
+                <TranslateTransform X="4" />
+            </StackPanel.RenderTransform>
+            <local:ThemePart Width="{DynamicResource Galapa.Metric.pip.Width}"
+                             Height="{DynamicResource Galapa.Metric.pip.Height}"
+                             PartStyle="{DynamicResource Galapa.Part.pip}" State="Selected">
+                <local:ThemedSvg InlineSvg="{DynamicResource Galapa.Image.pip.selected}" />
+            </local:ThemePart>
+            <local:ThemePart Width="{DynamicResource Galapa.Metric.pip.Width}"
+                             Height="{DynamicResource Galapa.Metric.pip.Height}"
+                             PartStyle="{DynamicResource Galapa.Part.pip}">
+                <local:ThemedSvg InlineSvg="{DynamicResource Galapa.Image.pip}" />
+            </local:ThemePart>
+            <local:ThemePart Width="{DynamicResource Galapa.Metric.pip.Width}"
+                             Height="{DynamicResource Galapa.Metric.pip.Height}"
+                             PartStyle="{DynamicResource Galapa.Part.pip}">
+                <local:ThemedSvg InlineSvg="{DynamicResource Galapa.Image.pip}" />
+            </local:ThemePart>
+        </StackPanel>
+
+        <Grid Grid.Row="2" ColumnDefinitions="*,35,281">
+            <ScrollViewer Name="NewsScroll" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled"
+                          Margin="0">
+                <ItemsControl ItemsSource="{Binding News}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate><StackPanel Spacing="6" /></ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:HomeNewsItem">
+                            <Grid Height="43" Margin="8,0,0,0">
+                                <local:ThemePart PartStyle="{DynamicResource Galapa.Part.news-item}"
+                                                 FallbackPadding="12,0">
+                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                                        <ui:ThemedTextBlock Classes="card-title" SourceText="{Binding Title}"
+                                                            TextTrimming="CharacterEllipsis"
+                                                            VerticalAlignment="Center" />
+                                        <ui:ThemedTextBlock Grid.Column="1" Classes="metadata"
+                                                            SourceText="{Binding Date}" VerticalAlignment="Center" />
+                                    </Grid>
+                                </local:ThemePart>
+                                <local:NewsGem Category="{Binding Category}" Fill="{Binding MarkerBrush}"
+                                               Stroke="{DynamicResource Galapa.Part.news-item.BorderBrush}"
+                                               Width="11" Height="14"
+                                               ZIndex="1"
+                                               HorizontalAlignment="Left" VerticalAlignment="Center"
+                                               Margin="0">
+                                    <local:NewsGem.RenderTransform>
+                                        <TranslateTransform X="-5.5" />
+                                    </local:NewsGem.RenderTransform>
+                                </local:NewsGem>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+
+            <local:ThemedScrollbar Grid.Column="1" HorizontalAlignment="Center" Target="{Binding #NewsScroll}" />
+
+            <local:ThemePart Grid.Column="2" PartStyle="{DynamicResource Galapa.Part.panel}"
+                             FallbackPadding="27,0" UseThemePadding="False">
+                <v:LoginFrame DataContext="{Binding LoginFrameViewModel}" VerticalAlignment="Center" />
+            </local:ThemePart>
+        </Grid>
+    </Grid>
 </UserControl>

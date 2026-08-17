@@ -1,5 +1,10 @@
 using System;
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
+using Avalonia.Input;
+using Avalonia.Interactivity;
+using Avalonia.VisualTree;
 using Galapa.Launcher.Services;
 using Galapa.Launcher.ViewModels;
 
@@ -26,7 +31,7 @@ public partial class MainWindow : Window
         this._activeControllerService = activeControllerService;
 
         InitializeComponent();
-        ExtendClientAreaToDecorationsHint = true;
+        AddHandler(PointerPressedEvent, TitleBar_PointerPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
 
         // Start controller services
         this._pollingService.Start();
@@ -43,5 +48,30 @@ public partial class MainWindow : Window
         this._activeControllerService.Stop();
         this._actionSource.Stop();
         this._pollingService.Stop();
+    }
+
+    private void TitleBar_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+            return;
+
+        var position = e.GetPosition(this);
+        if (position.Y < 0 || position.Y > 34)
+            return;
+
+        for (var current = e.Source as Visual; current is not null; current = current.GetVisualParent())
+        {
+            if (current is TabStrip or TabStripItem or Button)
+                return;
+        }
+
+        if (e.ClickCount == 2)
+        {
+            WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+            return;
+        }
+
+        e.Handled = true;
+        BeginMoveDrag(e);
     }
 }

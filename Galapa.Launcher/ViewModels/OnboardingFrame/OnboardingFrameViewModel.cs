@@ -1,31 +1,28 @@
-﻿using System;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Galapa.Core.Configuration;
-using Page = Galapa.Launcher.Views.OnboardingFrame;
+using Galapa.Launcher.ViewModels.AppFrame;
 
 namespace Galapa.Launcher.ViewModels.OnboardingFrame;
 
-public partial class OnboardingFrameViewModel : ObservableObject
+public partial class OnboardingFrameViewModel(Settings settings) : ObservableObject
 {
-    [ObservableProperty] private Type? _currentPage;
-    [ObservableProperty] private Settings _settings;
+    [ObservableProperty] private string? _gameFolderPath = settings.GameFolderPath;
+    [ObservableProperty] private string? _validationMessage;
+    public event EventHandler? Completed;
 
-    public OnboardingFrameViewModel(Settings settings)
+    [RelayCommand]
+    private void Complete()
     {
-        this.Settings = settings;
-    }
-
-    public Type? NextPage
-    {
-        get
+        if (!AppFrameViewModel.IsValidGameFolder(GameFolderPath))
         {
-            // if (this.Settings.GameFolderPath is null) return typeof(SelectGameFolderPage);
-
-            if (this.Settings.GameFolderPath is null)
-            {
-            }
-
-            return null;
+            ValidationMessage = "Choose the Dragon Quest X folder containing Game\\DQXGame.exe.";
+            return;
         }
+
+        settings.GameFolderPath = GameFolderPath;
+        settings.Save();
+        ValidationMessage = null;
+        Completed?.Invoke(this, EventArgs.Empty);
     }
 }

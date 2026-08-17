@@ -1,0 +1,61 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Galapa.Launcher.ViewModels.SettingsFrame"
+             xmlns:ui="using:Galapa.UI.Controls"
+             xmlns:local="using:Galapa.Launcher.Views.Controls"
+             x:Class="Galapa.Launcher.Views.SettingsFrame.GraphicsSettingsPage"
+             x:DataType="vm:GraphicsSettingsPageViewModel">
+    <Grid Margin="34,26,34,34" ColumnDefinitions="*,35,281">
+        <ScrollViewer Name="GraphicsScroll" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Spacing="10">
+                <ui:ThemedTextBlock Classes="section" SourceText="Application" Margin="0,0,0,1" />
+                <ItemsControl ItemsSource="{Binding Settings}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate><StackPanel Spacing="10" /></ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:GraphicsSettingItem">
+                            <Button Classes="themed setting-row"
+                                    Classes.active="{Binding IsSelected}"
+                                    Command="{Binding $parent[UserControl].((vm:GraphicsSettingsPageViewModel)DataContext).SelectCommand}"
+                                    CommandParameter="{Binding}"
+                                    AutomationProperties.Name="{Binding Label}">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="19">
+                                    <ui:ThemedTextBlock Classes="setting-value" SourceText="{Binding Label}"
+                                                        TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="1" Text="{Binding Value}" IsVisible="{Binding !IsToggle}"
+                                               FontSize="14" FontWeight="Medium" VerticalAlignment="Center" />
+                                    <ToggleButton Grid.Column="1" Classes="themed-switch" IsVisible="{Binding IsToggle}"
+                                                  IsChecked="{Binding IsChecked, Mode=TwoWay}"
+                                                  AutomationProperties.Name="{Binding Label}" />
+                                </Grid>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </ScrollViewer>
+
+        <local:ThemedScrollbar Grid.Column="1" HorizontalAlignment="Center" Target="{Binding #GraphicsScroll}" />
+
+        <local:ThemePart Grid.Column="2" PartStyle="{DynamicResource Galapa.Part.panel}"
+                         FallbackPadding="15,14,27,24" UseThemePadding="False">
+            <StackPanel>
+                <ui:ThemedTextBlock Classes="section" SourceText="{Binding HelpTitle}"
+                                    Foreground="{DynamicResource Galapa.Part.setting-help.title.ContentBrush}"
+                                    FontFamily="{DynamicResource Galapa.Type.Control.setting-help.title.Family}"
+                                    FontSize="{DynamicResource Galapa.Type.Control.setting-help.title.Size}"
+                                    FontWeight="{DynamicResource Galapa.Type.Control.setting-help.title.Weight}"
+                                    FontStyle="{DynamicResource Galapa.Type.Control.setting-help.title.Style}"
+                                    ui:ThemedTextBlock.TextTransform="{DynamicResource Galapa.Type.Control.setting-help.title.Transform}"
+                                    Margin="0,0,0,19" />
+                <TextBlock Text="{Binding HelpBody}" TextWrapping="Wrap" LineHeight="18.85"
+                           Foreground="{DynamicResource Galapa.Part.setting-help.body.ContentBrush}"
+                           FontFamily="{DynamicResource Galapa.Type.Control.setting-help.body.Family}"
+                           FontSize="{DynamicResource Galapa.Type.Control.setting-help.body.Size}"
+                           FontWeight="{DynamicResource Galapa.Type.Control.setting-help.body.Weight}"
+                           FontStyle="{DynamicResource Galapa.Type.Control.setting-help.body.Style}" />
+            </StackPanel>
+        </local:ThemePart>
+    </Grid>
+</UserControl>

@@ -1,34 +1,27 @@
-<UserControl xmlns="https://github.com/avaloniaui"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             xmlns:vm="using:Galapa.Launcher.ViewModels.SettingsFrame"
-             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
-             x:Class="Galapa.Launcher.Views.SettingsFrame.SettingsFrame"
-             x:DataType="vm:SettingsFrameViewModel">
-
-    <Grid ColumnDefinitions="*" RowDefinitions="Auto,*">
-        <!-- Settings Navigation Tab Bar -->
-        <TabStrip HorizontalAlignment="Center"
-                  ItemsSource="{Binding Pages}"
-                  SelectedItem="{Binding SelectedPage}"
-                  SelectedIndex="0">
-            <TabStrip.ItemTemplate>
-                <DataTemplate x:DataType="vm:SettingsFrameTab">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Svg Path="{Binding Icon}" Width="20" Height="20" />
-                        <TextBlock Text="{Binding Title}" VerticalAlignment="Center" />
-                    </StackPanel>
-                </DataTemplate>
-            </TabStrip.ItemTemplate>
-        </TabStrip>
-
-        <!-- Settings Content Area -->
-        <TransitioningContentControl Grid.Row="1"
-                                     Content="{Binding SelectedPage.ViewModel.Value}">
-            <TransitioningContentControl.PageTransition>
-                <CrossFade Duration="0:00:00.200" />
-            </TransitioningContentControl.PageTransition>
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Galapa.Launcher.ViewModels.SettingsFrame" xmlns:ui="using:Galapa.UI.Controls"
+             xmlns:local="using:Galapa.Launcher.Views.Controls"
+             x:Class="Galapa.Launcher.Views.SettingsFrame.SettingsFrame" x:DataType="vm:SettingsFrameViewModel">
+    <Grid RowDefinitions="34,*">
+        <local:ThemePart PartStyle="{DynamicResource Galapa.Part.subtabs}">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Stretch">
+                <local:ThemedSvg InlineSvg="{x:Static local:ThemeGlyphs.TriggerLeft}" Width="16" Height="16"
+                                 Margin="0,0,8,0" VerticalAlignment="Center" IsHitTestVisible="False"
+                                 CurrentColor="{DynamicResource Galapa.Part.tab-bar.ContentBrush}" />
+                <TabStrip Classes="sub-tabs" Height="34" ItemsSource="{Binding Pages}" SelectedItem="{Binding SelectedPage}">
+                    <TabStrip.ItemTemplate>
+                        <DataTemplate x:DataType="vm:SettingsFrameTab">
+                            <ui:ThemedTextBlock Classes="navigation" SourceText="{Binding Title}" FontSize="14" />
+                        </DataTemplate>
+                    </TabStrip.ItemTemplate>
+                </TabStrip>
+                <local:ThemedSvg InlineSvg="{x:Static local:ThemeGlyphs.TriggerRight}" Width="16" Height="16"
+                                 Margin="8,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"
+                                 CurrentColor="{DynamicResource Galapa.Part.tab-bar.ContentBrush}" />
+            </StackPanel>
+        </local:ThemePart>
+        <TransitioningContentControl Grid.Row="1" Content="{Binding SelectedPage.ViewModel.Value}">
+            <TransitioningContentControl.PageTransition><CrossFade Duration="0:00:00.120" /></TransitioningContentControl.PageTransition>
         </TransitioningContentControl>
     </Grid>
 </UserControl>

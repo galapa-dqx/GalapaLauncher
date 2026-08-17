@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Galapa.Core.Configuration;
 
 namespace Galapa.Launcher.ViewModels.SettingsFrame;
@@ -12,4 +13,7 @@ public partial class GameSettingsPageViewModel(Settings settings) : SettingsFram
     public override string Icon => "/Assets/Icons/solar--rocket-bold-duotone.svg";
 
     [ObservableProperty] private Settings _settings = settings;
+
+    [RelayCommand]
+    private void Save() => Settings.Save();
 }

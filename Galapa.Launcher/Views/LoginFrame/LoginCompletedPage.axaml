@@ -1,13 +1,9 @@
-﻿<UserControl xmlns="https://github.com/avaloniaui"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             xmlns:vm="using:Galapa.Launcher.ViewModels.LoginFrame"
-             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
-             x:DataType="vm:LoginCompletedPageViewModel"
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Galapa.Launcher.ViewModels.LoginFrame" x:DataType="vm:LoginCompletedPageViewModel"
              x:Class="Galapa.Launcher.Views.LoginFrame.LoginCompletedPage">
-    <StackPanel Orientation="Vertical" HorizontalAlignment="Center" VerticalAlignment="Center">
-        <TextBlock Text="✓" FontSize="72" HorizontalAlignment="Center" />
-        <TextBlock Text="Launching game..." FontSize="24" HorizontalAlignment="Center" Margin="0,16,0,0" />
+    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
+        <Border Width="52" Height="52" CornerRadius="99" Background="{DynamicResource Galapa.Brush.Success}"><TextBlock Text="✓" Foreground="White" FontSize="26" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+        <TextBlock Text="Launching game…" FontWeight="SemiBold" HorizontalAlignment="Center" />
+        <ProgressBar IsIndeterminate="True" Width="150" />
     </StackPanel>
 </UserControl>

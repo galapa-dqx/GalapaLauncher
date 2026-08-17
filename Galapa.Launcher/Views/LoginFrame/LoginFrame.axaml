@@ -1,29 +1,24 @@
-﻿<UserControl xmlns="https://github.com/avaloniaui"
+<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:Galapa.Launcher.ViewModels.LoginFrame"
              xmlns:conv="using:Galapa.Launcher.Converters"
-             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
              x:Class="Galapa.Launcher.Views.LoginFrame.LoginFrame"
              x:DataType="vm:LoginFrameViewModel">
-    <StackPanel Orientation="Vertical">
-        <TransitioningContentControl
-            Content="{Binding CanReturnToPlayerSelect, Converter={StaticResource BoolToObjectOrNull}}">
-            <TransitioningContentControl.PageTransition>
-                <CrossFade Duration="0:00:00.250" />
-            </TransitioningContentControl.PageTransition>
+    <Grid RowDefinitions="Auto,*">
+        <TransitioningContentControl Content="{Binding CanReturnToPlayerSelect, Converter={StaticResource BoolToObjectOrNull}}">
             <TransitioningContentControl.ContentTemplate>
                 <DataTemplate DataType="{x:Type conv:ShowObject}">
-                    <Button Command="{Binding $parent[UserControl].DataContext.ReturnToPlayerSelect}"
-                            Content="Back to Player Select" />
+                    <Button Classes="chrome" HorizontalAlignment="Left" Padding="8,4"
+                            Foreground="{DynamicResource Galapa.Brush.Accent}"
+                            Command="{Binding $parent[UserControl].DataContext.ReturnToPlayerSelect}"
+                            Content="← Players" AutomationProperties.Name="Back to player selection" />
                 </DataTemplate>
             </TransitioningContentControl.ContentTemplate>
         </TransitioningContentControl>
-        <TransitioningContentControl Content="{Binding Page}" IsTransitionReversed="{Binding IsTransitionReversed}">
+        <TransitioningContentControl Grid.Row="1" Margin="0,8,0,0" Content="{Binding Page}" IsTransitionReversed="{Binding IsTransitionReversed}">
             <TransitioningContentControl.PageTransition>
-                <PageSlide Duration="0:00:00.250" Orientation="Horizontal" />
+                <PageSlide Duration="0:00:00.200" Orientation="Horizontal" />
             </TransitioningContentControl.PageTransition>
         </TransitioningContentControl>
-    </StackPanel>
+    </Grid>
 </UserControl>
