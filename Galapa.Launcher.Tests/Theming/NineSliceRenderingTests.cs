@@ -121,6 +121,50 @@ public sealed class SkiaHeadlessFixture : IDisposable
             }
         }, CancellationToken.None);
 
+    public Task<(bool EditorFocused, ThemePartState Before, ThemePartState After, double[] BorderEdges)>
+        InspectThemedFieldFocusAsync() =>
+        _session.Dispatch(() =>
+        {
+            _ = EnsureThemeStyles();
+            var field = new ThemedField { Label = "Username", Width = 240 };
+            var window = new Window
+            {
+                Width = 280,
+                Height = 100,
+                SystemDecorations = SystemDecorations.None,
+                Content = field
+            };
+            window.Show();
+            try
+            {
+                window.UpdateLayout();
+                var frame = field.GetVisualDescendants().OfType<NotchedThemePart>().Single();
+                var editor = field.GetVisualDescendants().OfType<TextBox>().Single();
+                var inputStyle = new CompiledControl
+                {
+                    Shape = "Path",
+                    BorderThickness = System.Text.Json.JsonSerializer.SerializeToElement(1),
+                    States = new Dictionary<string, CompiledControl>(StringComparer.Ordinal)
+                    {
+                        ["focused"] = new()
+                        {
+                            BorderThickness = System.Text.Json.JsonSerializer.SerializeToElement(2)
+                        }
+                    }
+                };
+                frame.PartStyle = inputStyle;
+                var before = frame.State;
+                editor.Focus();
+                window.UpdateLayout();
+                var focusedVisual = ThemePartPresentation.For(inputStyle).Visual(frame.State);
+                return (editor.IsFocused, before, frame.State, focusedVisual.BorderEdges);
+            }
+            finally
+            {
+                window.Close();
+            }
+        }, CancellationToken.None);
+
     public Task<byte[]> ValidateAndRenderThemeTextAsync(ThemePackage package) =>
         _session.Dispatch(() =>
         {

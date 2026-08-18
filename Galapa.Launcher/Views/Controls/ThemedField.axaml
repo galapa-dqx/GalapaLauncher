@@ -35,7 +35,7 @@
             <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
         </Style>
-        <Style Selector="local|ThemedField:focus-within local|ThemePart#PART_FieldFrame">
+        <Style Selector="local|ThemedField:focus-within :is(local|ThemePart)#PART_FieldFrame">
             <Setter Property="State" Value="Focused" />
         </Style>
         <Style Selector="local|ThemedField:focus-within ui|ThemedTextBlock#PART_FieldLabel">

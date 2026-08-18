@@ -40,6 +40,17 @@ public sealed class XamlResourceContractTests(SkiaHeadlessFixture skia)
         Assert.True(await skia.SettingListItemsStretchAsync());
 
     [Fact]
+    public async Task ThemedFieldAppliesFocusedVisualToItsNotchedFrame()
+    {
+        var inspection = await skia.InspectThemedFieldFocusAsync();
+
+        Assert.True(inspection.EditorFocused);
+        Assert.Equal(Galapa.Launcher.Theming.ThemePartState.Normal, inspection.Before);
+        Assert.Equal(Galapa.Launcher.Theming.ThemePartState.Focused, inspection.After);
+        Assert.All(inspection.BorderEdges, edge => Assert.Equal(2, edge));
+    }
+
+    [Fact]
     public void SwitchPositionUsesARealTransition()
     {
         var styles = XDocument.Load(Path.Combine(LauncherRoot, "Styles", "CompiledThemeStyles.axaml"));
