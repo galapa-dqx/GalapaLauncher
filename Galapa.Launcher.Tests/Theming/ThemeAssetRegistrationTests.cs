@@ -1,6 +1,7 @@
 using Galapa.Launcher.Theming;
 using Galapa.Launcher.Views.Controls;
 using Microsoft.Extensions.Logging.Abstractions;
+using SkiaSharp;
 
 namespace Galapa.Launcher.Tests.Theming;
 
@@ -19,7 +20,6 @@ public sealed class ThemeAssetRegistrationTests(SkiaHeadlessFixture skia)
 
         await skia.DispatchAsync(async () =>
         {
-            ThemeFontRegistrar.RegisterBuiltIns();
             await Task.Run(() =>
             {
                 foreach (var package in packages)
@@ -39,23 +39,31 @@ public sealed class ThemeAssetRegistrationTests(SkiaHeadlessFixture skia)
     }
 
     [Fact]
-    public async Task CatalogUsesBackgroundValidationAndUiThreadRenderPreparation()
+    public async Task CatalogLoadsRecoveryFirstAndRemainingThemesInBackground()
     {
-        await skia.DispatchAsync(() =>
-        {
-            ThemeFontRegistrar.RegisterBuiltIns();
-            return Task.FromResult(true);
-        });
         var catalog = new ThemeCatalog(new CompiledThemeReader(), NullLogger<ThemeCatalog>.Instance);
 
-        await Task.Run(() => catalog.LoadAsync());
-        await skia.DispatchAsync(() =>
-        {
-            catalog.PrepareRenderAssets();
-            return Task.FromResult(true);
-        });
+        await Task.Run(() => catalog.LoadInitialAsync(Galapa.Core.Configuration.Settings.DefaultThemeId));
+        Assert.Single(catalog.Themes);
+        Assert.NotNull(catalog.Find(Galapa.Core.Configuration.Settings.DefaultThemeId));
+
+        await Task.Run(() => catalog.LoadRemainingAsync());
 
         Assert.Equal(13, catalog.Themes.Count);
-        Assert.NotNull(catalog.Find(Galapa.Core.Configuration.Settings.DefaultThemeId));
+    }
+
+    [Fact]
+    public async Task FontValidationDoesNotPoisonTheRegisteredTypefaceForRendering()
+    {
+        var path = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..",
+            "Galapa.Launcher", "Assets", "Themes", "estella.compiled.json"));
+        var package = await new CompiledThemeReader().ReadAsync(path);
+        var png = await skia.ValidateAndRenderThemeTextAsync(package);
+        using var bitmap = SKBitmap.Decode(png);
+        Assert.Contains(Enumerable.Range(0, bitmap.Width * bitmap.Height), index =>
+        {
+            var pixel = bitmap.GetPixel(index % bitmap.Width, index / bitmap.Width);
+            return pixel.Alpha > 0 && pixel.Red > 0;
+        });
     }
 }

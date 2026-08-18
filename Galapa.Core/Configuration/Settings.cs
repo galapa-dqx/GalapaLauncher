@@ -7,6 +7,8 @@ namespace Galapa.Core.Configuration;
 public partial class Settings : ObservableValidator
 {
     public const string DefaultThemeId = "estella";
+    public static readonly string GameExecutableRelativePath = Path.Combine("Game", "DQXGame.exe");
+    public const string GameExecutableDisplayPath = @"Game\DQXGame.exe";
 
     [ObservableProperty] [Required] [CustomValidation(typeof(Settings), "ValidateGameFolderPath")]
     private string? _gameFolderPath;
@@ -58,14 +60,14 @@ public partial class Settings : ObservableValidator
     public static bool IsValidGameFolder(string? gameFolderPath) =>
         !string.IsNullOrWhiteSpace(gameFolderPath) &&
         Directory.Exists(gameFolderPath) &&
-        File.Exists(Path.Combine(gameFolderPath, "Game", "DQXGame.exe"));
+        File.Exists(Path.Combine(gameFolderPath, GameExecutableRelativePath));
 
     public static ValidationResult ValidateGameFolderPath(string? gameFolderPath, ValidationContext context)
     {
         if (string.IsNullOrWhiteSpace(gameFolderPath) || !Directory.Exists(gameFolderPath))
             return new ValidationResult("Folder does not exist");
-        if (!File.Exists(Path.Combine(gameFolderPath, "Game", "DQXGame.exe")))
-            return new ValidationResult("DQXGame.exe does not exist");
+        if (!File.Exists(Path.Combine(gameFolderPath, GameExecutableRelativePath)))
+            return new ValidationResult($"{GameExecutableDisplayPath} does not exist");
 
         return ValidationResult.Success!;
     }

@@ -17,7 +17,7 @@
         <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.body.Family}" />
         <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.body.Size}" />
     </Style>
-    <Style Selector="controls|ThemedTextBlock.brand, TextBlock.brand">
+    <Style Selector="controls|ThemedTextBlock.brand">
         <Setter Property="Foreground" Value="{DynamicResource Galapa.Type.brand.ContentBrush}" />
         <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.brand.Family}" />
         <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.brand.Size}" />
@@ -26,7 +26,7 @@
         <Setter Property="LetterSpacing" Value="{DynamicResource Galapa.Type.brand.LetterSpacing}" />
         <Setter Property="controls:ThemedTextBlock.TextTransform" Value="{DynamicResource Galapa.Type.brand.Transform}" />
     </Style>
-    <Style Selector="controls|ThemedTextBlock.navigation, TextBlock.navigation">
+    <Style Selector="controls|ThemedTextBlock.navigation">
         <Setter Property="Foreground" Value="{DynamicResource Galapa.Type.navigation.ContentBrush}" />
         <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.navigation.Family}" />
         <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.navigation.Size}" />
@@ -35,7 +35,7 @@
         <Setter Property="LetterSpacing" Value="{DynamicResource Galapa.Type.navigation.LetterSpacing}" />
         <Setter Property="controls:ThemedTextBlock.TextTransform" Value="{DynamicResource Galapa.Type.navigation.Transform}" />
     </Style>
-    <Style Selector="controls|ThemedTextBlock.section, TextBlock.section">
+    <Style Selector="controls|ThemedTextBlock.section">
         <Setter Property="Foreground" Value="{DynamicResource Galapa.Type.sectionHeading.ContentBrush}" />
         <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.sectionHeading.Family}" />
         <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.sectionHeading.Size}" />
@@ -44,7 +44,7 @@
         <Setter Property="LetterSpacing" Value="{DynamicResource Galapa.Type.sectionHeading.LetterSpacing}" />
         <Setter Property="controls:ThemedTextBlock.TextTransform" Value="{DynamicResource Galapa.Type.sectionHeading.Transform}" />
     </Style>
-    <Style Selector="controls|ThemedTextBlock.field-label, TextBlock.field-label">
+    <Style Selector="controls|ThemedTextBlock.field-label">
         <Setter Property="Foreground" Value="{DynamicResource Galapa.Type.fieldLabel.ContentBrush}" />
         <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.fieldLabel.Family}" />
         <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.fieldLabel.Size}" />
@@ -53,7 +53,7 @@
         <Setter Property="LetterSpacing" Value="{DynamicResource Galapa.Type.fieldLabel.LetterSpacing}" />
         <Setter Property="controls:ThemedTextBlock.TextTransform" Value="{DynamicResource Galapa.Type.fieldLabel.Transform}" />
     </Style>
-    <Style Selector="controls|ThemedTextBlock.card-title, TextBlock.card-title">
+    <Style Selector="controls|ThemedTextBlock.card-title">
         <Setter Property="Foreground" Value="{DynamicResource Galapa.Type.cardTitle.ContentBrush}" />
         <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.cardTitle.Family}" />
         <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.cardTitle.Size}" />
@@ -62,7 +62,7 @@
         <Setter Property="LetterSpacing" Value="{DynamicResource Galapa.Type.cardTitle.LetterSpacing}" />
         <Setter Property="controls:ThemedTextBlock.TextTransform" Value="{DynamicResource Galapa.Type.cardTitle.Transform}" />
     </Style>
-    <Style Selector="controls|ThemedTextBlock.setting-value, TextBlock.setting-value">
+    <Style Selector="controls|ThemedTextBlock.setting-value">
         <Setter Property="Foreground" Value="{DynamicResource Galapa.Type.settingValue.ContentBrush}" />
         <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.settingValue.Family}" />
         <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.settingValue.Size}" />
@@ -71,7 +71,7 @@
         <Setter Property="LetterSpacing" Value="{DynamicResource Galapa.Type.settingValue.LetterSpacing}" />
         <Setter Property="controls:ThemedTextBlock.TextTransform" Value="{DynamicResource Galapa.Type.settingValue.Transform}" />
     </Style>
-    <Style Selector="controls|ThemedTextBlock.metadata, TextBlock.metadata">
+    <Style Selector="controls|ThemedTextBlock.metadata">
         <Setter Property="Foreground" Value="{DynamicResource Galapa.Type.metadata.ContentBrush}" />
         <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.metadata.Family}" />
         <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.metadata.Size}" />

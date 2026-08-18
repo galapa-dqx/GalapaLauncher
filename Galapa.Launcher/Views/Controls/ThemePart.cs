@@ -1,9 +1,7 @@
-using System.Text.Json;
 using System.Runtime.CompilerServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
-using Avalonia.VisualTree;
 using Galapa.Launcher.Theming;
 
 namespace Galapa.Launcher.Views.Controls;
@@ -28,40 +26,28 @@ public class ThemePart : ContentControl
         AvaloniaProperty.Register<ThemePart, Thickness>(nameof(FallbackPadding));
     public static readonly StyledProperty<bool> UseThemePaddingProperty =
         AvaloniaProperty.Register<ThemePart, bool>(nameof(UseThemePadding), true);
-    public static readonly StyledProperty<double> AnimatedOffsetProperty =
-        AvaloniaProperty.Register<ThemePart, double>(nameof(AnimatedOffset));
-    public static readonly StyledProperty<double> VisualWidthProperty =
-        AvaloniaProperty.Register<ThemePart, double>(nameof(VisualWidth), double.NaN);
-    public static readonly StyledProperty<double> VisualHeightProperty =
-        AvaloniaProperty.Register<ThemePart, double>(nameof(VisualHeight), double.NaN);
-    public static readonly StyledProperty<double> TopBorderGapStartProperty =
-        AvaloniaProperty.Register<ThemePart, double>(nameof(TopBorderGapStart), double.NaN);
-    public static readonly StyledProperty<double> TopBorderGapWidthProperty =
-        AvaloniaProperty.Register<ThemePart, double>(nameof(TopBorderGapWidth));
 
     public CompiledControl? PartStyle { get => GetValue(PartStyleProperty); set => SetValue(PartStyleProperty, value); }
     public ThemePartState State { get => GetValue(StateProperty); set => SetValue(StateProperty, value); }
     public Thickness FallbackPadding { get => GetValue(FallbackPaddingProperty); set => SetValue(FallbackPaddingProperty, value); }
     public bool UseThemePadding { get => GetValue(UseThemePaddingProperty); set => SetValue(UseThemePaddingProperty, value); }
-    public double AnimatedOffset { get => GetValue(AnimatedOffsetProperty); set => SetValue(AnimatedOffsetProperty, value); }
-    public double VisualWidth { get => GetValue(VisualWidthProperty); set => SetValue(VisualWidthProperty, value); }
-    public double VisualHeight { get => GetValue(VisualHeightProperty); set => SetValue(VisualHeightProperty, value); }
-    public double TopBorderGapStart { get => GetValue(TopBorderGapStartProperty); set => SetValue(TopBorderGapStartProperty, value); }
-    public double TopBorderGapWidth { get => GetValue(TopBorderGapWidthProperty); set => SetValue(TopBorderGapWidthProperty, value); }
 
     static ThemePart()
     {
-        AffectsRender<ThemePart>(PartStyleProperty, StateProperty, AnimatedOffsetProperty, VisualWidthProperty,
-            VisualHeightProperty, TopBorderGapStartProperty, TopBorderGapWidthProperty);
+        ClipToBoundsProperty.OverrideDefaultValue<ThemePart>(false);
+        AffectsRender<ThemePart>(PartStyleProperty, StateProperty);
         AffectsMeasure<ThemePart>(PartStyleProperty, FallbackPaddingProperty, UseThemePaddingProperty);
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
-        if (change.Property == PartStyleProperty || change.Property == StateProperty ||
-            change.Property == FallbackPaddingProperty || change.Property == UseThemePaddingProperty)
+        if (change.Property == PartStyleProperty)
             ApplyStyle();
+        else if (change.Property == StateProperty)
+            ApplyVisualState();
+        else if (change.Property == FallbackPaddingProperty || change.Property == UseThemePaddingProperty)
+            ApplyPadding();
     }
 
     public override void Render(DrawingContext context)
@@ -70,13 +56,7 @@ public class ThemePart : ContentControl
         var style = PartStyle;
         var presentation = _presentation;
         if (style is null || presentation is null || Bounds.Width <= 0 || Bounds.Height <= 0) return;
-        var visualWidth = double.IsNaN(VisualWidth) ? Bounds.Width : Math.Clamp(VisualWidth, 0, Bounds.Width);
-        var visualHeight = double.IsNaN(VisualHeight) ? Bounds.Height : Math.Clamp(VisualHeight, 0, Bounds.Height);
-        var drawRect = new Rect(
-            Math.Clamp(AnimatedOffset, 0, Math.Max(0, Bounds.Width - visualWidth)),
-            (Bounds.Height - visualHeight) / 2,
-            visualWidth,
-            visualHeight);
+        var drawRect = GetDrawRect();
         var visual = presentation.Visual(State);
         var contentBrush = visual.ContentInherited ? Foreground : visual.Content;
         if (style.Shape == "Asset")
@@ -92,9 +72,13 @@ public class ThemePart : ContentControl
         using (context.PushTransform(Matrix.CreateTranslation(drawRect.X, drawRect.Y)))
         {
             context.DrawGeometry(visual.Fill, null, geometry);
-            DrawBorder(context, geometry, visual, TopBorderGapStart, TopBorderGapWidth);
+            var gap = GetTopBorderGap();
+            DrawBorder(context, geometry, visual, gap.Start, gap.Width);
         }
     }
+
+    protected virtual Rect GetDrawRect() => new(Bounds.Size);
+    protected virtual (double Start, double Width) GetTopBorderGap() => (double.NaN, 0);
 
     private void ApplyStyle()
     {
@@ -110,20 +94,7 @@ public class ThemePart : ContentControl
         // renderer-contract violation here: a silent failure leaves an empty
         // but interactive control and makes transactional application moot.
         _presentation = ThemePartPresentation.For(style);
-        var presentation = _presentation;
-        var visual = presentation?.Visual(State);
-
-        Thickness padding;
-        if (!UseThemePadding)
-            padding = FallbackPadding;
-        else if (visual?.Slices is not null)
-            padding = visual.Slices.ContentPadding;
-        else if (style.Padding.ValueKind is not (JsonValueKind.Undefined or JsonValueKind.Null))
-        {
-            padding = ThemeMetrics.ToThickness(style.Padding);
-        }
-        else padding = FallbackPadding;
-        if (Padding != padding) SetCurrentValue(PaddingProperty, padding);
+        ApplyPadding();
 
         var text = style.Text;
         if (text?.Family is not null) SetCurrentValue(FontFamilyProperty, ThemeManager.FontFamilyFor(style.ThemeId, text.Family));
@@ -132,6 +103,27 @@ public class ThemePart : ContentControl
         if (text?.Weight is { } weight) SetCurrentValue(FontWeightProperty, (FontWeight)weight); else ClearValue(FontWeightProperty);
         if (text?.Style is not null) SetCurrentValue(FontStyleProperty, ThemeTypography.ToFontStyle(text.Style));
         else ClearValue(FontStyleProperty);
+        ApplyVisualState();
+    }
+
+    private void ApplyPadding()
+    {
+        var style = PartStyle;
+        var visual = _presentation?.Visual(State);
+        var padding = !UseThemePadding
+            ? FallbackPadding
+            : visual?.Slices is not null
+                ? visual.Slices.ContentPadding
+                : style is not null && ThemeMetrics.HasValue(style.Padding)
+                    ? ThemeMetrics.ToThickness(style.Padding)
+                    : FallbackPadding;
+        if (Padding != padding) SetCurrentValue(PaddingProperty, padding);
+    }
+
+    private void ApplyVisualState()
+    {
+        var visual = _presentation?.Visual(State);
+        ApplyPadding();
         if (visual?.ContentInherited == false && visual.Content is not null) SetCurrentValue(ForegroundProperty, visual.Content);
         else ClearValue(ForegroundProperty);
         SetCurrentValue(OpacityProperty, visual?.Opacity ?? 1);
@@ -249,7 +241,7 @@ public class ThemePart : ContentControl
         return points.ToArray();
     }
 
-    private static void DrawBorder(DrawingContext context, Geometry geometry, ThemePartVisual visual,
+    private void DrawBorder(DrawingContext context, Geometry geometry, ThemePartVisual visual,
         double gapStart, double gapWidth)
     {
         var brush = visual.Border;
@@ -262,7 +254,8 @@ public class ThemePart : ContentControl
         var gapRight = bounds.Left + Math.Clamp(gapStart + gapWidth, 0, bounds.Width);
         if (edges.All(x => Math.Abs(x - edges[0]) < .001))
         {
-            var pen = visual.UniformBorderPen!;
+            var pen = visual.InsideBorderPen!;
+            using var outerClip = context.PushGeometryClip(geometry);
             if (!hasTopGap)
             {
                 context.DrawGeometry(null, pen, geometry);
@@ -273,37 +266,111 @@ public class ThemePart : ContentControl
             // painting it and hiding the label span afterward. The left and
             // right regions retain their complete corners/sides; the middle
             // region begins below the top stroke and retains the bottom edge.
-            var clip = new GeometryGroup { FillRule = FillRule.NonZero };
-            if (gapLeft > bounds.Left)
-                clip.Children.Add(new RectangleGeometry(
-                    new Rect(bounds.Left, bounds.Top, gapLeft - bounds.Left, bounds.Height)));
-            if (gapRight < bounds.Right)
-                clip.Children.Add(new RectangleGeometry(
-                    new Rect(gapRight, bounds.Top, bounds.Right - gapRight, bounds.Height)));
-            if (gapRight > gapLeft && bounds.Height > edges[0])
-                clip.Children.Add(new RectangleGeometry(
-                    new Rect(gapLeft, bounds.Top + edges[0], gapRight - gapLeft, bounds.Height - edges[0])));
+            var clip = GetTopBorderClip(bounds, edges[0], gapLeft, gapRight);
             using (context.PushGeometryClip(clip))
                 context.DrawGeometry(null, pen, geometry);
             return;
         }
-        if (edges[0] > 0)
+        using (context.PushGeometryClip(geometry))
         {
-            if (!hasTopGap)
-                context.FillRectangle(brush, new Rect(bounds.Left, bounds.Top, bounds.Width, edges[0]));
-            else
+            if (edges[0] > 0)
             {
-                if (gapLeft > bounds.Left)
-                    context.FillRectangle(brush,
-                        new Rect(bounds.Left, bounds.Top, gapLeft - bounds.Left, edges[0]));
-                if (gapRight < bounds.Right)
-                    context.FillRectangle(brush,
-                        new Rect(gapRight, bounds.Top, bounds.Right - gapRight, edges[0]));
+                if (!hasTopGap)
+                    context.FillRectangle(brush, new Rect(bounds.Left, bounds.Top, bounds.Width, edges[0]));
+                else
+                {
+                    if (gapLeft > bounds.Left)
+                        context.FillRectangle(brush,
+                            new Rect(bounds.Left, bounds.Top, gapLeft - bounds.Left, edges[0]));
+                    if (gapRight < bounds.Right)
+                        context.FillRectangle(brush,
+                            new Rect(gapRight, bounds.Top, bounds.Right - gapRight, edges[0]));
+                }
             }
+            if (edges[1] > 0) context.FillRectangle(brush, new Rect(bounds.Right - edges[1], bounds.Top, edges[1], bounds.Height));
+            if (edges[2] > 0) context.FillRectangle(brush, new Rect(bounds.Left, bounds.Bottom - edges[2], bounds.Width, edges[2]));
+            if (edges[3] > 0) context.FillRectangle(brush, new Rect(bounds.Left, bounds.Top, edges[3], bounds.Height));
         }
-        if (edges[1] > 0) context.FillRectangle(brush, new Rect(bounds.Right - edges[1], bounds.Top, edges[1], bounds.Height));
-        if (edges[2] > 0) context.FillRectangle(brush, new Rect(bounds.Left, bounds.Bottom - edges[2], bounds.Width, edges[2]));
-        if (edges[3] > 0) context.FillRectangle(brush, new Rect(bounds.Left, bounds.Top, edges[3], bounds.Height));
+    }
+
+    protected virtual Geometry GetTopBorderClip(Rect bounds, double topThickness, double gapLeft, double gapRight) =>
+        BuildTopBorderClip(bounds, topThickness, gapLeft, gapRight);
+
+    protected static Geometry BuildTopBorderClip(Rect bounds, double topThickness, double gapLeft, double gapRight)
+    {
+        var clip = new GeometryGroup { FillRule = FillRule.NonZero };
+        if (gapLeft > bounds.Left)
+            clip.Children.Add(new RectangleGeometry(
+                new Rect(bounds.Left, bounds.Top, gapLeft - bounds.Left, bounds.Height)));
+        if (gapRight < bounds.Right)
+            clip.Children.Add(new RectangleGeometry(
+                new Rect(gapRight, bounds.Top, bounds.Right - gapRight, bounds.Height)));
+        if (gapRight > gapLeft && bounds.Height > topThickness)
+            clip.Children.Add(new RectangleGeometry(
+                new Rect(gapLeft, bounds.Top + topThickness, gapRight - gapLeft, bounds.Height - topThickness)));
+        return clip;
+    }
+}
+
+/// <summary>A path surface whose top edge has a real, unpainted label gap.</summary>
+public sealed class NotchedThemePart : ThemePart
+{
+    private Geometry? _cachedClip;
+    private Rect _cachedBounds;
+    private double _cachedThickness = double.NaN;
+    private double _cachedGapLeft = double.NaN;
+    private double _cachedGapRight = double.NaN;
+    public static readonly StyledProperty<double> TopBorderGapStartProperty =
+        AvaloniaProperty.Register<NotchedThemePart, double>(nameof(TopBorderGapStart), double.NaN);
+    public static readonly StyledProperty<double> TopBorderGapWidthProperty =
+        AvaloniaProperty.Register<NotchedThemePart, double>(nameof(TopBorderGapWidth));
+
+    public double TopBorderGapStart { get => GetValue(TopBorderGapStartProperty); set => SetValue(TopBorderGapStartProperty, value); }
+    public double TopBorderGapWidth { get => GetValue(TopBorderGapWidthProperty); set => SetValue(TopBorderGapWidthProperty, value); }
+
+    static NotchedThemePart() =>
+        AffectsRender<NotchedThemePart>(TopBorderGapStartProperty, TopBorderGapWidthProperty);
+
+    protected override (double Start, double Width) GetTopBorderGap() =>
+        (TopBorderGapStart, TopBorderGapWidth);
+
+    protected override Geometry GetTopBorderClip(Rect bounds, double topThickness, double gapLeft, double gapRight)
+    {
+        if (_cachedClip is not null && _cachedBounds == bounds &&
+            Math.Abs(_cachedThickness - topThickness) < .001 &&
+            Math.Abs(_cachedGapLeft - gapLeft) < .001 && Math.Abs(_cachedGapRight - gapRight) < .001)
+            return _cachedClip;
+        _cachedBounds = bounds;
+        _cachedThickness = topThickness;
+        _cachedGapLeft = gapLeft;
+        _cachedGapRight = gapRight;
+        return _cachedClip = BuildTopBorderClip(bounds, topThickness, gapLeft, gapRight);
+    }
+}
+
+/// <summary>Switch thumb whose travel is derived from its arranged track.</summary>
+public sealed class SwitchThumbPart : ThemePart
+{
+    public static readonly StyledProperty<double> PositionProperty =
+        AvaloniaProperty.Register<SwitchThumbPart, double>(nameof(Position));
+    public static readonly StyledProperty<double> VisualWidthProperty =
+        AvaloniaProperty.Register<SwitchThumbPart, double>(nameof(VisualWidth), double.NaN);
+    public static readonly StyledProperty<double> VisualHeightProperty =
+        AvaloniaProperty.Register<SwitchThumbPart, double>(nameof(VisualHeight), double.NaN);
+
+    public double Position { get => GetValue(PositionProperty); set => SetValue(PositionProperty, value); }
+    public double VisualWidth { get => GetValue(VisualWidthProperty); set => SetValue(VisualWidthProperty, value); }
+    public double VisualHeight { get => GetValue(VisualHeightProperty); set => SetValue(VisualHeightProperty, value); }
+
+    static SwitchThumbPart() =>
+        AffectsRender<SwitchThumbPart>(PositionProperty, VisualWidthProperty, VisualHeightProperty);
+
+    protected override Rect GetDrawRect()
+    {
+        var width = double.IsNaN(VisualWidth) ? Bounds.Width : Math.Clamp(VisualWidth, 0, Bounds.Width);
+        var height = double.IsNaN(VisualHeight) ? Bounds.Height : Math.Clamp(VisualHeight, 0, Bounds.Height);
+        return new Rect(Math.Clamp(Position, 0, 1) * Math.Max(0, Bounds.Width - width),
+            (Bounds.Height - height) / 2, width, height);
     }
 }
 
@@ -345,7 +412,7 @@ internal sealed class ThemePartVisual
         Opacity = opacity;
         Slices = slices;
         if (border is not null && borderEdges.All(x => Math.Abs(x - borderEdges[0]) < .001) && borderEdges[0] > 0)
-            UniformBorderPen = new Pen(border, borderEdges[0]);
+            InsideBorderPen = new Pen(border, borderEdges[0] * 2);
     }
 
     public IBrush? Fill { get; }
@@ -353,25 +420,20 @@ internal sealed class ThemePartVisual
     public bool ContentInherited { get; }
     public IBrush? Border { get; }
     public double[] BorderEdges { get; }
-    public Pen? UniformBorderPen { get; }
+    public Pen? InsideBorderPen { get; }
     public double Opacity { get; }
     public NineSliceSvg? Slices { get; }
 
     public static ThemePartVisual Create(CompiledControl control, CompiledControl? state)
     {
-        var content = state?.Content ?? control.Content;
-        var borderValue = state is not null &&
-                          state.BorderThickness.ValueKind is not (JsonValueKind.Undefined or JsonValueKind.Null)
-            ? state.BorderThickness
-            : control.BorderThickness;
-        var art = state?.Art ?? control.Art;
+        var resolved = CompiledThemeContract.ResolveVisual(control, state);
         return new ThemePartVisual(
-            ThemePaint.Brush(state?.Fill ?? control.Fill),
-            content == "inherit" ? null : ThemePaint.Brush(content),
-            content == "inherit",
-            ThemePaint.Brush(state?.BorderColor ?? control.BorderColor),
-            ThemeMetrics.ReadEdges(borderValue),
-            state?.Opacity ?? control.Opacity ?? 1,
-            control.Shape == "Asset" && art is not null ? ThemeSvgCache.NineSlice(art) : null);
+            ThemePaint.Brush(resolved.Fill),
+            resolved.Content == "inherit" ? null : ThemePaint.Brush(resolved.Content),
+            resolved.Content == "inherit",
+            ThemePaint.Brush(resolved.BorderColor),
+            ThemeMetrics.ReadEdges(resolved.BorderThickness),
+            resolved.Opacity,
+            control.Shape == "Asset" && resolved.Art is not null ? ThemeSvgCache.NineSlice(resolved.Art) : null);
     }
 }

@@ -27,7 +27,7 @@
                 </Grid>
             </Button>
             <ui:ThemedTextBlock Classes="section" SourceText="Open source" Margin="0,8,0,1" />
-            <ItemsControl ItemsSource="{Binding Libraries}">
+            <ItemsControl Classes="stretch-items" ItemsSource="{Binding Libraries}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:LibraryInfo">
                         <Button Classes="themed setting-row" Margin="0,0,0,10"

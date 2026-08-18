@@ -38,6 +38,7 @@
         "weight": 700,
         "style": "normal",
         "size": 16,
+        "letterSpacing": 0.2,
         "case": "uppercase"
       },
       "states": {
@@ -101,7 +102,8 @@
         "fallback": "serif",
         "weight": 600,
         "style": "italic",
-        "size": 14
+        "size": 14,
+        "letterSpacing": 0.3
       },
       "states": {
         "hover": {
@@ -359,7 +361,8 @@
       "shape": "Text",
       "content": "#7590a2",
       "text": {
-        "size": 13
+        "size": 13,
+        "letterSpacing": 0.1
       }
     },
     "news-item.gem": {
@@ -388,7 +391,8 @@
         "fallback": "serif",
         "weight": 600,
         "style": "italic",
-        "size": 16
+        "size": 16,
+        "letterSpacing": 0.2
       }
     },
     "setting-help.title": {

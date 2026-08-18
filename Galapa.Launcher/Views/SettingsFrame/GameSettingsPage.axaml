@@ -11,6 +11,7 @@
                                AutomationProperties.Name="Save and configuration folder" />
             <Button Classes="themed label" Height="43" HorizontalAlignment="Stretch"
                     Content="Save folders" Command="{Binding SaveCommand}" />
+            <ui:ThemedTextBlock Classes="input-error" SourceText="{Binding SaveError}" TextWrapping="Wrap" />
         </StackPanel>
         <local:SettingsPageShell.HelpContent>
             <StackPanel Spacing="10">

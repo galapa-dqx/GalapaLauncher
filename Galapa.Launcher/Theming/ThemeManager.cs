@@ -27,6 +27,12 @@ public sealed class ThemeManager(IThemeCatalog catalog, Settings settings, ILogg
                 return false;
             }
 
+            // Parse immutable SVG/path assets before entering the UI-thread
+            // transaction. A theme switch then only swaps prepared objects and
+            // resources; hover/render paths never discover or parse artwork.
+            if (!ThemeRenderAssets.IsPrepared(package))
+                await Task.Run(() => ThemeRenderAssets.Prepare(package), cancellationToken).ConfigureAwait(false);
+
             ResourceDictionary resources = null!;
             var previousResources = _activeResources;
             var previousTheme = ActiveTheme;
@@ -36,7 +42,7 @@ public sealed class ThemeManager(IThemeCatalog catalog, Settings settings, ILogg
             void InstallNext()
             {
                 var app = Application.Current ?? throw new InvalidOperationException("Avalonia application is not initialized.");
-                ThemeRenderAssets.Prepare(package);
+                ThemeFontRegistrar.Validate(package);
                 resources = BuildResources(package);
                 previousVariant = app.RequestedThemeVariant;
                 app.Resources.MergedDictionaries.Add(resources);
@@ -109,40 +115,47 @@ public sealed class ThemeManager(IThemeCatalog catalog, Settings settings, ILogg
         }
     }
 
+    public async Task<bool> ApplyInitialAsync(string themeId, CancellationToken cancellationToken = default)
+    {
+        if (await ApplyAsync(themeId, persist: false, cancellationToken)) return true;
+        if (!await ApplyAsync(Settings.DefaultThemeId, persist: false, cancellationToken)) return false;
+
+        settings.ThemeId = Settings.DefaultThemeId;
+        try { settings.Save(); }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "The recovery theme was applied, but its selection could not be persisted");
+        }
+        return true;
+    }
+
     internal static ResourceDictionary BuildResources(ThemePackage package)
     {
         var theme = package.Compiled;
         var m = package.Manifest;
         var window = theme.Controls["window"];
         var inheritedContent = ThemePaint.Brush(window.Content) ?? Brushes.Black;
-        var headingFamily = theme.Controls["titlebar.wordmark"].Text?.Family ?? "Inter";
-        var bodyFamily = theme.Controls["input"].Text?.Family ?? "Inter";
+        var familyNames = CompiledThemeContract.FontSources.ToDictionary(
+            pair => pair.Key,
+            pair => theme.Controls[pair.Value].Text?.Family ?? "Inter");
         var d = new ResourceDictionary
         {
             ["Galapa.Theme.Id"] = m.Id,
             ["Galapa.Theme.DisplayName"] = theme.Label,
-            ["Galapa.Font.Heading"] = FontFamilyFor(m.Id, headingFamily),
-            ["Galapa.Font.Body"] = FontFamilyFor(m.Id, bodyFamily)
+            ["Galapa.Font.Body"] = FontFamilyFor(m.Id, familyNames[ThemeFontRole.Body])
         };
 
         foreach (var (id, control) in theme.Controls)
         {
+            var normal = CompiledThemeContract.ResolveVisual(control);
             d[$"Galapa.Part.{id}"] = control;
-            d[$"Galapa.Part.{id}.ContentBrush"] = ThemePaint.Brush(control.Content, inheritedContent) ?? inheritedContent;
-            d[$"Galapa.Part.{id}.FillBrush"] = ThemePaint.Brush(control.Fill) ?? Brushes.Transparent;
-            d[$"Galapa.Part.{id}.BorderBrush"] = ThemePaint.Brush(control.BorderColor) ?? Brushes.Transparent;
-            d[$"Galapa.Part.{id}.BorderThickness"] = ThemeMetrics.ToThickness(control.BorderThickness);
+            AddVisualResources(d, $"Galapa.Part.{id}", normal, inheritedContent);
             if (control.States is not null)
                 foreach (var (state, stateControl) in control.States)
                 {
-                    d[$"Galapa.Part.{id}.{state}.ContentBrush"] = ThemePaint.Brush(stateControl.Content ?? control.Content, inheritedContent) ?? inheritedContent;
-                    d[$"Galapa.Part.{id}.{state}.FillBrush"] = ThemePaint.Brush(stateControl.Fill ?? control.Fill) ?? Brushes.Transparent;
-                    d[$"Galapa.Part.{id}.{state}.BorderBrush"] = ThemePaint.Brush(stateControl.BorderColor ?? control.BorderColor) ?? Brushes.Transparent;
-                    var stateBorder = stateControl.BorderThickness.ValueKind is not (System.Text.Json.JsonValueKind.Undefined or System.Text.Json.JsonValueKind.Null)
-                        ? stateControl.BorderThickness
-                        : control.BorderThickness;
-                    d[$"Galapa.Part.{id}.{state}.BorderThickness"] = ThemeMetrics.ToThickness(stateBorder);
-                    if (stateControl.Image is not null) d[$"Galapa.Image.{id}.{state}"] = stateControl.Image;
+                    var visual = CompiledThemeContract.ResolveVisual(control, stateControl);
+                    AddVisualResources(d, $"Galapa.Part.{id}.{state}", visual, inheritedContent);
+                    if (visual.Image is not null) d[$"Galapa.Image.{id}.{state}"] = visual.Image;
                 }
             if (control.Image is not null) d[$"Galapa.Image.{id}"] = control.Image;
             if (control.Images is not null)
@@ -150,27 +163,18 @@ public sealed class ThemeManager(IThemeCatalog catalog, Settings settings, ILogg
                     d[$"Galapa.Image.{id}.{variant}"] = image;
             if (control.Size?.Width is { } width) d[$"Galapa.Metric.{id}.Width"] = width;
             if (control.Size?.Height is { } height) d[$"Galapa.Metric.{id}.Height"] = height;
-            if (control.Padding.ValueKind is not (System.Text.Json.JsonValueKind.Undefined or System.Text.Json.JsonValueKind.Null))
+            if (ThemeMetrics.HasValue(control.Padding))
             {
                 d[$"Galapa.Metric.{id}.Padding"] = ThemeMetrics.ToThickness(control.Padding);
             }
-            AddControlTypography(d, id, control.Text, m.Id, headingFamily, bodyFamily);
+            AddControlTypography(d, id, control.Text, m.Id, familyNames);
             if (control.LeftInset is { } leftInset)
                 d[$"Galapa.Metric.{id}.LeftInset"] = leftInset;
         }
 
-        var switchTrack = theme.Controls["switch.track"];
-        var switchThumb = theme.Controls["switch.thumb"];
-        var trackWidth = switchTrack.Size?.Width ?? 34;
-        var thumbWidth = switchThumb.Size?.Width ?? 13;
-        var switchPadding = ThemeMetrics.ReadEdges(switchTrack.Padding);
-        var switchInnerWidth = Math.Max(thumbWidth, trackWidth - switchPadding[1] - switchPadding[3]);
-        d["Galapa.Metric.switch.InnerWidth"] = switchInnerWidth;
-        d["Galapa.Metric.switch.Travel"] = Math.Max(0, switchInnerWidth - thumbWidth);
-
         foreach (var (role, source) in CompiledThemeContract.TypographyRoles)
         {
-            var floorFamily = source.FontRole == ThemeFontRole.Body ? bodyFamily : headingFamily;
+            var floorFamily = familyNames[source.FontRole];
             AddTypography(d, role, theme.Controls[source.ControlId].Text, source.FloorSize, floorFamily,
                 source.FloorWeight, m.Id);
             d[$"Galapa.Type.{role}.ContentBrush"] = d[$"Galapa.Part.{source.ControlId}.ContentBrush"];
@@ -191,30 +195,41 @@ public sealed class ThemeManager(IThemeCatalog catalog, Settings settings, ILogg
         return d;
     }
 
-    private static void AddControlTypography(ResourceDictionary d, string id, CompiledTextStyle? text,
-        string themeId, string headingFamily, string bodyFamily)
+    private static void AddVisualResources(ResourceDictionary dictionary, string prefix,
+        ResolvedControlVisual visual, IBrush inheritedContent)
     {
-        var bodyRole = CompiledThemeContract.Controls[id].DefaultFont == ThemeFontRole.Body;
-        var prefix = $"Galapa.Type.Control.{id}";
-        d[$"{prefix}.Family"] = FontFamilyFor(themeId, text?.Family ?? (bodyRole ? bodyFamily : headingFamily));
-        d[$"{prefix}.Size"] = text?.Size ?? (bodyRole ? 14d : 16d);
-        d[$"{prefix}.Weight"] = (FontWeight)(text?.Weight ?? (bodyRole ? 400 : 600));
-        d[$"{prefix}.Style"] = ThemeTypography.ToFontStyle(text?.Style);
-        d[$"{prefix}.Transform"] = ThemeTypography.ToTransform(text?.Case);
+        dictionary[$"{prefix}.ContentBrush"] = ThemePaint.Brush(visual.Content, inheritedContent) ?? inheritedContent;
+        dictionary[$"{prefix}.FillBrush"] = ThemePaint.Brush(visual.Fill) ?? Brushes.Transparent;
+        dictionary[$"{prefix}.BorderBrush"] = ThemePaint.Brush(visual.BorderColor) ?? Brushes.Transparent;
+        dictionary[$"{prefix}.BorderThickness"] = ThemeMetrics.ToThickness(visual.BorderThickness);
+    }
+
+    private static void AddControlTypography(ResourceDictionary d, string id, CompiledTextStyle? text,
+        string themeId, IReadOnlyDictionary<ThemeFontRole, string> familyNames)
+    {
+        var role = CompiledThemeContract.Controls[id].DefaultFont;
+        var bodyRole = role == ThemeFontRole.Body;
+        AddTypographyResources(d, $"Galapa.Type.Control.{id}", text, themeId, familyNames[role],
+            bodyRole ? 14d : 16d, bodyRole ? 400 : 600);
     }
 
     private static void AddTypography(ResourceDictionary d, string role, CompiledTextStyle? text,
         double floorSize, string floorFamily, int floorWeight, string themeId)
     {
-        var prefix = $"Galapa.Type.{role}";
-        d[$"{prefix}.Family"] = FontFamilyFor(themeId, text?.Family ?? floorFamily);
-        d[$"{prefix}.Size"] = text?.Size ?? floorSize;
-        d[$"{prefix}.Weight"] = (FontWeight)(text?.Weight ?? floorWeight);
-        d[$"{prefix}.Style"] = ThemeTypography.ToFontStyle(text?.Style);
-        d[$"{prefix}.LetterSpacing"] = 0d;
-        d[$"{prefix}.Transform"] = ThemeTypography.ToTransform(text?.Case);
+        AddTypographyResources(d, $"Galapa.Type.{role}", text, themeId, floorFamily, floorSize, floorWeight);
+    }
+
+    private static void AddTypographyResources(ResourceDictionary dictionary, string prefix, CompiledTextStyle? text,
+        string themeId, string fallbackFamily, double fallbackSize, int fallbackWeight)
+    {
+        dictionary[$"{prefix}.Family"] = FontFamilyFor(themeId, text?.Family ?? fallbackFamily);
+        dictionary[$"{prefix}.Size"] = text?.Size ?? fallbackSize;
+        dictionary[$"{prefix}.Weight"] = (FontWeight)(text?.Weight ?? fallbackWeight);
+        dictionary[$"{prefix}.Style"] = ThemeTypography.ToFontStyle(text?.Style);
+        dictionary[$"{prefix}.LetterSpacing"] = text?.LetterSpacing ?? 0d;
+        dictionary[$"{prefix}.Transform"] = ThemeTypography.ToTransform(text?.Case);
     }
 
     internal static FontFamily FontFamilyFor(string themeId, string family) =>
-        new($"fonts:{themeId}#{family}");
+        new(ThemeLocations.FontFamilyName(themeId, family));
 }

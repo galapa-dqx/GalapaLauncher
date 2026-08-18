@@ -3,7 +3,10 @@ using Avalonia.Automation.Peers;
 using Avalonia.Automation.Provider;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
+using Avalonia.Controls.Templates;
+using Avalonia.Interactivity;
 using Avalonia.Headless;
+using Avalonia.Layout;
 using Avalonia.Markup.Xaml.Styling;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
@@ -11,6 +14,7 @@ using Avalonia.Themes.Fluent;
 using Avalonia.VisualTree;
 using Galapa.Launcher.Theming;
 using Galapa.Launcher.Views.Controls;
+using Galapa.Launcher.Views;
 using SkiaSharp;
 using Xunit.Sdk;
 
@@ -37,6 +41,130 @@ public sealed class SkiaHeadlessFixture : IDisposable
         _session.Dispatch(
             () => RenderPath(style, hostWidth, hostHeight, topBorderGapStart, topBorderGapWidth),
             CancellationToken.None);
+
+    public Task<byte[]> RenderThemePartAsync(CompiledControl style, int hostWidth, int hostHeight) =>
+        _session.Dispatch(() => RenderThemePart(style, hostWidth, hostHeight), CancellationToken.None);
+
+    public Task<bool> ConstructMainWindowAsync() =>
+        _session.Dispatch(() =>
+        {
+            _ = EnsureThemeStyles();
+            var window = new MainWindow(true);
+            return window.FindControl<ThemePart>("PART_TitleBar") is not null;
+        }, CancellationToken.None);
+
+    public Task<bool> DerivedSettingsShellReceivesSharedTemplateAsync() =>
+        _session.Dispatch(() =>
+        {
+            _ = EnsureThemeStyles();
+            var content = new Border { HorizontalAlignment = HorizontalAlignment.Stretch };
+            var shell = new SettingsPageShell
+            {
+                Width = 700,
+                Height = 480,
+                Content = content,
+                HelpContent = new TextBlock { Text = "Help" }
+            };
+            var window = new Window
+            {
+                Width = 700,
+                Height = 480,
+                SystemDecorations = SystemDecorations.None,
+                Content = shell
+            };
+            window.Show();
+            try
+            {
+                window.UpdateLayout();
+                return shell.GetVisualDescendants().OfType<ScrollViewer>()
+                           .Any(viewer => viewer.Name == "PART_ContentScroll") &&
+                       shell.GetVisualDescendants().OfType<ThemedScrollbar>().Any() &&
+                       content.Bounds.Width > 300;
+            }
+            finally
+            {
+                window.Close();
+            }
+        }, CancellationToken.None);
+
+    public Task<bool> SettingListItemsStretchAsync() =>
+        _session.Dispatch(() =>
+        {
+            _ = EnsureThemeStyles();
+            var item = new Button { Height = 24, Content = "Item" };
+            item.Classes.Add("themed");
+            item.Classes.Add("setting-row");
+            var items = new ItemsControl
+            {
+                Width = 350,
+                Height = 100,
+                ItemsSource = new[] { "Item" },
+                ItemTemplate = new FuncDataTemplate<string>((_, _) => item)
+            };
+            items.Classes.Add("stretch-items");
+            var window = new Window
+            {
+                Width = 350,
+                Height = 100,
+                SystemDecorations = SystemDecorations.None,
+                Content = items
+            };
+            window.Show();
+            try
+            {
+                window.UpdateLayout();
+                return item.Bounds.Width > 300;
+            }
+            finally
+            {
+                window.Close();
+            }
+        }, CancellationToken.None);
+
+    public Task<byte[]> ValidateAndRenderThemeTextAsync(ThemePackage package) =>
+        _session.Dispatch(() =>
+        {
+            ThemeFontRegistrar.Validate(package);
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+            var text = package.Compiled.Controls["titlebar.wordmark"].Text!;
+            return Render(new TextBlock
+            {
+                Text = "Galapa",
+                FontFamily = ThemeManager.FontFamilyFor(package.Manifest.Id, text.Family!),
+                FontStyle = ThemeTypography.ToFontStyle(text.Style),
+                FontWeight = (FontWeight)(text.Weight ?? 400),
+                FontSize = 24,
+                Foreground = Brushes.White,
+                Width = 140,
+                Height = 44
+            }, new PixelSize(140, 44));
+        }, CancellationToken.None);
+
+    public Task<byte[]> RenderInlineSvgAsync(string svg) =>
+        _session.Dispatch(() => Render(new ThemedSvg
+        {
+            InlineSvg = svg,
+            Width = 20,
+            Height = 20
+        }, new PixelSize(20, 20)), CancellationToken.None);
+
+    public Task<byte[]> RenderSwitchThumbAsync(double position) =>
+        _session.Dispatch(() => Render(new SwitchThumbPart
+        {
+            PartStyle = new CompiledControl
+            {
+                Shape = "Path",
+                Fill = "#22AA78",
+                Radius = System.Text.Json.JsonSerializer.SerializeToElement("pill")
+            },
+            Position = position,
+            VisualWidth = 13,
+            VisualHeight = 13,
+            Width = 30,
+            Height = 13
+        }, new PixelSize(30, 13)), CancellationToken.None);
 
     public Task<TabRenderInspection> RenderSelectedTabAsync() =>
         _session.Dispatch(RenderSelectedTab, CancellationToken.None);
@@ -65,7 +193,7 @@ public sealed class SkiaHeadlessFixture : IDisposable
         double topBorderGapStart, double topBorderGapWidth)
     {
         var pixelSize = new PixelSize(hostWidth + FixtureOutset * 2, hostHeight + FixtureOutset * 2);
-        var part = new ThemePart
+        var part = new NotchedThemePart
         {
             PartStyle = style,
             Width = hostWidth,
@@ -73,6 +201,22 @@ public sealed class SkiaHeadlessFixture : IDisposable
             TopBorderGapStart = topBorderGapStart,
             TopBorderGapWidth = topBorderGapWidth
         };
+        Canvas.SetLeft(part, FixtureOutset);
+        Canvas.SetTop(part, FixtureOutset);
+        var visual = new Canvas
+        {
+            Width = pixelSize.Width,
+            Height = pixelSize.Height,
+            Background = new SolidColorBrush(Color.Parse(FixtureBackground)),
+            Children = { part }
+        };
+        return Render(visual, pixelSize);
+    }
+
+    private static byte[] RenderThemePart(CompiledControl style, int hostWidth, int hostHeight)
+    {
+        var pixelSize = new PixelSize(hostWidth + FixtureOutset * 2, hostHeight + FixtureOutset * 2);
+        var part = new ThemePart { PartStyle = style, Width = hostWidth, Height = hostHeight };
         Canvas.SetLeft(part, FixtureOutset);
         Canvas.SetTop(part, FixtureOutset);
         var visual = new Canvas
@@ -103,13 +247,26 @@ public sealed class SkiaHeadlessFixture : IDisposable
         app.Resources["Galapa.Part.tab.ContentBrush"] = new SolidColorBrush(Color.Parse("#3A7860"));
         app.Resources["Galapa.Part.tab.selected.ContentBrush"] = new SolidColorBrush(Color.Parse("#22AA78"));
         app.Resources["Galapa.Part.tab.selected.BorderBrush"] = new SolidColorBrush(Color.Parse("#22AA78"));
+        app.Resources["Galapa.Type.navigation.ContentBrush"] = new SolidColorBrush(Color.Parse("#3A7860"));
+        app.Resources["Galapa.Type.navigation.Family"] = FontFamily.Default;
+        app.Resources["Galapa.Type.navigation.Size"] = 16d;
+        app.Resources["Galapa.Type.navigation.Weight"] = FontWeight.SemiBold;
+        app.Resources["Galapa.Type.navigation.Style"] = FontStyle.Normal;
+        app.Resources["Galapa.Type.navigation.LetterSpacing"] = 0d;
+        app.Resources["Galapa.Type.navigation.Transform"] = "Original";
 
         var strip = new TabStrip
         {
             Width = 200,
             Height = 34,
             ItemsSource = new[] { "Launcher", "Settings" },
-            SelectedIndex = 1
+            SelectedIndex = 1,
+            ItemTemplate = new FuncDataTemplate<string>((value, _) =>
+            {
+                var label = new Galapa.UI.Controls.ThemedTextBlock { SourceText = value };
+                label.Classes.Add("navigation");
+                return label;
+            })
         };
         strip.Classes.Add("top-tabs");
         var root = new Border
@@ -140,10 +297,12 @@ public sealed class SkiaHeadlessFixture : IDisposable
             var underlineIsEffectivelyVisible = underline.IsEffectivelyVisible;
             var underlineOpacity = underline.Opacity;
             var itemBounds = selectedItem.Bounds;
+            var labelColor = (selectedItem.GetVisualDescendants()
+                .OfType<Galapa.UI.Controls.ThemedTextBlock>().Single().Foreground as ISolidColorBrush)?.Color;
             var png = Capture(window, new PixelSize(
                 (int)Math.Ceiling(window.Bounds.Width), (int)Math.Ceiling(window.Bounds.Height)));
             return new TabRenderInspection(png, underlineBounds, underlineColor, itemBorderColor,
-                underlineIsVisible, underlineIsEffectivelyVisible, underlineOpacity, itemBounds);
+                underlineIsVisible, underlineIsEffectivelyVisible, underlineOpacity, itemBounds, labelColor);
         }
         finally
         {
@@ -186,6 +345,15 @@ public sealed class SkiaHeadlessFixture : IDisposable
             window.UpdateLayout();
             var initialMaximum = bar.Maximum;
             var initialViewport = bar.ViewportSize;
+            var track = bar.GetVisualDescendants().OfType<Track>().Single();
+            var directionReversed = track.IsDirectionReversed;
+            var pageUp = bar.GetVisualDescendants().OfType<RepeatButton>().Single(x => x.Name == "PART_PageUpButton");
+            var pageDown = bar.GetVisualDescendants().OfType<RepeatButton>().Single(x => x.Name == "PART_PageDownButton");
+            bar.Value = 150;
+            pageUp.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            var afterPageUp = bar.Value;
+            pageDown.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            var afterPageDown = bar.Value;
             bar.Value = 45;
             window.UpdateLayout();
             var firstOffset = first.Offset.Y;
@@ -205,7 +373,8 @@ public sealed class SkiaHeadlessFixture : IDisposable
             var hasRangeAutomation = peer is IRangeValueProvider;
             window.Close();
             return new ScrollbarInspection(initialMaximum, initialViewport, firstOffset, valueAfterTargetScroll,
-                replacementMaximum, valueAfterOldTargetScroll, bar.Maximum, bar.IsEnabled, hasRangeAutomation);
+                replacementMaximum, valueAfterOldTargetScroll, bar.Maximum, bar.IsEnabled, hasRangeAutomation,
+                directionReversed, afterPageUp, afterPageDown);
         }
         finally
         {
@@ -276,7 +445,8 @@ public sealed record TabRenderInspection(
     bool UnderlineIsVisible,
     bool UnderlineIsEffectivelyVisible,
     double UnderlineOpacity,
-    Rect ItemBounds);
+    Rect ItemBounds,
+    Color? LabelColor);
 
 public sealed record ScrollbarInspection(
     double InitialMaximum,
@@ -287,7 +457,44 @@ public sealed record ScrollbarInspection(
     double ValueAfterOldTargetScroll,
     double DetachedMaximum,
     bool DetachedIsEnabled,
-    bool HasRangeAutomation);
+    bool HasRangeAutomation,
+    bool IsDirectionReversed,
+    double ValueAfterPageUp,
+    double ValueAfterPageDown);
+
+[Collection(SkiaRenderingCollection.Name)]
+public sealed class InlineSvgRenderingTests(SkiaHeadlessFixture skia)
+{
+    [Theory]
+    [InlineData("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><rect width='10' height='10'/></svg>", 0, 0, 0)]
+    [InlineData("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10' fill='#c03040'><rect width='10' height='10'/></svg>", 192, 48, 64)]
+    public async Task SvgInitialAndRootFillAreInherited(string svg, byte red, byte green, byte blue)
+    {
+        using var bitmap = SKBitmap.Decode(await skia.RenderInlineSvgAsync(svg));
+        var pixel = bitmap.GetPixel(10, 10);
+        Assert.Equal(red, pixel.Red);
+        Assert.Equal(green, pixel.Green);
+        Assert.Equal(blue, pixel.Blue);
+        Assert.Equal(255, pixel.Alpha);
+    }
+}
+
+[Collection(SkiaRenderingCollection.Name)]
+public sealed class SwitchRenderingTests(SkiaHeadlessFixture skia)
+{
+    [Fact]
+    public async Task ThumbTravelUsesTheArrangedTrackWidth()
+    {
+        using var left = SKBitmap.Decode(await skia.RenderSwitchThumbAsync(0));
+        using var right = SKBitmap.Decode(await skia.RenderSwitchThumbAsync(1));
+        var fill = SKColor.Parse("#22AA78");
+
+        Assert.Equal(fill, left.GetPixel(6, 6));
+        Assert.Equal(0, left.GetPixel(23, 6).Alpha);
+        Assert.Equal(0, right.GetPixel(6, 6).Alpha);
+        Assert.Equal(fill, right.GetPixel(23, 6));
+    }
+}
 
 public static class SkiaHeadlessTestApplication
 {
@@ -353,13 +560,22 @@ public sealed class NineSliceRenderingTests(SkiaHeadlessFixture skia)
     }
 
     [Fact]
-    public void UnknownRepeatModeFallsBackToStretch()
+    public void UnknownRepeatModeIsRejectedByTheSharedStructureParser()
     {
         var source = File.ReadAllText(Path.Combine(SourceFixtureRoot, "diagnostic.9.svg"));
-        var slices = NineSliceSvg.Parse(source.Replace("data-slice-repeat=\"stretch\"",
-            "data-slice-repeat=\"surprise\"", StringComparison.Ordinal));
+        Assert.Throws<InvalidDataException>(() => NineSliceSvg.Parse(source.Replace("data-slice-repeat=\"stretch\"",
+            "data-slice-repeat=\"surprise\"", StringComparison.Ordinal)));
+    }
 
-        Assert.All(slices.Cells, cell => Assert.Equal("stretch", cell.Repeat));
+    [Fact]
+    public async Task ProductionThemePartDoesNotClipNineSliceOutset()
+    {
+        var svg = await File.ReadAllTextAsync(Path.Combine(SourceFixtureRoot, "diagnostic.9.svg"));
+        var png = await skia.RenderThemePartAsync(new CompiledControl { Shape = "Asset", Art = svg }, 20, 20);
+        using var bitmap = SKBitmap.Decode(png);
+        var background = SKColor.Parse(SkiaHeadlessFixture.FixtureBackground);
+
+        Assert.NotEqual(background, bitmap.GetPixel(SkiaHeadlessFixture.FixtureOutset - 1, 12));
     }
 
     [Theory]

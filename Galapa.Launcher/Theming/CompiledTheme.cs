@@ -67,6 +67,7 @@ public sealed record CompiledTextStyle
     public int? Weight { get; init; }
     public string? Style { get; init; }
     public double? Size { get; init; }
+    public double? LetterSpacing { get; init; }
     public string? Case { get; init; }
 }
 
@@ -113,18 +114,18 @@ public static class CompiledThemeContract
             ["progress.track"] = new(),
             ["progress.indicator"] = new(),
             ["play-ornament"] = new(),
-            ["input.label"] = new("Text", ThemeFontRole.Heading),
+            ["input.label"] = new("Text"),
             ["news-item.date"] = new("Text", ThemeFontRole.Body),
-            ["news-item.gem"] = new("Text", ThemeFontRole.Heading),
-            ["titlebar.wordmark"] = new("Text", ThemeFontRole.Heading),
-            ["tab-bar"] = new("Text", ThemeFontRole.Heading),
-            ["settings.heading"] = new("Text", ThemeFontRole.Heading),
-            ["setting-help.title"] = new("Text", ThemeFontRole.Heading),
+            ["news-item.gem"] = new("Text"),
+            ["titlebar.wordmark"] = new("Text"),
+            ["tab-bar"] = new("Text"),
+            ["settings.heading"] = new("Text"),
+            ["setting-help.title"] = new("Text"),
             ["setting-help.body"] = new("Text", ThemeFontRole.Body),
             ["input.placeholder"] = new("Text", ThemeFontRole.Body),
-            ["input.caret"] = new("Text", ThemeFontRole.Heading),
+            ["input.caret"] = new("Text"),
             ["input.error"] = new("Text", ThemeFontRole.Body),
-            ["play-row"] = new("Text", ThemeFontRole.Heading)
+            ["play-row"] = new("Text")
         };
 
     public static readonly IReadOnlyDictionary<string, CompiledTypographyRole> TypographyRoles =
@@ -142,16 +143,49 @@ public static class CompiledThemeContract
             ["metadata"] = new("news-item.date", 13, ThemeFontRole.Body, 400)
         };
 
-    public static readonly string[] ControlIds = [.. Controls.Keys];
-    public static readonly HashSet<string> States = Enum.GetValues<ThemePartState>()
-        .Where(value => value != ThemePartState.Normal)
-        .Select(value => value.ToString().ToLowerInvariant())
-        .ToHashSet(StringComparer.Ordinal);
+    public static readonly IReadOnlyDictionary<ThemeFontRole, string> FontSources =
+        new Dictionary<ThemeFontRole, string>
+        {
+            [ThemeFontRole.Heading] = "titlebar.wordmark",
+            [ThemeFontRole.Body] = "input"
+        };
 
-    public static string? StateName(ThemePartState state) =>
-        state == ThemePartState.Normal ? null : state.ToString().ToLowerInvariant();
+    public static readonly HashSet<string> States =
+    [
+        "hover", "pressed", "focused", "disabled", "selected", "checked"
+    ];
+
+    public static string? StateName(ThemePartState state) => state switch
+    {
+        ThemePartState.Normal => null,
+        ThemePartState.Hover => "hover",
+        ThemePartState.Pressed => "pressed",
+        ThemePartState.Focused => "focused",
+        ThemePartState.Disabled => "disabled",
+        ThemePartState.Selected => "selected",
+        ThemePartState.Checked => "checked",
+        _ => throw new ArgumentOutOfRangeException(nameof(state), state, null)
+    };
+
+    public static ResolvedControlVisual ResolveVisual(CompiledControl control, CompiledControl? state = null) =>
+        new(
+            state?.Fill ?? control.Fill,
+            state?.Content ?? control.Content,
+            state?.BorderColor ?? control.BorderColor,
+            ThemeMetrics.HasValue(state?.BorderThickness ?? default) ? state!.BorderThickness : control.BorderThickness,
+            state?.Opacity ?? control.Opacity ?? 1,
+            state?.Image ?? control.Image,
+            state?.Art ?? control.Art);
 }
 
 public enum ThemeFontRole { Heading, Body }
 public sealed record CompiledControlSpec(string? RequiredShape = null, ThemeFontRole DefaultFont = ThemeFontRole.Heading);
 public sealed record CompiledTypographyRole(string ControlId, double FloorSize, ThemeFontRole FontRole, int FloorWeight);
+public readonly record struct ResolvedControlVisual(
+    string? Fill,
+    string? Content,
+    string? BorderColor,
+    JsonElement BorderThickness,
+    double Opacity,
+    string? Image,
+    string? Art);

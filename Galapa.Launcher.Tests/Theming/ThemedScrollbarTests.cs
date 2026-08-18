@@ -30,5 +30,8 @@ public sealed class ThemedScrollbarTests(SkiaHeadlessFixture skia)
         Assert.Equal(0, result.DetachedMaximum, 3);
         Assert.False(result.DetachedIsEnabled);
         Assert.True(result.HasRangeAutomation);
+        Assert.True(result.IsDirectionReversed);
+        Assert.True(result.ValueAfterPageUp < 150);
+        Assert.True(result.ValueAfterPageDown > result.ValueAfterPageUp);
     }
 }

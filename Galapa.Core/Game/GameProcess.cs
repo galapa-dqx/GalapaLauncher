@@ -32,7 +32,7 @@ public partial class GameProcess(Settings settings)
         if (this.SessionId is null) throw new InvalidOperationException("SessionId is null");
         if (settings.GameFolderPath is null) throw new InvalidOperationException("GameFolderPath is null");
 
-        var gamePath = Path.Combine(settings.GameFolderPath, "game", "DQXGame.exe");
+        var gamePath = Path.Combine(settings.GameFolderPath, Settings.GameExecutableRelativePath);
 
         this._process = new Process();
         this._process.StartInfo.WorkingDirectory = Path.Combine(settings.GameFolderPath, "game");
@@ -53,7 +53,7 @@ public partial class GameProcess(Settings settings)
         if (this.SessionId is null) throw new InvalidOperationException("SessionId is null");
         if (settings.GameFolderPath is null) throw new InvalidOperationException("GameFolderPath is null");
 
-        var gamePath = Path.Combine(settings.GameFolderPath, "game", "DQXGame.exe");
+        var gamePath = Path.Combine(settings.GameFolderPath, Settings.GameExecutableRelativePath);
         var workingDir = Path.Combine(settings.GameFolderPath, "game");
         var commandLine = $"\"{gamePath}\" {this.GetArguments()}";
 

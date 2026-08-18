@@ -48,8 +48,6 @@ public sealed partial class GraphicsSettingsPageViewModel : SettingsFramePageVie
     }
 
     public IReadOnlyList<GraphicsSettingItem> Settings { get; }
-    public string HelpTitle => SelectedSetting.HelpTitle;
-    public string HelpBody => SelectedSetting.HelpBody;
 
     [RelayCommand]
     private void Select(GraphicsSettingItem setting)
@@ -58,7 +56,5 @@ public sealed partial class GraphicsSettingsPageViewModel : SettingsFramePageVie
         SelectedSetting.IsSelected = false;
         setting.IsSelected = true;
         SelectedSetting = setting;
-        OnPropertyChanged(nameof(HelpTitle));
-        OnPropertyChanged(nameof(HelpBody));
     }
 }

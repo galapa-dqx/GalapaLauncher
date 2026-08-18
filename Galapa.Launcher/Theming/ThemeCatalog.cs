@@ -1,70 +1,93 @@
-using Galapa.Core.Configuration;
-using Galapa.Launcher.Views.Controls;
-using Microsoft.Extensions.Logging;
 using System.Reflection;
+using Galapa.Core.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace Galapa.Launcher.Theming;
 
 public sealed class ThemeCatalog(CompiledThemeReader compiledReader, ILogger<ThemeCatalog> logger) : IThemeCatalog
 {
     private readonly List<ThemePackage> _themes = [];
-    public IReadOnlyList<ThemePackage> Themes => _themes;
+    private readonly object _sync = new();
 
-    public ThemePackage? Find(string id) => _themes.FirstOrDefault(x => string.Equals(x.Manifest.Id, id, StringComparison.OrdinalIgnoreCase));
-
-    public async Task LoadAsync(CancellationToken cancellationToken = default)
+    public IReadOnlyList<ThemePackage> Themes
     {
-        _themes.Clear();
-        var folder = Path.Combine(AppContext.BaseDirectory, "Assets", "Themes");
-        var compiledPaths = Directory.Exists(folder)
-            ? Directory.EnumerateFiles(folder, "*.compiled.json").OrderBy(x => x).ToArray()
-            : [];
-        if (compiledPaths.Length == 0)
-            logger.LogWarning("No deployed compiled themes were found in {ThemeFolder}; loading the embedded recovery theme", folder);
-        foreach (var path in compiledPaths)
-        {
-            try
-            {
-                var package = await compiledReader.ReadAsync(path, cancellationToken);
-                ThemeFontRegistrar.Validate(package);
-                if (_themes.Any(x => x.Manifest.Id == package.Manifest.Id)) throw new ThemePackageException($"Duplicate theme ID: {package.Manifest.Id}");
-                _themes.Add(package);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Could not load theme package {ThemePath}", path);
-            }
-        }
+        get { lock (_sync) return _themes.ToArray(); }
+    }
 
-        if (Find(Settings.DefaultThemeId) is null)
-            _themes.Insert(0, await LoadRecoveryAsync(cancellationToken));
+    public event EventHandler? ThemesChanged;
+
+    public ThemePackage? Find(string id)
+    {
+        lock (_sync)
+            return _themes.FirstOrDefault(theme =>
+                string.Equals(theme.Manifest.Id, id, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>
-    /// Completes package admission on Avalonia's UI thread. Geometry objects
-    /// are dispatcher-affine even though JSON, XML, and font validation are
-    /// not, so this phase cannot be folded into the background I/O pass.
+    /// Admits only the selected package and Estella recovery before first
+    /// paint. Remaining built-ins are intentionally deferred.
     /// </summary>
-    public void PrepareRenderAssets()
+    public async Task LoadInitialAsync(string preferredThemeId, CancellationToken cancellationToken = default)
     {
-        foreach (var package in _themes.ToArray())
+        lock (_sync) _themes.Clear();
+        var preferred = SafeThemeId(preferredThemeId) ? preferredThemeId : Settings.DefaultThemeId;
+
+        if (!string.Equals(preferred, Settings.DefaultThemeId, StringComparison.Ordinal))
         {
-            try { ThemeRenderAssets.Prepare(package); }
-            catch (Exception ex)
-            {
-                _themes.Remove(package);
-                logger.LogError(ex, "Theme {ThemeId} contains render assets Avalonia cannot prepare", package.Manifest.Id);
-            }
+            var selected = await TryLoadDeployedAsync(preferred, cancellationToken);
+            if (selected is not null) Add(selected);
         }
 
-        if (Find(Settings.DefaultThemeId) is not null) return;
-        var recovery = Task.Run(() => LoadRecoveryAsync(CancellationToken.None)).GetAwaiter().GetResult();
-        ThemeRenderAssets.Prepare(recovery);
-        _themes.Insert(0, recovery);
+        var deployedDefault = await TryLoadDeployedAsync(Settings.DefaultThemeId, cancellationToken);
+        Add(deployedDefault ?? await LoadRecoveryAsync(cancellationToken), first: true);
+        ThemesChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public async Task LoadRemainingAsync(CancellationToken cancellationToken = default)
+    {
+        var known = Themes.Select(theme => theme.Manifest.Id).ToHashSet(StringComparer.Ordinal);
+        var candidates = ThemeLocations.EnumerateCompiledPaths()
+            .Where(path => !known.Contains(ThemeLocations.IdFromPath(path)))
+            .Select(path => TryLoadPathAsync(path, cancellationToken))
+            .ToArray();
+        var loaded = await Task.WhenAll(candidates);
+        var changed = false;
+        foreach (var package in loaded.OfType<ThemePackage>().OrderBy(theme => theme.Manifest.Id, StringComparer.Ordinal))
+            changed |= Add(package);
+        if (changed) ThemesChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private async Task<ThemePackage?> TryLoadDeployedAsync(string id, CancellationToken cancellationToken)
+    {
+        var path = ThemeLocations.PathFor(id);
+        return File.Exists(path) ? await TryLoadPathAsync(path, cancellationToken) : null;
+    }
+
+    private async Task<ThemePackage?> TryLoadPathAsync(string path, CancellationToken cancellationToken)
+    {
+        try { return await compiledReader.ReadAsync(path, cancellationToken); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Could not load theme package {ThemePath}", path);
+            return null;
+        }
+    }
+
+    private bool Add(ThemePackage package, bool first = false)
+    {
+        lock (_sync)
+        {
+            if (_themes.Any(theme => string.Equals(theme.Manifest.Id, package.Manifest.Id, StringComparison.Ordinal)))
+            {
+                logger.LogError("Could not load duplicate theme ID {ThemeId} from {ThemePath}",
+                    package.Manifest.Id, package.SourcePath);
+                return false;
+            }
+            if (first) _themes.Insert(0, package);
+            else _themes.Add(package);
+            return true;
+        }
     }
 
     private async Task<ThemePackage> LoadRecoveryAsync(CancellationToken cancellationToken)
@@ -72,9 +95,12 @@ public sealed class ThemeCatalog(CompiledThemeReader compiledReader, ILogger<The
         const string resourceName = "Galapa.Launcher.Recovery.estella.compiled.json";
         await using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(resourceName)
                                  ?? throw new ThemePackageException("The embedded Estella recovery theme is missing.");
-        var recovery = await compiledReader.ReadAsync(stream, Settings.DefaultThemeId, "embedded recovery theme", cancellationToken);
-        ThemeFontRegistrar.Validate(recovery);
+        var recovery = await compiledReader.ReadAsync(stream, Settings.DefaultThemeId,
+            "embedded recovery theme", cancellationToken);
         logger.LogWarning("The deployed Estella theme was unavailable; the embedded recovery copy was loaded.");
         return recovery;
     }
+
+    private static bool SafeThemeId(string? id) => id is { Length: > 0 and <= 100 } &&
+        id.All(character => char.IsLower(character) || char.IsDigit(character) || character == '-');
 }

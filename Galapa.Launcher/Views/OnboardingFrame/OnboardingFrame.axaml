@@ -16,13 +16,13 @@
                                        AutomationProperties.Name="Dragon Quest X folder" />
                     <Button Grid.Column="1" Classes="themed label" Content="Browse…" Click="Browse_Click" AutomationProperties.Name="Browse for Dragon Quest X folder" />
                 </Grid>
-                <TextBlock Classes="input-error" Text="{Binding ValidationMessage}" TextWrapping="Wrap" />
+                <ui:ThemedTextBlock Classes="input-error" SourceText="{Binding ValidationMessage}" TextWrapping="Wrap" />
             </StackPanel>
             <Button Classes="themed label" HorizontalAlignment="Left" Content="Continue" Command="{Binding CompleteCommand}" />
         </StackPanel>
         <local:ThemedPanel Grid.Column="1" Margin="30,0,0,0" FallbackPadding="24" VerticalAlignment="Stretch">
             <StackPanel VerticalAlignment="Center" Spacing="10">
-                <TextBlock Classes="brand" Text="One quick setup" />
+                <ui:ThemedTextBlock Classes="brand" SourceText="One quick setup" />
                 <TextBlock Classes="muted" TextWrapping="Wrap"
                            Text="Your account credentials remain in Windows Credential Manager. Galapa only stores the folders needed to launch and configure the game." />
             </StackPanel>

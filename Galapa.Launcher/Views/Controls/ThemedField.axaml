@@ -16,6 +16,7 @@
             <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.Control.input.Size}" />
             <Setter Property="FontWeight" Value="{DynamicResource Galapa.Type.Control.input.Weight}" />
             <Setter Property="FontStyle" Value="{DynamicResource Galapa.Type.Control.input.Style}" />
+            <Setter Property="LetterSpacing" Value="{DynamicResource Galapa.Type.Control.input.LetterSpacing}" />
             <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.input.ContentBrush}" />
             <Setter Property="CaretBrush" Value="{DynamicResource Galapa.Part.input.caret.ContentBrush}" />
         </Style>
@@ -42,7 +43,7 @@
         </Style>
     </UserControl.Styles>
     <Grid>
-        <local:ThemePart Name="PART_FieldFrame" PartStyle="{DynamicResource Galapa.Part.input}"
+        <local:NotchedThemePart Name="PART_FieldFrame" PartStyle="{DynamicResource Galapa.Part.input}"
                          FallbackPadding="10,6"
                          TopBorderGapStart="{DynamicResource Galapa.Metric.input.label.LeftInset}"
                          TopBorderGapWidth="{Binding Bounds.Width, ElementName=PART_FieldLabelSeat}">
@@ -50,7 +51,7 @@
                      IsReadOnly="{Binding IsReadOnly, ElementName=Root}"
                      PasswordChar="{Binding PasswordChar, ElementName=Root}"
                      AutomationProperties.Name="{Binding Label, ElementName=Root}" />
-        </local:ThemePart>
+        </local:NotchedThemePart>
         <Canvas ClipToBounds="False" IsHitTestVisible="False">
             <Border Name="PART_FieldLabelSeat" Padding="5,0"
                     Canvas.Left="{DynamicResource Galapa.Metric.input.label.LeftInset}" Canvas.Top="-7">

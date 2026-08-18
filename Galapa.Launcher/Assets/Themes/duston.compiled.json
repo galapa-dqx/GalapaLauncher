@@ -36,6 +36,7 @@
         "weight": 700,
         "style": "normal",
         "size": 16,
+        "letterSpacing": 0.6,
         "case": "uppercase"
       },
       "states": {
@@ -99,6 +100,7 @@
         "fallback": "serif",
         "weight": 700,
         "style": "normal",
+        "letterSpacing": 0.8,
         "case": "uppercase"
       },
       "states": {
@@ -229,7 +231,8 @@
         "fallback": "serif",
         "weight": 700,
         "style": "normal",
-        "size": 16
+        "size": 16,
+        "letterSpacing": 0.4
       },
       "size": {
         "height": 43
@@ -350,7 +353,8 @@
         "fallback": "serif",
         "weight": 700,
         "style": "normal",
-        "size": 12
+        "size": 12,
+        "letterSpacing": 0.8
       },
       "leftInset": 10
     },
@@ -358,7 +362,8 @@
       "shape": "Text",
       "content": "#6a5a3d",
       "text": {
-        "size": 13
+        "size": 13,
+        "letterSpacing": 0.1
       }
     },
     "news-item.gem": {
@@ -373,6 +378,7 @@
         "weight": 700,
         "style": "normal",
         "size": 20,
+        "letterSpacing": 0.4,
         "case": "uppercase"
       }
     },
@@ -389,6 +395,7 @@
         "weight": 700,
         "style": "normal",
         "size": 16,
+        "letterSpacing": 0.8,
         "case": "uppercase"
       }
     },

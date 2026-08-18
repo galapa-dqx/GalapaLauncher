@@ -5,7 +5,7 @@
     <local:SettingsPageShell>
         <StackPanel Spacing="10">
             <ui:ThemedTextBlock Classes="section" SourceText="Application" Margin="0,0,0,1" />
-            <ItemsControl ItemsSource="{Binding Settings}">
+            <ItemsControl Classes="stretch-items" ItemsSource="{Binding Settings}">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate><StackPanel Spacing="10" /></ItemsPanelTemplate>
                 </ItemsControl.ItemsPanel>
@@ -19,8 +19,8 @@
                             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="19">
                                 <ui:ThemedTextBlock Classes="setting-value" SourceText="{Binding Label}"
                                                     TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                                <TextBlock Grid.Column="1" Text="{Binding Value}" IsVisible="{Binding !IsToggle}"
-                                           Classes="setting-value" VerticalAlignment="Center" />
+                                <ui:ThemedTextBlock Grid.Column="1" SourceText="{Binding Value}" IsVisible="{Binding !IsToggle}"
+                                                    Classes="setting-value" VerticalAlignment="Center" />
                                 <ToggleButton Grid.Column="1" Classes="themed-switch" IsVisible="{Binding IsToggle}"
                                               IsChecked="{Binding IsChecked, Mode=TwoWay}"
                                               AutomationProperties.Name="{Binding Label}" />
@@ -32,20 +32,10 @@
         </StackPanel>
         <local:SettingsPageShell.HelpContent>
             <StackPanel>
-                <ui:ThemedTextBlock SourceText="{Binding HelpTitle}"
-                                    Foreground="{DynamicResource Galapa.Part.setting-help.title.ContentBrush}"
-                                    FontFamily="{DynamicResource Galapa.Type.Control.setting-help.title.Family}"
-                                    FontSize="{DynamicResource Galapa.Type.Control.setting-help.title.Size}"
-                                    FontWeight="{DynamicResource Galapa.Type.Control.setting-help.title.Weight}"
-                                    FontStyle="{DynamicResource Galapa.Type.Control.setting-help.title.Style}"
-                                    ui:ThemedTextBlock.TextTransform="{DynamicResource Galapa.Type.Control.setting-help.title.Transform}"
+                <ui:ThemedTextBlock Classes="setting-help-title" SourceText="{Binding SelectedSetting.HelpTitle}"
                                     Margin="0,0,0,19" />
-                <TextBlock Text="{Binding HelpBody}" TextWrapping="Wrap" LineHeight="18.85"
-                           Foreground="{DynamicResource Galapa.Part.setting-help.body.ContentBrush}"
-                           FontFamily="{DynamicResource Galapa.Type.Control.setting-help.body.Family}"
-                           FontSize="{DynamicResource Galapa.Type.Control.setting-help.body.Size}"
-                           FontWeight="{DynamicResource Galapa.Type.Control.setting-help.body.Weight}"
-                           FontStyle="{DynamicResource Galapa.Type.Control.setting-help.body.Style}" />
+                <ui:ThemedTextBlock Classes="setting-help-body" SourceText="{Binding SelectedSetting.HelpBody}"
+                                    TextWrapping="Wrap" LineHeight="18.85" />
             </StackPanel>
         </local:SettingsPageShell.HelpContent>
     </local:SettingsPageShell>

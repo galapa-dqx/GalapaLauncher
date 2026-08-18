@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
@@ -24,7 +25,7 @@ internal sealed class InlineSvgDocument
 
     public static InlineSvgDocument Parse(string svg)
     {
-        var root = XDocument.Parse(svg, LoadOptions.None).Root ?? throw new InvalidDataException("SVG has no root.");
+        var root = ThemeSvgCache.Root(svg);
         var viewBox = ParseViewBox(root);
         return new InlineSvgDocument(viewBox, ParseShapes(root));
     }
@@ -32,8 +33,14 @@ internal sealed class InlineSvgDocument
     public static IReadOnlyList<SvgPaintShape> ParseShapes(XElement container)
     {
         var output = new List<SvgPaintShape>();
+        var transform = ParseTransform(container.Attribute("transform")?.Value);
+        // SVG's initial fill is black; stroke is initially none. Paint and
+        // transform declared on the root <svg> participate in inheritance too.
+        var fill = container.Attribute("fill")?.Value ?? "black";
+        var stroke = container.Attribute("stroke")?.Value;
+        var strokeWidth = Number(container.Attribute("stroke-width")?.Value, 1);
         foreach (var child in container.Elements())
-            ParseElement(child, Matrix.Identity, null, null, 1, output);
+            ParseElement(child, transform, fill, stroke, strokeWidth, output);
         return output;
     }
 
@@ -205,42 +212,63 @@ internal static class ThemeSvgValidator
                 throw new InvalidDataException("SVG path has no path data.");
         }
 
-        if (!nineSlice) return;
-        var slices = root.Descendants()
-            .Where(x => x.Name.LocalName == "svg" && Regex.IsMatch(x.Attribute("id")?.Value ?? "", @"^\d+_\d+$"))
-            .ToArray();
-        if (slices.Length == 0) throw new InvalidDataException("Nine-slice SVG has no slices.");
-        var positions = slices.Select(x => x.Attribute("id")!.Value).ToArray();
-        if (positions.Distinct(StringComparer.Ordinal).Count() != positions.Length)
-            throw new InvalidDataException("Nine-slice SVG contains duplicate slice positions.");
-        var parsed = positions.Select(id => id.Split('_').Select(int.Parse).ToArray()).ToArray();
-        var columns = parsed.Max(x => x[0]) + 1;
-        var rows = parsed.Max(x => x[1]) + 1;
-        if (columns is not (1 or 3) || rows is not (1 or 3) || slices.Length != columns * rows)
-            throw new InvalidDataException($"Unsupported nine-slice grid {columns}x{rows}.");
-        for (var column = 0; column < columns; column++)
-        for (var row = 0; row < rows; row++)
-            if (!positions.Contains($"{column}_{row}", StringComparer.Ordinal))
-                throw new InvalidDataException($"Nine-slice SVG is missing slice '{column}_{row}'.");
-        foreach (var slice in slices)
-        {
-            if (InlineSvgDocument.Number(slice.Attribute("width")?.Value, 0) <= 0 ||
-                InlineSvgDocument.Number(slice.Attribute("height")?.Value, 0) <= 0)
-                throw new InvalidDataException($"Nine-slice cell '{slice.Attribute("id")?.Value}' has an invalid size.");
-            _ = InlineSvgDocument.ParseViewBox(slice);
-            _ = NineSliceSvg.ParseAspectRatio(slice.Attribute("preserveAspectRatio")?.Value);
-            if (slice.Attribute("data-slice-repeat")?.Value is { } repeat &&
-                repeat is not ("stretch" or "repeat" or "round" or "space"))
-                throw new InvalidDataException($"Nine-slice cell '{slice.Attribute("id")?.Value}' has invalid repeat mode '{repeat}'.");
-        }
+        if (nineSlice) _ = NineSliceStructure.Parse(root);
     }
 
     private static void ValidatePaint(string? paint)
     {
-        if (string.IsNullOrWhiteSpace(paint) || paint is "none" or "currentColor") return;
+        if (string.IsNullOrWhiteSpace(paint) || paint is "none" or "currentColor" or "black" or "white") return;
         _ = ThemePaint.ParseColor(paint);
     }
 }
+
+internal sealed record NineSliceStructure(IReadOnlyList<NineSliceSourceCell> Cells, int ColumnCount, int RowCount)
+{
+    public static NineSliceStructure Parse(XElement root)
+    {
+        var elements = root.Descendants()
+            .Where(x => x.Name.LocalName == "svg" && Regex.IsMatch(x.Attribute("id")?.Value ?? "", @"^\d+_\d+$"))
+            .ToArray();
+        if (elements.Length == 0) throw new InvalidDataException("Nine-slice SVG has no slices.");
+
+        var cells = elements.Select(element =>
+        {
+            var id = element.Attribute("id")!.Value;
+            var position = id.Split('_').Select(int.Parse).ToArray();
+            var width = InlineSvgDocument.Number(element.Attribute("width")?.Value, 0);
+            var height = InlineSvgDocument.Number(element.Attribute("height")?.Value, 0);
+            if (width <= 0 || height <= 0)
+                throw new InvalidDataException($"Nine-slice cell '{id}' has an invalid size.");
+            var viewBox = element.Attribute("viewBox") is not null
+                ? InlineSvgDocument.ParseViewBox(element)
+                : new Rect(0, 0, width, height);
+            var repeat = element.Attribute("data-slice-repeat")?.Value ?? "stretch";
+            if (repeat is not ("stretch" or "repeat" or "round" or "space"))
+                throw new InvalidDataException($"Nine-slice cell '{id}' has invalid repeat mode '{repeat}'.");
+            // The .9.svg profile deliberately defaults slices to free stretching,
+            // unlike a standalone SVG's meet default. This matches the browser
+            // renderer and keeps edge/corner cells from letterboxing.
+            var aspectRatio = NineSliceSvg.ParseAspectRatio(
+                element.Attribute("preserveAspectRatio")?.Value ?? "none");
+            return new NineSliceSourceCell(element, position[0], position[1], width, height, viewBox, repeat, aspectRatio);
+        }).ToArray();
+
+        if (cells.Select(cell => (cell.Column, cell.Row)).Distinct().Count() != cells.Length)
+            throw new InvalidDataException("Nine-slice SVG contains duplicate slice positions.");
+        var columns = cells.Max(cell => cell.Column) + 1;
+        var rows = cells.Max(cell => cell.Row) + 1;
+        if (columns is not (1 or 3) || rows is not (1 or 3) || cells.Length != columns * rows)
+            throw new InvalidDataException($"Unsupported nine-slice grid {columns}x{rows}.");
+        for (var column = 0; column < columns; column++)
+        for (var row = 0; row < rows; row++)
+            if (!cells.Any(cell => cell.Column == column && cell.Row == row))
+                throw new InvalidDataException($"Nine-slice SVG is missing slice '{column}_{row}'.");
+        return new NineSliceStructure(cells, columns, rows);
+    }
+}
+
+internal sealed record NineSliceSourceCell(XElement Element, int Column, int Row, double Width, double Height,
+    Rect ViewBox, string Repeat, AspectRatioAlignment AspectRatio);
 
 internal readonly record struct SvgPaint(IBrush? Brush, bool UsesCurrentColor)
 {
@@ -250,6 +278,8 @@ internal readonly record struct SvgPaint(IBrush? Brush, bool UsesCurrentColor)
     {
         if (string.IsNullOrWhiteSpace(value) || value == "none") return default;
         if (value == "currentColor") return new SvgPaint(null, true);
+        if (value.Equals("black", StringComparison.OrdinalIgnoreCase)) return new SvgPaint(Brushes.Black, false);
+        if (value.Equals("white", StringComparison.OrdinalIgnoreCase)) return new SvgPaint(Brushes.White, false);
         if (value.StartsWith("url(", StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("SVG URL paints are not supported.");
         return new SvgPaint(ThemePaint.Brush(value), false);
@@ -283,32 +313,45 @@ internal sealed class SvgPaintShape(
 
 internal static class ThemeSvgCache
 {
-    private static readonly ConditionalWeakTable<string, InlineSvgDocument> Documents = new();
-    private static readonly ConditionalWeakTable<string, NineSliceSvg> Slices = new();
+    private static readonly ConcurrentDictionary<string, XDocument> Xml = new(StringComparer.Ordinal);
+    private static readonly ConcurrentDictionary<string, InlineSvgDocument> Documents = new(StringComparer.Ordinal);
+    private static readonly ConcurrentDictionary<string, NineSliceSvg> Slices = new(StringComparer.Ordinal);
+
+    public static XElement Root(string source) =>
+        Xml.GetOrAdd(source, static value => XDocument.Parse(value, LoadOptions.None)).Root
+        ?? throw new InvalidDataException("SVG has no root.");
 
     public static InlineSvgDocument Document(string source) =>
-        Documents.GetValue(source, static value => InlineSvgDocument.Parse(value));
+        Documents.GetOrAdd(source, static value => InlineSvgDocument.Parse(value));
 
     public static NineSliceSvg NineSlice(string source) =>
-        Slices.GetValue(source, static value => NineSliceSvg.Parse(value));
+        Slices.GetOrAdd(source, static value => NineSliceSvg.Parse(value));
 }
 
 internal static class ThemeRenderAssets
 {
+    private static readonly ConditionalWeakTable<ThemePackage, object> PreparedPackages = new();
+
+    public static bool IsPrepared(ThemePackage package) => PreparedPackages.TryGetValue(package, out _);
+
     /// <summary>
-    /// Materializes every immutable renderer asset while a package is being
-    /// admitted to the catalog. ThemePart instances then share these objects;
+    /// Materializes every immutable renderer asset before a package enters
+    /// the UI-thread resource transaction. ThemePart instances share these objects;
     /// hover, focus, and theme switching never reparse XML or path data.
     /// </summary>
     public static void Prepare(ThemePackage package)
     {
-        foreach (var control in package.Compiled.Controls.Values)
+        _ = PreparedPackages.GetValue(package, static value =>
         {
-            PrepareControl(control, control.Shape);
-            if (control.States is null) continue;
-            foreach (var state in control.States.Values)
-                PrepareControl(state, control.Shape);
-        }
+            foreach (var control in value.Compiled.Controls.Values)
+            {
+                PrepareControl(control, control.Shape);
+                if (control.States is null) continue;
+                foreach (var state in control.States.Values)
+                    PrepareControl(state, control.Shape);
+            }
+            return new object();
+        });
     }
 
     private static void PrepareControl(CompiledControl control, string? inheritedShape)
@@ -328,6 +371,10 @@ internal static class ThemeRenderAssets
 
 internal sealed class NineSliceSvg
 {
+    private Rect _lastHostBounds;
+    private IReadOnlyList<NineSliceDrawOperation>? _lastLayout;
+    private readonly double _fixedWidth;
+    private readonly double _fixedHeight;
     public IReadOnlyList<double?> Columns { get; }
     public IReadOnlyList<double?> Rows { get; }
     public Thickness ContentPadding { get; }
@@ -342,11 +389,13 @@ internal sealed class NineSliceSvg
         ContentPadding = contentPadding;
         Outset = outset;
         Cells = cells;
+        _fixedWidth = columns.Where(x => x.HasValue).Sum(x => x!.Value);
+        _fixedHeight = rows.Where(x => x.HasValue).Sum(x => x!.Value);
     }
 
     public static NineSliceSvg Parse(string svg)
     {
-        var root = XDocument.Parse(svg, LoadOptions.None).Root ?? throw new InvalidDataException("Nine-slice SVG has no root.");
+        var root = ThemeSvgCache.Root(svg);
         var rootViewBox = InlineSvgDocument.ParseViewBox(root);
         var rootWidth = InlineSvgDocument.Number(root.Attribute("width")?.Value, rootViewBox.Width);
         var rootHeight = InlineSvgDocument.Number(root.Attribute("height")?.Value, rootViewBox.Height);
@@ -355,37 +404,14 @@ internal sealed class NineSliceSvg
         if (!double.IsFinite(scale) || scale <= 0 || !double.IsFinite(verticalScale) || verticalScale <= 0 ||
             Math.Abs(scale - verticalScale) > .001)
             throw new InvalidDataException("Nine-slice SVG has an invalid root size.");
-        var sliceElements = root.Descendants().Where(x => x.Name.LocalName == "svg" && Regex.IsMatch(x.Attribute("id")?.Value ?? "", @"^\d+_\d+$")).ToArray();
-        if (sliceElements.Length == 0) throw new InvalidDataException("Nine-slice SVG has no slices.");
+        var structure = NineSliceStructure.Parse(root);
 
         var cells = new List<NineSliceCell>();
-        var columns = 0;
-        var rows = 0;
-        foreach (var element in sliceElements)
+        foreach (var source in structure.Cells)
         {
-            var position = element.Attribute("id")!.Value.Split('_').Select(int.Parse).ToArray();
-            columns = Math.Max(columns, position[0] + 1);
-            rows = Math.Max(rows, position[1] + 1);
-            var width = InlineSvgDocument.Number(element.Attribute("width")?.Value, 0);
-            var height = InlineSvgDocument.Number(element.Attribute("height")?.Value, 0);
-            var viewBox = element.Attribute("viewBox") is not null ? InlineSvgDocument.ParseViewBox(element) : new Rect(0, 0, width, height);
-            if (width <= 0 || height <= 0 || !double.IsFinite(viewBox.Width) || !double.IsFinite(viewBox.Height) ||
-                viewBox.Width <= 0 || viewBox.Height <= 0)
-                throw new InvalidDataException($"Nine-slice cell '{element.Attribute("id")?.Value}' has an invalid size.");
-            var repeat = element.Attribute("data-slice-repeat")?.Value ?? "stretch";
-            if (repeat is not ("stretch" or "repeat" or "round" or "space")) repeat = "stretch";
-            cells.Add(new NineSliceCell(position[0], position[1], width * scale, height * scale, viewBox,
-                element.Attribute("preserveAspectRatio")?.Value ?? "none", repeat,
-                InlineSvgDocument.ParseShapes(element)));
+            cells.Add(new NineSliceCell(source.Column, source.Row, source.Width * scale, source.Height * scale,
+                source.ViewBox, source.AspectRatio, source.Repeat, InlineSvgDocument.ParseShapes(source.Element)));
         }
-        if (columns is not (1 or 3) || rows is not (1 or 3) || cells.Count != columns * rows)
-            throw new InvalidDataException($"Unsupported nine-slice grid {columns}x{rows}.");
-        if (cells.Select(cell => (cell.Column, cell.Row)).Distinct().Count() != cells.Count)
-            throw new InvalidDataException("Nine-slice SVG contains duplicate slice positions.");
-        for (var column = 0; column < columns; column++)
-        for (var row = 0; row < rows; row++)
-            if (!cells.Any(cell => cell.Column == column && cell.Row == row))
-                throw new InvalidDataException($"Nine-slice SVG is missing slice '{column}_{row}'.");
 
         var frame = root.Descendants().FirstOrDefault(x => x.Attribute("id")?.Value == "frame");
         var frameRect = frame is null ? rootViewBox : ElementRect(frame);
@@ -407,22 +433,38 @@ internal sealed class NineSliceSvg
         }
 
         double?[] Track(int count, bool horizontal) => Enumerable.Range(0, count).Select(i =>
-            count == 1 || i == 1 ? (double?)null : cells.First(x => horizontal ? x.Column == i : x.Row == i) is { } cell ?
-                horizontal ? cell.Width : cell.Height : 0).ToArray();
-        return new NineSliceSvg(Track(columns, true), Track(rows, false), padding, outset, cells);
+        {
+            if (count == 1 || i == 1) return (double?)null;
+            var cell = cells.First(x => horizontal ? x.Column == i : x.Row == i);
+            return horizontal ? cell.Width : cell.Height;
+        }).ToArray();
+        return new NineSliceSvg(Track(structure.ColumnCount, true), Track(structure.RowCount, false), padding, outset, cells);
     }
 
     public void Draw(DrawingContext context, Rect hostBounds, IBrush? currentColor)
     {
+        var layout = hostBounds == _lastHostBounds && _lastLayout is not null
+            ? _lastLayout
+            : _lastLayout = BuildLayout(hostBounds);
+        _lastHostBounds = hostBounds;
+        foreach (var operation in layout)
+        {
+            using (context.PushClip(operation.Clip))
+                DrawCell(context, operation.Cell, operation.Destination, currentColor, operation.PreserveAspectRatio);
+        }
+    }
+
+    private IReadOnlyList<NineSliceDrawOperation> BuildLayout(Rect hostBounds)
+    {
         var painted = new Rect(hostBounds.X - Outset.Left, hostBounds.Y - Outset.Top,
             hostBounds.Width + Outset.Left + Outset.Right, hostBounds.Height + Outset.Top + Outset.Bottom);
-        var capX = Columns.Where(x => x.HasValue).Sum(x => x!.Value);
-        var capY = Rows.Where(x => x.HasValue).Sum(x => x!.Value);
-        var factor = Math.Min(1, Math.Min(capX > 0 ? painted.Width / capX : 1, capY > 0 ? painted.Height / capY : 1));
+        var factor = Math.Min(1, Math.Min(_fixedWidth > 0 ? painted.Width / _fixedWidth : 1,
+            _fixedHeight > 0 ? painted.Height / _fixedHeight : 1));
         var widths = Tracks(Columns, painted.Width, factor);
         var heights = Tracks(Rows, painted.Height, factor);
         var xs = Positions(painted.X, widths);
         var ys = Positions(painted.Y, heights);
+        var operations = new List<NineSliceDrawOperation>();
 
         foreach (var cell in Cells)
         {
@@ -434,15 +476,15 @@ internal sealed class NineSliceSvg
             {
                 var horizontal = TileSegments(destination.X, destination.Width, tileX ? cell.Width * factor : destination.Width, tileX ? cell.Repeat : "stretch");
                 var vertical = TileSegments(destination.Y, destination.Height, tileY ? cell.Height * factor : destination.Height, tileY ? cell.Repeat : "stretch");
-                using (context.PushClip(destination))
-                    foreach (var x in horizontal)
-                    foreach (var y in vertical)
-                        DrawCell(context, cell, new Rect(x.Start, y.Start, x.Length, y.Length), currentColor, preserveAspectRatio: false);
+                foreach (var x in horizontal)
+                foreach (var y in vertical)
+                    operations.Add(new NineSliceDrawOperation(cell, destination,
+                        new Rect(x.Start, y.Start, x.Length, y.Length), false));
                 continue;
             }
-            using (context.PushClip(destination))
-                DrawCell(context, cell, destination, currentColor, preserveAspectRatio: true);
+            operations.Add(new NineSliceDrawOperation(cell, destination, destination, true));
         }
+        return operations;
     }
 
     private static void DrawCell(DrawingContext context, NineSliceCell cell, Rect destination,
@@ -453,7 +495,7 @@ internal sealed class NineSliceSvg
             return;
         var sx = destination.Width / cell.ViewBox.Width;
         var sy = destination.Height / cell.ViewBox.Height;
-        var alignment = ParseAspectRatio(cell.PreserveAspectRatio);
+        var alignment = cell.AspectRatio;
         if (preserveAspectRatio && !alignment.None)
         {
             var scale = alignment.Slice ? Math.Max(sx, sy) : Math.Min(sx, sy);
@@ -537,6 +579,7 @@ internal sealed class NineSliceSvg
 }
 
 internal sealed record NineSliceCell(int Column, int Row, double Width, double Height, Rect ViewBox,
-    string PreserveAspectRatio, string Repeat, IReadOnlyList<SvgPaintShape> Shapes);
+    AspectRatioAlignment AspectRatio, string Repeat, IReadOnlyList<SvgPaintShape> Shapes);
+internal sealed record NineSliceDrawOperation(NineSliceCell Cell, Rect Clip, Rect Destination, bool PreserveAspectRatio);
 internal readonly record struct TileSegment(double Start, double Length);
 internal readonly record struct AspectRatioAlignment(bool None, bool Slice, double X, double Y);

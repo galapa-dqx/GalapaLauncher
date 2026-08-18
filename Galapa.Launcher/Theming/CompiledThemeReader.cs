@@ -78,11 +78,11 @@ public sealed class CompiledThemeReader
         if (theme.Controls is null)
             throw new ThemePackageException("Compiled theme controls are required.");
 
-        foreach (var id in CompiledThemeContract.ControlIds)
+        foreach (var id in CompiledThemeContract.Controls.Keys)
             if (!theme.Controls.ContainsKey(id))
                 throw new ThemePackageException($"Compiled theme is missing control '{id}'.");
         foreach (var id in theme.Controls.Keys)
-            if (!CompiledThemeContract.ControlIds.Contains(id, StringComparer.Ordinal))
+            if (!CompiledThemeContract.Controls.ContainsKey(id))
                 throw new ThemePackageException($"Compiled theme contains unknown control '{id}'.");
 
         foreach (var (id, control) in theme.Controls)
@@ -146,8 +146,7 @@ public sealed class CompiledThemeReader
 
     private static void ValidateStateFields(string id, string? parentShape, string state, CompiledControl value)
     {
-        static bool Has(JsonElement element) => element.ValueKind is not (JsonValueKind.Undefined or JsonValueKind.Null);
-        if (value.Shape is not null || Has(value.Radius) || value.Corner is not null || Has(value.Padding) ||
+        if (value.Shape is not null || ThemeMetrics.HasValue(value.Radius) || value.Corner is not null || ThemeMetrics.HasValue(value.Padding) ||
             value.Text is not null || value.Size is not null || value.LeftInset is not null ||
             value.Images is not null || value.States is not null || value.Art is not null && parentShape != "Asset")
             throw new ThemePackageException($"Control '{id}' state '{state}' declares fields that states cannot override.");
@@ -160,6 +159,7 @@ public sealed class CompiledThemeReader
             text.Weight is { } weight && weight is < 1 or > 1000 ||
             text.Style is not null and not ("normal" or "italic" or "oblique") ||
             text.Size is { } size && !Finite(size, 1, 256) ||
+            text.LetterSpacing is { } spacing && !Finite(spacing, -32, 128) ||
             text.Case is not null and not ("uppercase" or "lowercase" or "capitalize" or "none"))
             throw new ThemePackageException($"Control '{id}' contains invalid typography.");
     }
@@ -167,11 +167,10 @@ public sealed class CompiledThemeReader
     private static void ValidateSvg(string svg, string label, bool nineSlice)
     {
         if (svg.Length > 2_000_000) throw new ThemePackageException($"SVG '{label}' is too large.");
-        XDocument document;
-        try { document = XDocument.Parse(svg, LoadOptions.None); }
+        XElement root;
+        try { root = ThemeSvgCache.Root(svg); }
         catch (Exception ex) { throw new ThemePackageException($"SVG '{label}' is malformed: {ex.Message}"); }
-        var root = document.Root;
-        if (root?.Name.LocalName != "svg") throw new ThemePackageException($"'{label}' is not an SVG document.");
+        if (root.Name.LocalName != "svg") throw new ThemePackageException($"'{label}' is not an SVG document.");
         foreach (var element in root.DescendantsAndSelf())
         {
             if (element.Name.LocalName is "script" or "foreignObject")
@@ -206,7 +205,7 @@ public sealed class CompiledThemeReader
 
     private static void ValidateEdges(JsonElement value, string label, double min, double max)
     {
-        if (value.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null) return;
+        if (!ThemeMetrics.HasValue(value)) return;
         double[] edges;
         try { edges = ThemeMetrics.ReadEdges(value); }
         catch (Exception ex) { throw new ThemePackageException($"'{label}' is invalid: {ex.Message}"); }
@@ -215,7 +214,7 @@ public sealed class CompiledThemeReader
 
     private static void ValidateRadius(JsonElement radius, string id)
     {
-        if (radius.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null) return;
+        if (!ThemeMetrics.HasValue(radius)) return;
         if (radius.ValueKind == JsonValueKind.String && radius.GetString() == "pill") return;
         if (radius.ValueKind != JsonValueKind.Number || !Finite(radius.GetDouble(), 0, 4096))
             throw new ThemePackageException($"Control '{id}' has invalid radius.");
@@ -236,19 +235,18 @@ public sealed class CompiledThemeReader
 
     private static void ValidateFieldsForShape(string id, CompiledControl control)
     {
-        static bool Has(JsonElement value) => value.ValueKind is not (JsonValueKind.Undefined or JsonValueKind.Null);
         var invalid = control.Shape switch
         {
-            "Window" => Has(control.BorderThickness) || Has(control.Radius) || control.Corner is not null ||
-                        Has(control.Padding) || control.Opacity is not null || control.Text is not null ||
+            "Window" => ThemeMetrics.HasValue(control.BorderThickness) || ThemeMetrics.HasValue(control.Radius) || control.Corner is not null ||
+                        ThemeMetrics.HasValue(control.Padding) || control.Opacity is not null || control.Text is not null ||
                         control.Size is not null || control.Image is not null || control.Art is not null ||
                         control.LeftInset is not null || control.Images is not null || control.States is not null,
-            "Text" => control.Fill is not null || Has(control.BorderThickness) || Has(control.Radius) ||
-                      control.Corner is not null || Has(control.Padding) || control.Opacity is not null ||
+            "Text" => control.Fill is not null || ThemeMetrics.HasValue(control.BorderThickness) || ThemeMetrics.HasValue(control.Radius) ||
+                      control.Corner is not null || ThemeMetrics.HasValue(control.Padding) || control.Opacity is not null ||
                       control.Size is not null || control.Image is not null || control.Art is not null ||
                       control.States is not null,
-            "Asset" => control.Fill is not null || control.BorderColor is not null || Has(control.BorderThickness) ||
-                       Has(control.Radius) || control.Corner is not null || Has(control.Padding) ||
+            "Asset" => control.Fill is not null || control.BorderColor is not null || ThemeMetrics.HasValue(control.BorderThickness) ||
+                       ThemeMetrics.HasValue(control.Radius) || control.Corner is not null || ThemeMetrics.HasValue(control.Padding) ||
                        control.Image is not null || control.LeftInset is not null || control.Images is not null,
             "Path" => control.Art is not null || control.LeftInset is not null || control.Images is not null,
             _ => true
@@ -260,9 +258,12 @@ public sealed class CompiledThemeReader
 
 public static class ThemeMetrics
 {
+    public static bool HasValue(JsonElement value) =>
+        value.ValueKind is not (JsonValueKind.Undefined or JsonValueKind.Null);
+
     public static double[] ReadEdges(JsonElement value, double fallback = 0)
     {
-        if (value.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null) return [fallback, fallback, fallback, fallback];
+        if (!HasValue(value)) return [fallback, fallback, fallback, fallback];
         if (value.ValueKind == JsonValueKind.Number)
         {
             var number = value.GetDouble();
@@ -312,7 +313,7 @@ public static class ThemePaint
     public static Color ParseColor(string value)
     {
         if (value.Equals("transparent", StringComparison.OrdinalIgnoreCase)) return Colors.Transparent;
-        if (value.StartsWith('#') && Color.TryParse(value, out var color)) return color;
+        if (value.StartsWith('#')) return ParseCssHex(value);
         var match = System.Text.RegularExpressions.Regex.Match(value,
             @"^rgba?\(\s*(\d+(?:\.\d+)?)\s*[, ]\s*(\d+(?:\.\d+)?)\s*[, ]\s*(\d+(?:\.\d+)?)(?:\s*[,/]\s*(\d*\.?\d+))?\s*\)$",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
@@ -331,6 +332,29 @@ public static class ThemePaint
             byte.CreateChecked(Math.Round(red, MidpointRounding.AwayFromZero)),
             byte.CreateChecked(Math.Round(green, MidpointRounding.AwayFromZero)),
             byte.CreateChecked(Math.Round(blue, MidpointRounding.AwayFromZero)));
+    }
+
+    private static Color ParseCssHex(string value)
+    {
+        static byte Nibble(char value) => value switch
+        {
+            >= '0' and <= '9' => (byte)(value - '0'),
+            >= 'a' and <= 'f' => (byte)(value - 'a' + 10),
+            >= 'A' and <= 'F' => (byte)(value - 'A' + 10),
+            _ => throw new FormatException("Invalid hexadecimal color component.")
+        };
+
+        static byte Pair(ReadOnlySpan<char> value) => (byte)((Nibble(value[0]) << 4) | Nibble(value[1]));
+
+        var hex = value.AsSpan(1);
+        return hex.Length switch
+        {
+            3 => Color.FromArgb(255, (byte)(Nibble(hex[0]) * 17), (byte)(Nibble(hex[1]) * 17), (byte)(Nibble(hex[2]) * 17)),
+            4 => Color.FromArgb((byte)(Nibble(hex[3]) * 17), (byte)(Nibble(hex[0]) * 17), (byte)(Nibble(hex[1]) * 17), (byte)(Nibble(hex[2]) * 17)),
+            6 => Color.FromArgb(255, Pair(hex[..2]), Pair(hex.Slice(2, 2)), Pair(hex.Slice(4, 2))),
+            8 => Color.FromArgb(Pair(hex.Slice(6, 2)), Pair(hex[..2]), Pair(hex.Slice(2, 2)), Pair(hex.Slice(4, 2))),
+            _ => throw new FormatException($"Invalid CSS hexadecimal color: {value}")
+        };
     }
 
     public static IBrush? Brush(string? value, IBrush? inherited = null) => value switch

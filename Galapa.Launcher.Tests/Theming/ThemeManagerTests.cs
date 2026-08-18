@@ -52,6 +52,7 @@ public sealed class ThemeManagerTests(SkiaHeadlessFixture skia) : IDisposable
                 Assert.Same(estella.Compiled.Controls["panel"], estellaDictionary["Galapa.Part.panel"]);
                 Assert.Equal(20, Assert.IsType<double>(estellaDictionary["Galapa.Type.brand.Size"]));
                 Assert.Equal(16, Assert.IsType<double>(estellaDictionary["Galapa.Type.button.Size"]));
+                Assert.Equal(0.3, Assert.IsType<double>(estellaDictionary["Galapa.Type.navigation.LetterSpacing"]));
                 Assert.IsAssignableFrom<IBrush>(estellaDictionary["Galapa.Part.button.ContentBrush"]);
                 Assert.Equal("estella", Settings.Load().ThemeId);
                 Assert.Equal(ThemeVariant.Light, app.RequestedThemeVariant);
@@ -85,9 +86,14 @@ public sealed class ThemeManagerTests(SkiaHeadlessFixture skia) : IDisposable
 
     private sealed class TestCatalog(params ThemePackage[] themes) : IThemeCatalog
     {
+        public event EventHandler? ThemesChanged
+        {
+            add { }
+            remove { }
+        }
         public IReadOnlyList<ThemePackage> Themes { get; } = themes;
         public ThemePackage? Find(string id) => Themes.FirstOrDefault(theme => theme.Manifest.Id == id);
-        public Task LoadAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
-        public void PrepareRenderAssets() { }
+        public Task LoadInitialAsync(string preferredThemeId, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task LoadRemainingAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 }

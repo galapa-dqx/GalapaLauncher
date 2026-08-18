@@ -18,6 +18,18 @@ public sealed class CompiledThemeReaderTests : IDisposable
 
     public void Dispose() => _temp.Dispose();
 
+    [Theory]
+    [InlineData("#11223344", 0x11, 0x22, 0x33, 0x44)]
+    [InlineData("#1234", 0x11, 0x22, 0x33, 0x44)]
+    public void CssHexAlphaIsRgbaRatherThanAvaloniaArgb(string source, byte red, byte green, byte blue, byte alpha)
+    {
+        var color = ThemePaint.ParseColor(source);
+        Assert.Equal(red, color.R);
+        Assert.Equal(green, color.G);
+        Assert.Equal(blue, color.B);
+        Assert.Equal(alpha, color.A);
+    }
+
     [Fact]
     public async Task CompiledBuiltIns_MatchRendererContract()
     {
@@ -36,8 +48,8 @@ public sealed class CompiledThemeReaderTests : IDisposable
         Assert.All(packages, package =>
         {
             var compiled = Assert.IsType<CompiledTheme>(package.Compiled);
-            Assert.Equal(CompiledThemeContract.ControlIds.Length, compiled.Controls.Count);
-            Assert.All(CompiledThemeContract.ControlIds, id => Assert.True(compiled.Controls.ContainsKey(id), id));
+            Assert.Equal(CompiledThemeContract.Controls.Count, compiled.Controls.Count);
+            Assert.All(CompiledThemeContract.Controls.Keys, id => Assert.True(compiled.Controls.ContainsKey(id), id));
 
         });
 
@@ -52,6 +64,12 @@ public sealed class CompiledThemeReaderTests : IDisposable
 
         var kyururu = packages.Single(x => x.Manifest.Id == "kyururu").Compiled!;
         Assert.NotNull(kyururu.Controls["play-ornament"].Image);
+        Assert.Equal(-0.2, kyururu.Controls["titlebar.wordmark"].Text!.LetterSpacing);
+
+        var estella = packages.Single(x => x.Manifest.Id == "estella").Compiled!;
+        Assert.Equal(0.3, estella.Controls["tab"].Text!.LetterSpacing);
+        var duston = packages.Single(x => x.Manifest.Id == "duston").Compiled!;
+        Assert.Equal(0.8, duston.Controls["input.label"].Text!.LetterSpacing);
     }
 
     [Fact]

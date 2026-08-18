@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
+using Galapa.Launcher.Theming;
 
 namespace Galapa.Launcher.Views.Controls;
 
@@ -16,19 +17,33 @@ public sealed class NewsGem : Control
         AvaloniaProperty.Register<NewsGem, IBrush?>(nameof(Fill));
     public static readonly StyledProperty<IBrush?> StrokeProperty =
         AvaloniaProperty.Register<NewsGem, IBrush?>(nameof(Stroke));
+    public static readonly StyledProperty<IBrush?> CurrentColorProperty =
+        AvaloniaProperty.Register<NewsGem, IBrush?>(nameof(CurrentColor));
+    public static readonly StyledProperty<CompiledControl?> PartStyleProperty =
+        AvaloniaProperty.Register<NewsGem, CompiledControl?>(nameof(PartStyle));
 
     public string Category { get => GetValue(CategoryProperty); set => SetValue(CategoryProperty, value); }
     public IBrush? Fill { get => GetValue(FillProperty); set => SetValue(FillProperty, value); }
     public IBrush? Stroke { get => GetValue(StrokeProperty); set => SetValue(StrokeProperty, value); }
+    public IBrush? CurrentColor { get => GetValue(CurrentColorProperty); set => SetValue(CurrentColorProperty, value); }
+    public CompiledControl? PartStyle { get => GetValue(PartStyleProperty); set => SetValue(PartStyleProperty, value); }
 
-    static NewsGem() => AffectsRender<NewsGem>(CategoryProperty, FillProperty, StrokeProperty);
+    static NewsGem() => AffectsRender<NewsGem>(CategoryProperty, FillProperty, StrokeProperty,
+        CurrentColorProperty, PartStyleProperty);
 
     protected override Size MeasureOverride(Size availableSize) => new(11, 14);
 
     public override void Render(DrawingContext context)
     {
         base.Render(context);
-        var pen = Stroke is null ? null : new Pen(Stroke, 1);
+        if (PartStyle?.Images?.TryGetValue(Category, out var svg) == true)
+        {
+            ThemeSvgCache.Document(svg).Draw(context, new Rect(Bounds.Size), CurrentColor ?? Fill);
+            return;
+        }
+
+        var themedStroke = ThemePaint.Brush(PartStyle?.BorderColor) ?? Stroke;
+        var pen = themedStroke is null ? null : new Pen(themedStroke);
         switch (Category)
         {
             case "events":

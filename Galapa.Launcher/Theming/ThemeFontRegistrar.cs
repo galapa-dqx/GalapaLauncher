@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Avalonia.Media;
 using Avalonia.Media.Fonts;
 
@@ -5,38 +6,32 @@ namespace Galapa.Launcher.Theming;
 
 public static class ThemeFontRegistrar
 {
-    private static readonly Dictionary<string, IFontCollection> Collections = new(StringComparer.Ordinal);
-    private static bool _registered;
+    // FontManager.Current belongs to the active Avalonia application. Keeping a
+    // process-wide theme-id map can therefore claim a collection is registered
+    // after a headless/test application (or future application host) replaces
+    // the manager that actually owned it.
+    private static readonly ConditionalWeakTable<FontManager, HashSet<string>> Collections = new();
+    private static readonly object Sync = new();
 
-    public static void RegisterBuiltIns()
+    public static void EnsureRegistered(string themeId)
     {
-        if (_registered)
-            return;
-
-        var themeDirectory = Path.Combine(AppContext.BaseDirectory, "Assets", "Themes");
-        IEnumerable<string> ids = Directory.Exists(themeDirectory)
-            ? Directory.EnumerateFiles(themeDirectory, "*.compiled.json")
-                .Select(path => Path.GetFileName(path)[..^".compiled.json".Length])
-                .Append(Galapa.Core.Configuration.Settings.DefaultThemeId)
-                .Distinct(StringComparer.Ordinal)
-                .OrderBy(id => id, StringComparer.Ordinal)
-            : [Galapa.Core.Configuration.Settings.DefaultThemeId];
-
-        foreach (var id in ids)
+        lock (Sync)
         {
+            var manager = FontManager.Current;
+            var collections = Collections.GetValue(manager,
+                _ => new HashSet<string>(StringComparer.Ordinal));
+            if (collections.Contains(themeId)) return;
             var collection = new EmbeddedFontCollection(
-                new Uri($"fonts:{id}", UriKind.Absolute),
-                new Uri($"avares://Galapa.Launcher/Assets/ThemeSources/{id}/fonts", UriKind.Absolute));
-            FontManager.Current.AddFontCollection(collection);
-            Collections.Add(id, collection);
+                ThemeLocations.FontCollectionUri(themeId),
+                ThemeLocations.BuiltInFontAssetsUri(themeId));
+            manager.AddFontCollection(collection);
+            collections.Add(themeId);
         }
-        _registered = true;
     }
 
     public static void Validate(ThemePackage package)
     {
-        if (!Collections.TryGetValue(package.Manifest.Id, out var collection))
-            throw new ThemePackageException($"Theme '{package.Manifest.Id}' has no independent font collection.");
+        EnsureRegistered(package.Manifest.Id);
 
         var requests = package.Compiled.Controls.Values
             .Select(control => control.Text)
@@ -51,11 +46,16 @@ public static class ThemeFontRegistrar
 
         foreach (var request in requests)
         {
-            if (!collection.TryGetGlyphTypeface(request.Family, request.Style, request.Weight,
-                    FontStretch.Normal, out var typeface))
+            // Validate through the same URI-qualified Typeface the controls use.
+            // Querying the collection directly can succeed while a bad manager
+            // registration/key remains invisible to Avalonia's text formatter.
+            var typeface = new Typeface(
+                new FontFamily(ThemeLocations.FontFamilyName(package.Manifest.Id, request.Family)),
+                request.Style,
+                request.Weight);
+            if (!FontManager.Current.TryGetGlyphTypeface(typeface, out _))
                 throw new ThemePackageException(
                     $"Theme '{package.Manifest.Id}' does not bundle font family '{request.Family}'.");
-            typeface.Dispose();
         }
     }
 }

@@ -10,7 +10,19 @@ namespace Galapa.Launcher.ViewModels.SettingsFrame;
 public partial class GameSettingsPageViewModel(Settings settings) : SettingsFramePageViewModel
 {
     [ObservableProperty] private Settings _settings = settings;
+    [ObservableProperty] private string? _saveError;
 
     [RelayCommand]
-    private void Save() => Settings.Save();
+    private void Save()
+    {
+        try
+        {
+            Settings.Save();
+            SaveError = null;
+        }
+        catch (Exception ex)
+        {
+            SaveError = $"Galapa could not save the folder settings: {ex.Message}";
+        }
+    }
 }

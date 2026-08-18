@@ -1,3 +1,5 @@
+using System.Collections.ObjectModel;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Galapa.Core.Configuration;
@@ -24,18 +26,11 @@ public partial class GeneralSettingsPageViewModel : SettingsFramePageViewModel
     {
         _settings = settings;
         _themeManager = themeManager;
-        var selectedId = catalog.Find(settings.ThemeId) is not null
-            ? settings.ThemeId
-            : themeManager.ActiveTheme?.Manifest.Id;
-        Themes = catalog.Themes.Select(x => new ThemeChoice(
-            x.Manifest.Id,
-            x.Manifest.DisplayName,
-            x.Manifest.Author,
-            x.Manifest.BaseVariant,
-            string.Equals(x.Manifest.Id, selectedId, StringComparison.OrdinalIgnoreCase))).ToList();
+        SyncThemes(catalog);
+        catalog.ThemesChanged += (_, _) => Dispatcher.UIThread.Post(() => SyncThemes(catalog));
     }
 
-    public IReadOnlyList<ThemeChoice> Themes { get; }
+    public ObservableCollection<ThemeChoice> Themes { get; } = [];
 
     [RelayCommand]
     private async Task SelectTheme(ThemeChoice theme)
@@ -46,5 +41,25 @@ public partial class GeneralSettingsPageViewModel : SettingsFramePageViewModel
             ThemeError = null;
         }
         else ThemeError = $"Could not apply {theme.Name}. The current theme was kept.";
+    }
+
+    private void SyncThemes(IThemeCatalog catalog)
+    {
+        var selectedId = _themeManager.ActiveTheme?.Manifest.Id ?? Settings.ThemeId;
+        var existing = Themes.ToDictionary(theme => theme.Id, StringComparer.Ordinal);
+        foreach (var package in catalog.Themes)
+        {
+            if (existing.TryGetValue(package.Manifest.Id, out var choice))
+            {
+                choice.IsActive = string.Equals(package.Manifest.Id, selectedId, StringComparison.OrdinalIgnoreCase);
+                continue;
+            }
+            Themes.Add(new ThemeChoice(
+                package.Manifest.Id,
+                package.Manifest.DisplayName,
+                package.Manifest.Author,
+                package.Manifest.BaseVariant,
+                string.Equals(package.Manifest.Id, selectedId, StringComparison.OrdinalIgnoreCase)));
+        }
     }
 }

@@ -16,6 +16,7 @@ public sealed class TabRenderingTests(SkiaHeadlessFixture skia)
         Assert.Equal(32, result.UnderlineBounds.Y);
         Assert.Equal(Color.Parse("#22AA78"), result.ItemBorderColor);
         Assert.Equal(Color.Parse("#22AA78"), result.UnderlineColor);
+        Assert.Equal(Color.Parse("#22AA78"), result.LabelColor);
 
         using var bitmap = SKBitmap.Decode(result.Png);
         var underline = new SKColor(0x22, 0xAA, 0x78);

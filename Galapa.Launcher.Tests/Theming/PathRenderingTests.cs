@@ -131,6 +131,22 @@ public sealed class PathRenderingTests(SkiaHeadlessFixture skia)
         Assert.Single(fingerprints);
     }
 
+    [Fact]
+    public async Task NonUniformBorderStripsAreClippedToTheCornerGeometry()
+    {
+        var style = PathStyle("round", 8) with
+        {
+            BorderThickness = JsonSerializer.SerializeToElement(new[] { 2, 4, 3, 5 })
+        };
+        using var bitmap = Decode(await skia.RenderPathAsync(style, 36, 28), "non-uniform border");
+        var origin = SkiaHeadlessFixture.FixtureOutset;
+
+        Assert.Equal(SKColor.Parse(SkiaHeadlessFixture.FixtureBackground), bitmap.GetPixel(origin, origin));
+        Assert.Equal(SKColor.Parse("#F6D55C"), bitmap.GetPixel(origin + 18, origin + 1));
+        Assert.Equal(SKColor.Parse("#F6D55C"), bitmap.GetPixel(origin + 2, origin + 14));
+        Assert.Equal(SKColor.Parse("#56B4E9"), bitmap.GetPixel(origin + 18, origin + 14));
+    }
+
     private static CompiledControl PathStyle(string corner, double radius) => new()
     {
         Shape = "Path",

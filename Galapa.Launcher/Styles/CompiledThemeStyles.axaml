@@ -6,6 +6,12 @@
     <Styles.Resources>
         <x:Double x:Key="Galapa.TitleBarHeight">34</x:Double>
     </Styles.Resources>
+    <Style Selector="local|ThemeFocusRing">
+        <Setter Property="IsHitTestVisible" Value="False" />
+        <Setter Property="Margin" Value="{DynamicResource Galapa.Focus.Margin}" />
+        <Setter Property="BorderThickness" Value="{DynamicResource Galapa.Focus.Width}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
     <!-- Only app buttons opt into this template. Windows caption buttons keep
          Avalonia's native-style managed template and hit-test behavior. -->
     <Style Selector="Button.themed">
@@ -29,16 +35,16 @@
                                           HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
                                           VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
                     </local:ThemePart>
-                    <Border Name="PART_FocusRing" IsHitTestVisible="False"
-                            Margin="{DynamicResource Galapa.Focus.Margin}"
-                            BorderThickness="{DynamicResource Galapa.Focus.Width}"
-                            BorderBrush="Transparent" />
+                    <local:ThemeFocusRing Name="PART_FocusRing" />
                 </Grid>
             </ControlTemplate>
         </Setter>
     </Style>
     <Style Selector="Button.themed TextBlock">
         <Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+    </Style>
+    <Style Selector="Button.themed TextBlock.muted">
+        <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.setting-help.body.ContentBrush}" />
     </Style>
     <Style Selector="Button.themed.label">
         <Setter Property="ContentTemplate">
@@ -48,6 +54,7 @@
                                     FontSize="{DynamicResource Galapa.Type.Control.button.Size}"
                                     FontWeight="{DynamicResource Galapa.Type.Control.button.Weight}"
                                     FontStyle="{DynamicResource Galapa.Type.Control.button.Style}"
+                                    LetterSpacing="{DynamicResource Galapa.Type.Control.button.LetterSpacing}"
                                     ui:ThemedTextBlock.TextTransform="{DynamicResource Galapa.Type.Control.button.Transform}" />
             </DataTemplate>
         </Setter>
@@ -61,7 +68,7 @@
     <Style Selector="Button.themed:disabled /template/ local|ThemePart#PART_ThemeFrame">
         <Setter Property="State" Value="Disabled" />
     </Style>
-    <Style Selector="Button.themed:focus-visible /template/ Border#PART_FocusRing">
+    <Style Selector="Button.themed:focus-visible /template/ local|ThemeFocusRing#PART_FocusRing">
         <Setter Property="BorderBrush" Value="{DynamicResource Galapa.Focus.Brush}" />
     </Style>
     <Style Selector="Button.themed.setting-row /template/ local|ThemePart#PART_ThemeFrame">
@@ -70,6 +77,7 @@
     </Style>
     <Style Selector="Button.themed.setting-row">
         <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.setting-row.ContentBrush}" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
     </Style>
     <Style Selector="Button.themed.setting-row.active /template/ local|ThemePart#PART_ThemeFrame">
@@ -78,11 +86,11 @@
     <Style Selector="Button.themed.setting-row.active">
         <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.setting-row.selected.ContentBrush}" />
     </Style>
-    <Style Selector="Button.themed.chrome /template/ local|ThemePart#PART_ThemeFrame">
+    <Style Selector="Button.themed.carousel-nav /template/ local|ThemePart#PART_ThemeFrame">
         <Setter Property="PartStyle" Value="{DynamicResource Galapa.Part.carousel.nav}" />
         <Setter Property="FallbackPadding" Value="0" />
     </Style>
-    <Style Selector="Button.themed.chrome">
+    <Style Selector="Button.themed.carousel-nav">
         <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.carousel.nav.ContentBrush}" />
         <Setter Property="MinWidth" Value="0" />
         <Setter Property="MinHeight" Value="0" />
@@ -110,10 +118,7 @@
                             Background="{TemplateBinding BorderBrush}"
                             VerticalAlignment="Bottom" ZIndex="10"
                             IsHitTestVisible="False" />
-                    <Border Name="PART_FocusRing" IsHitTestVisible="False"
-                            Margin="{DynamicResource Galapa.Focus.Margin}"
-                            BorderThickness="{DynamicResource Galapa.Focus.Width}"
-                            BorderBrush="Transparent" />
+                    <local:ThemeFocusRing Name="PART_FocusRing" />
                 </Grid>
             </ControlTemplate>
         </Setter>
@@ -128,7 +133,10 @@
         <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.tab.selected.ContentBrush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource Galapa.Part.tab.selected.BorderBrush}" />
     </Style>
-    <Style Selector="TabStripItem:focus-visible /template/ Border#PART_FocusRing">
+    <Style Selector="TabStripItem:selected ui|ThemedTextBlock.navigation">
+        <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.tab.selected.ContentBrush}" />
+    </Style>
+    <Style Selector="TabStripItem:focus-visible /template/ local|ThemeFocusRing#PART_FocusRing">
         <Setter Property="BorderBrush" Value="{DynamicResource Galapa.Focus.Brush}" />
     </Style>
     <Style Selector="TabStrip.top-tabs TabStripItem">
@@ -148,12 +156,32 @@
         <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
 
-    <Style Selector="TextBlock.input-error">
+    <Style Selector="ui|ThemedTextBlock.input-error">
         <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.input.error.ContentBrush}" />
         <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.Control.input.error.Family}" />
         <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.Control.input.error.Size}" />
         <Setter Property="FontWeight" Value="{DynamicResource Galapa.Type.Control.input.error.Weight}" />
         <Setter Property="FontStyle" Value="{DynamicResource Galapa.Type.Control.input.error.Style}" />
+        <Setter Property="LetterSpacing" Value="{DynamicResource Galapa.Type.Control.input.error.LetterSpacing}" />
+        <Setter Property="ui:ThemedTextBlock.TextTransform" Value="{DynamicResource Galapa.Type.Control.input.error.Transform}" />
+    </Style>
+    <Style Selector="ui|ThemedTextBlock.setting-help-title">
+        <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.setting-help.title.ContentBrush}" />
+        <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.Control.setting-help.title.Family}" />
+        <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.Control.setting-help.title.Size}" />
+        <Setter Property="FontWeight" Value="{DynamicResource Galapa.Type.Control.setting-help.title.Weight}" />
+        <Setter Property="FontStyle" Value="{DynamicResource Galapa.Type.Control.setting-help.title.Style}" />
+        <Setter Property="LetterSpacing" Value="{DynamicResource Galapa.Type.Control.setting-help.title.LetterSpacing}" />
+        <Setter Property="ui:ThemedTextBlock.TextTransform" Value="{DynamicResource Galapa.Type.Control.setting-help.title.Transform}" />
+    </Style>
+    <Style Selector="ui|ThemedTextBlock.setting-help-body">
+        <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.setting-help.body.ContentBrush}" />
+        <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.Control.setting-help.body.Family}" />
+        <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.Control.setting-help.body.Size}" />
+        <Setter Property="FontWeight" Value="{DynamicResource Galapa.Type.Control.setting-help.body.Weight}" />
+        <Setter Property="FontStyle" Value="{DynamicResource Galapa.Type.Control.setting-help.body.Style}" />
+        <Setter Property="LetterSpacing" Value="{DynamicResource Galapa.Type.Control.setting-help.body.LetterSpacing}" />
+        <Setter Property="ui:ThemedTextBlock.TextTransform" Value="{DynamicResource Galapa.Type.Control.setting-help.body.Transform}" />
     </Style>
 
     <Style Selector="ProgressBar">
@@ -175,37 +203,35 @@
                 <Grid>
                     <local:ThemePart Name="PART_SwitchTrack"
                                      PartStyle="{DynamicResource Galapa.Part.switch.track}"
-                                     FallbackPadding="2">
-                        <local:ThemePart Name="PART_SwitchThumb"
+                                     FallbackPadding="2"
+                                     HorizontalContentAlignment="Stretch"
+                                     VerticalContentAlignment="Center">
+                        <local:SwitchThumbPart Name="PART_SwitchThumb"
                                          PartStyle="{DynamicResource Galapa.Part.switch.thumb}"
-                                         Width="{DynamicResource Galapa.Metric.switch.InnerWidth}"
                                          Height="{DynamicResource Galapa.Metric.switch.thumb.Height}"
                                          VisualWidth="{DynamicResource Galapa.Metric.switch.thumb.Width}"
                                          VisualHeight="{DynamicResource Galapa.Metric.switch.thumb.Height}"
-                                         HorizontalAlignment="Left" VerticalAlignment="Center">
-                            <local:ThemePart.Transitions>
+                                         HorizontalAlignment="Stretch" VerticalAlignment="Center">
+                            <local:SwitchThumbPart.Transitions>
                                 <Transitions>
-                                    <DoubleTransition Property="AnimatedOffset" Duration="0:0:0.15" />
+                                    <DoubleTransition Property="Position" Duration="0:0:0.15" />
                                 </Transitions>
-                            </local:ThemePart.Transitions>
-                        </local:ThemePart>
+                            </local:SwitchThumbPart.Transitions>
+                        </local:SwitchThumbPart>
                     </local:ThemePart>
-                    <Border Name="PART_FocusRing" IsHitTestVisible="False"
-                            Margin="{DynamicResource Galapa.Focus.Margin}"
-                            BorderThickness="{DynamicResource Galapa.Focus.Width}"
-                            BorderBrush="Transparent" />
+                    <local:ThemeFocusRing Name="PART_FocusRing" />
                 </Grid>
             </ControlTemplate>
         </Setter>
     </Style>
-    <Style Selector="ToggleButton.themed-switch:checked /template/ local|ThemePart#PART_SwitchThumb">
-        <Setter Property="AnimatedOffset" Value="{DynamicResource Galapa.Metric.switch.Travel}" />
+    <Style Selector="ToggleButton.themed-switch:checked /template/ local|SwitchThumbPart#PART_SwitchThumb">
+        <Setter Property="Position" Value="1" />
         <Setter Property="State" Value="Checked" />
     </Style>
     <Style Selector="ToggleButton.themed-switch:disabled /template/ local|ThemePart#PART_SwitchTrack">
         <Setter Property="State" Value="Disabled" />
     </Style>
-    <Style Selector="ToggleButton.themed-switch:focus-visible /template/ Border#PART_FocusRing">
+    <Style Selector="ToggleButton.themed-switch:focus-visible /template/ local|ThemeFocusRing#PART_FocusRing">
         <Setter Property="BorderBrush" Value="{DynamicResource Galapa.Focus.Brush}" />
     </Style>
 
@@ -222,10 +248,25 @@
                                      VerticalContentAlignment="Stretch">
                         <Track Name="PART_Track"
                                Orientation="{TemplateBinding Orientation}"
+                               IsDirectionReversed="True"
                                Minimum="{TemplateBinding Minimum}"
                                Maximum="{TemplateBinding Maximum}"
                                Value="{TemplateBinding Value, Mode=TwoWay}"
                                ViewportSize="{TemplateBinding ViewportSize}">
+                            <Track.DecreaseButton>
+                                <RepeatButton Name="PART_PageUpButton" Focusable="False" Background="Transparent">
+                                    <RepeatButton.Template>
+                                        <ControlTemplate><Border Background="Transparent" /></ControlTemplate>
+                                    </RepeatButton.Template>
+                                </RepeatButton>
+                            </Track.DecreaseButton>
+                            <Track.IncreaseButton>
+                                <RepeatButton Name="PART_PageDownButton" Focusable="False" Background="Transparent">
+                                    <RepeatButton.Template>
+                                        <ControlTemplate><Border Background="Transparent" /></ControlTemplate>
+                                    </RepeatButton.Template>
+                                </RepeatButton>
+                            </Track.IncreaseButton>
                             <Track.Thumb>
                                 <Thumb MinHeight="12">
                                     <Thumb.Template>
@@ -237,10 +278,7 @@
                             </Track.Thumb>
                         </Track>
                     </local:ThemePart>
-                    <Border Name="PART_FocusRing" IsHitTestVisible="False"
-                            Margin="{DynamicResource Galapa.Focus.Margin}"
-                            BorderThickness="{DynamicResource Galapa.Focus.Width}"
-                            BorderBrush="Transparent" />
+                    <local:ThemeFocusRing Name="PART_FocusRing" />
                 </Grid>
             </ControlTemplate>
         </Setter>
@@ -248,7 +286,7 @@
     <Style Selector="local|ThemedScrollbar:disabled">
         <Setter Property="Opacity" Value="0.45" />
     </Style>
-    <Style Selector="local|ThemedScrollbar:focus-visible /template/ Border#PART_FocusRing">
+    <Style Selector="local|ThemedScrollbar:focus-visible /template/ local|ThemeFocusRing#PART_FocusRing">
         <Setter Property="BorderBrush" Value="{DynamicResource Galapa.Focus.Brush}" />
     </Style>
 
@@ -257,25 +295,39 @@
         <Setter Property="FallbackPadding" Value="15" />
     </Style>
 
-    <Style Selector="local|SettingsPageShell">
+    <!-- :is is intentional: SettingsPageShell derives from the shared shell
+         and must receive the same template. A bare type selector is exact in
+         Avalonia and left derived settings pages completely untemplated. -->
+    <Style Selector=":is(local|SplitPageShell)">
         <Setter Property="Template">
             <ControlTemplate>
-                <Grid Margin="34,26,34,34" ColumnDefinitions="*,35,280">
+                <Grid Margin="{TemplateBinding ShellMargin}" ColumnDefinitions="*,35,Auto">
                     <ScrollViewer Name="PART_ContentScroll"
+                                  HorizontalContentAlignment="Stretch"
                                   VerticalScrollBarVisibility="Hidden"
                                   HorizontalScrollBarVisibility="Disabled">
                         <ContentPresenter Content="{TemplateBinding Content}"
-                                          ContentTemplate="{TemplateBinding ContentTemplate}" />
+                                          ContentTemplate="{TemplateBinding ContentTemplate}"
+                                          HorizontalAlignment="Stretch" />
                     </ScrollViewer>
                     <local:ThemedScrollbar Grid.Column="1" HorizontalAlignment="Center"
                                            Target="{Binding #PART_ContentScroll}"
                                            AutomationProperties.Name="Page scroll bar" />
-                    <local:ThemedPanel Grid.Column="2">
+                    <local:ThemedPanel Grid.Column="2" Width="{TemplateBinding AsideWidth}"
+                                       FallbackPadding="{TemplateBinding AsidePadding}"
+                                       UseThemePadding="{TemplateBinding UseThemeAsidePadding}">
                         <ContentPresenter Content="{TemplateBinding HelpContent}" />
                     </local:ThemedPanel>
                 </Grid>
             </ControlTemplate>
         </Setter>
+    </Style>
+    <Style Selector="local|SettingsPageShell">
+        <Setter Property="ShellMargin" Value="34,26,34,34" />
+    </Style>
+    <Style Selector="ItemsControl.stretch-items ContentPresenter">
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
     </Style>
 
     <Style Selector="local|PlayRow">

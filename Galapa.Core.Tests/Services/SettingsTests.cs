@@ -56,7 +56,7 @@ public class SettingsTests : IDisposable
         // Assert
         Assert.NotNull(result);
         Assert.NotEqual(ValidationResult.Success, result);
-        Assert.Equal("DQXGame.exe does not exist", result.ErrorMessage);
+        Assert.Equal(@"Game\DQXGame.exe does not exist", result.ErrorMessage);
     }
 
     [Fact]

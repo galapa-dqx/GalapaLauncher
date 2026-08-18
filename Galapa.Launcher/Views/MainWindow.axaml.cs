@@ -1,5 +1,3 @@
-using System;
-using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -14,6 +12,17 @@ public partial class MainWindow : Window
     private readonly ControllerActionSource _actionSource;
     private readonly ControllerInputRouter _inputRouter;
     private readonly ActiveControllerService _activeControllerService;
+
+    // Lets the headless contract test execute the actual compiled XAML without
+    // starting DirectInput or constructing the application service graph.
+    internal MainWindow(bool _)
+    {
+        _pollingService = null!;
+        _actionSource = null!;
+        _inputRouter = null!;
+        _activeControllerService = null!;
+        InitializeComponent();
+    }
 
     public MainWindow(
         MainWindowViewModel mainWindowViewModel,

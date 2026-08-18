@@ -1,7 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Galapa.Core.Configuration;
-using Galapa.Launcher.ViewModels.AppFrame;
 
 namespace Galapa.Launcher.ViewModels.OnboardingFrame;
 
@@ -16,7 +15,7 @@ public partial class OnboardingFrameViewModel(Settings settings) : ObservableObj
     {
         if (!Settings.IsValidGameFolder(GameFolderPath))
         {
-            ValidationMessage = "Choose the Dragon Quest X folder containing Game\\DQXGame.exe.";
+            ValidationMessage = $"Choose the Dragon Quest X folder containing {Settings.GameExecutableDisplayPath}.";
             return;
         }
 
