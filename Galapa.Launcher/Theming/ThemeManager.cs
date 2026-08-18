@@ -27,12 +27,6 @@ public sealed class ThemeManager(IThemeCatalog catalog, Settings settings, ILogg
                 return false;
             }
 
-            // Parse immutable SVG/path assets before entering the UI-thread
-            // transaction. A theme switch then only swaps prepared objects and
-            // resources; hover/render paths never discover or parse artwork.
-            if (!ThemeRenderAssets.IsPrepared(package))
-                await Task.Run(() => ThemeRenderAssets.Prepare(package), cancellationToken).ConfigureAwait(false);
-
             ResourceDictionary resources = null!;
             var previousResources = _activeResources;
             var previousTheme = ActiveTheme;
@@ -42,6 +36,10 @@ public sealed class ThemeManager(IThemeCatalog catalog, Settings settings, ILogg
             void InstallNext()
             {
                 var app = Application.Current ?? throw new InvalidOperationException("Avalonia application is not initialized.");
+                // Package validation has already parsed and checked the safe SVG
+                // subset without Avalonia render objects. Materialize the cached
+                // Geometry/Pen graph here because those objects are thread-affine.
+                ThemeRenderAssets.Prepare(package);
                 ThemeFontRegistrar.Validate(package);
                 resources = BuildResources(package);
                 previousVariant = app.RequestedThemeVariant;

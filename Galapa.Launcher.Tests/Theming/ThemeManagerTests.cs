@@ -84,6 +84,48 @@ public sealed class ThemeManagerTests(SkiaHeadlessFixture skia) : IDisposable
         });
     }
 
+    [Fact]
+    public async Task ApplyMaterializesUncachedAvaloniaAssetsOnTheUiThread()
+    {
+        var reader = new CompiledThemeReader();
+        var themePath = Path.GetFullPath(Path.Combine(
+            AppContext.BaseDirectory, "..", "..", "..", "..", "Galapa.Launcher", "Assets", "Themes",
+            "kyururu.compiled.json"));
+        var sourcePackage = await reader.ReadAsync(themePath);
+        var controls = new Dictionary<string, CompiledControl>(sourcePackage.Compiled.Controls, StringComparer.Ordinal);
+        var ornament = controls["play-ornament"];
+        controls["play-ornament"] = ornament with
+        {
+            // Keep this document distinct from the process-wide render cache so
+            // another test cannot accidentally hide an off-thread construction.
+            Image = ornament.Image + "\n<!-- ui-thread-materialization-regression -->"
+        };
+        var package = sourcePackage with
+        {
+            Compiled = sourcePackage.Compiled with { Controls = controls }
+        };
+        var manager = new ThemeManager(new TestCatalog(package), new Settings(), NullLogger<ThemeManager>.Instance);
+
+        await skia.DispatchAsync(async () =>
+        {
+            var app = Application.Current!;
+            var initialVariant = app.RequestedThemeVariant;
+            var initialDictionaries = app.Resources.MergedDictionaries.ToHashSet();
+            try
+            {
+                Assert.True(await manager.ApplyAsync("kyururu", persist: false));
+                Assert.Same(package, manager.ActiveTheme);
+                return true;
+            }
+            finally
+            {
+                foreach (var dictionary in app.Resources.MergedDictionaries.Where(x => !initialDictionaries.Contains(x)).ToArray())
+                    app.Resources.MergedDictionaries.Remove(dictionary);
+                app.RequestedThemeVariant = initialVariant;
+            }
+        });
+    }
+
     private sealed class TestCatalog(params ThemePackage[] themes) : IThemeCatalog
     {
         public event EventHandler? ThemesChanged

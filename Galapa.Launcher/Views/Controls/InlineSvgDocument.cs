@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Avalonia;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Galapa.Launcher.Theming;
 
 namespace Galapa.Launcher.Views.Controls;
@@ -332,15 +333,14 @@ internal static class ThemeRenderAssets
 {
     private static readonly ConditionalWeakTable<ThemePackage, object> PreparedPackages = new();
 
-    public static bool IsPrepared(ThemePackage package) => PreparedPackages.TryGetValue(package, out _);
-
     /// <summary>
-    /// Materializes every immutable renderer asset before a package enters
-    /// the UI-thread resource transaction. ThemePart instances share these objects;
-    /// hover, focus, and theme switching never reparse XML or path data.
+    /// Materializes every immutable renderer asset on the UI thread before a
+    /// package enters the resource dictionary. ThemePart instances share these
+    /// objects; hover, focus, and rendering never reparse XML or path data.
     /// </summary>
     public static void Prepare(ThemePackage package)
     {
+        Dispatcher.UIThread.VerifyAccess();
         _ = PreparedPackages.GetValue(package, static value =>
         {
             foreach (var control in value.Compiled.Controls.Values)
