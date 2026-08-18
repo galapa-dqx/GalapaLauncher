@@ -45,17 +45,39 @@ public partial class GameProcess(Settings settings)
     }
 
     /// <summary>
-    ///     Starts the game process in a suspended state for debugger attachment.
-    ///     Call <see cref="Resume" /> after attaching a debugger to continue execution.
+    ///     Working directory for the game process (the <c>game</c> subfolder of the install).
     /// </summary>
-    public void StartSuspended()
+    public string WorkingDirectory
+    {
+        get
+        {
+            if (settings.GameFolderPath is null) throw new InvalidOperationException("GameFolderPath is null");
+            return Path.Combine(settings.GameFolderPath, "game");
+        }
+    }
+
+    /// <summary>
+    ///     Builds the full command line (<c>"exe path" arguments</c>) that <see cref="Start" /> and
+    ///     <see cref="StartSuspended" /> use, without launching. Lets an external launcher (e.g. the
+    ///     Talon injector) spawn the game itself with identical DQX arguments.
+    /// </summary>
+    public string BuildCommandLine()
     {
         if (this.SessionId is null) throw new InvalidOperationException("SessionId is null");
         if (settings.GameFolderPath is null) throw new InvalidOperationException("GameFolderPath is null");
 
         var gamePath = Path.Combine(settings.GameFolderPath, Settings.GameExecutableRelativePath);
-        var workingDir = Path.Combine(settings.GameFolderPath, "game");
-        var commandLine = $"\"{gamePath}\" {this.GetArguments()}";
+        return $"\"{gamePath}\" {this.GetArguments()}";
+    }
+
+    /// <summary>
+    ///     Starts the game process in a suspended state for debugger attachment.
+    ///     Call <see cref="Resume" /> after attaching a debugger to continue execution.
+    /// </summary>
+    public void StartSuspended()
+    {
+        var commandLine = this.BuildCommandLine();
+        var workingDir = this.WorkingDirectory;
 
         var startupInfo = new STARTUPINFO { cb = Marshal.SizeOf<STARTUPINFO>() };
 
@@ -94,7 +116,12 @@ public partial class GameProcess(Settings settings)
         if (this._suspendedThreadHandle == nint.Zero)
             throw new InvalidOperationException("No suspended thread to resume. Did you call StartSuspended?");
 
-        ResumeThread(this._suspendedThreadHandle);
+        if (ResumeThread(this._suspendedThreadHandle) == uint.MaxValue)
+        {
+            var error = Marshal.GetLastWin32Error();
+            throw new InvalidOperationException($"Failed to resume suspended process. Error code: {error}");
+        }
+
         CloseHandle(this._suspendedThreadHandle);
         this._suspendedThreadHandle = nint.Zero;
     }
@@ -124,7 +151,7 @@ public partial class GameProcess(Settings settings)
         ref STARTUPINFO lpStartupInfo,
         out PROCESS_INFORMATION lpProcessInformation);
 
-    [LibraryImport("kernel32.dll")]
+    [LibraryImport("kernel32.dll", SetLastError = true)]
     private static partial uint ResumeThread(nint hThread);
 
     [LibraryImport("kernel32.dll")]
@@ -184,7 +211,7 @@ public partial class GameProcess(Settings settings)
     {
         var args = new StringBuilder();
 
-        args.Append($"-StartupToken={GetStartupToken()} ");
+        args.Append($"-StartupToken={GenerateStartupToken()} ");
         if (this.SessionId is not null) args.Append($"-SessionID={this.EncodeSessionId(this.SessionId)} ");
         if (this.PlayerNumber is not null) args.Append($"-PlayerNumber={this.PlayerNumber} ");
         args.Append("-USE_APARTMENTTHREADED");
@@ -220,7 +247,12 @@ public partial class GameProcess(Settings settings)
     [DllImport("winmm.dll", EntryPoint = "timeGetTime")]
     private static extern uint GetTime();
 
-    private static string GetStartupToken()
+    /// <summary>
+    ///     Generates a fresh DQX <c>-StartupToken</c> value. This is a purely local computation
+    ///     (no network, no credentials): the game checks its shape, not its randomness. Exposed so
+    ///     headless callers (the Toolbox CLI) can mint one to splice into a launch command line.
+    /// </summary>
+    public static string GenerateStartupToken()
     {
         // The official version of this function actually uses an MT RNG seeded from the Windows "true" RNG to generate
         // these 4 chars, but because that makes it *actually random*, they can't check it and we just stuff 0000 in.

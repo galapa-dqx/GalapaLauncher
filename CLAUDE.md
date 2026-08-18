@@ -22,9 +22,16 @@ dotnet publish Galapa.Launcher --configuration Release -r win-x64 --self-contain
 
 - **Galapa.Launcher** (.NET 10.0): Main Avalonia desktop application for launching the game.
 - **Galapa.Toolbox** (.NET 8.0): Secondary utility application for analyzing game data.
-- **Galapa.Core** (.NET 8.0-windows): Platform-independent game/auth logic library
+- **Galapa.Core** (.NET 8.0-windows): Game and authentication logic library.
 - **Galapa.Launcher.Tests** / **Galapa.Core.Tests**: xUnit test projects
 - **Galapa.TestUtilities**: Shared testing utilities
+- **Talon.Injector** (.NET 10.0, x86): Starts DQX suspended and injects the native bootstrap.
+- **Talon.Boot** (native C++, Win32): Hosts CoreCLR and owns the unpack-completion barrier.
+- **Talon** (.NET 10.0, x86 process): Managed hook, VFS, and network runtime loaded inside DQX.
+- **Talon.Tests**: Managed tests for the injector and in-process runtime.
+
+Build `Talon.Boot` with MSBuild for `Win32` before building or publishing the
+Injector. `dotnet build` cannot build the native project.
 
 ## Architecture
 
