@@ -5,7 +5,6 @@ using Avalonia.Markup.Xaml;
 using DryIoc;
 using Galapa.Launcher.Views;
 using Galapa.Launcher.Theming;
-using Galapa.Launcher.Views.Controls;
 using Galapa.Core.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -30,22 +29,6 @@ public partial class App : Application
         // theme I/O on the pool to avoid blocking its awaits on Avalonia's UI context.
         var settings = Program.Services.Resolve<Settings>();
         Task.Run(() => catalog.LoadInitialAsync(settings.ThemeId)).GetAwaiter().GetResult();
-        var initialPackage = catalog.Find(settings.ThemeId) ?? catalog.Find(Settings.DefaultThemeId)
-            ?? throw new ThemePackageException("The Estella recovery theme is missing from the catalog.");
-        try { Task.Run(() => ThemeRenderAssets.Prepare(initialPackage)).GetAwaiter().GetResult(); }
-        catch when (!string.Equals(initialPackage.Manifest.Id, Settings.DefaultThemeId, StringComparison.Ordinal))
-        {
-            var recovery = catalog.Find(Settings.DefaultThemeId)
-                ?? throw new ThemePackageException("The Estella recovery theme is missing from the catalog.");
-            Task.Run(() => ThemeRenderAssets.Prepare(recovery)).GetAwaiter().GetResult();
-            settings.ThemeId = Settings.DefaultThemeId;
-            try { settings.Save(); }
-            catch (Exception ex)
-            {
-                Program.Services.Resolve<ILogger<App>>().LogWarning(ex,
-                    "The invalid initial theme was replaced by Estella, but the recovery choice could not be persisted");
-            }
-        }
         var manager = Program.Services.Resolve<IThemeManager>();
         if (!manager.ApplyInitialAsync(settings.ThemeId).GetAwaiter().GetResult())
             throw new ThemePackageException("The embedded Estella recovery theme could not be applied.");

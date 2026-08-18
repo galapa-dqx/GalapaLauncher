@@ -84,8 +84,10 @@ public sealed class ThemeManagerTests(SkiaHeadlessFixture skia) : IDisposable
         });
     }
 
-    [Fact]
-    public async Task ApplyMaterializesUncachedAvaloniaAssetsOnTheUiThread()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ApplyMaterializesUncachedAvaloniaAssetsOnTheUiThread(bool initialApply)
     {
         var reader = new CompiledThemeReader();
         var themePath = Path.GetFullPath(Path.Combine(
@@ -98,7 +100,7 @@ public sealed class ThemeManagerTests(SkiaHeadlessFixture skia) : IDisposable
         {
             // Keep this document distinct from the process-wide render cache so
             // another test cannot accidentally hide an off-thread construction.
-            Image = ornament.Image + "\n<!-- ui-thread-materialization-regression -->"
+            Image = ornament.Image + $"\n<!-- ui-thread-materialization-regression-{initialApply} -->"
         };
         var package = sourcePackage with
         {
@@ -113,7 +115,10 @@ public sealed class ThemeManagerTests(SkiaHeadlessFixture skia) : IDisposable
             var initialDictionaries = app.Resources.MergedDictionaries.ToHashSet();
             try
             {
-                Assert.True(await manager.ApplyAsync("kyururu", persist: false));
+                var applied = initialApply
+                    ? await manager.ApplyInitialAsync("kyururu")
+                    : await manager.ApplyAsync("kyururu", persist: false);
+                Assert.True(applied);
                 Assert.Same(package, manager.ActiveTheme);
                 return true;
             }
