@@ -13,7 +13,7 @@ public sealed record CompiledTheme
     public required string Label { get; init; }
     public CompiledThemeMeta? Meta { get; init; }
     public required string Mode { get; init; }
-    public CompiledFocusRing? FocusRing { get; init; }
+    public required CompiledFocusRing FocusRing { get; init; }
     public required Dictionary<string, CompiledControl> Controls { get; init; }
 }
 
@@ -58,6 +58,7 @@ public sealed record CompiledControl
     public double? LeftInset { get; init; }
     public Dictionary<string, string>? Images { get; init; }
     public Dictionary<string, CompiledControl>? States { get; init; }
+    public bool? ShowRing { get; init; }
 }
 
 public sealed record CompiledTextStyle

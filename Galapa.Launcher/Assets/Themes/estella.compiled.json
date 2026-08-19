@@ -74,7 +74,8 @@
       "states": {
         "focused": {
           "borderColor": "#3878aa",
-          "borderThickness": 2
+          "borderThickness": 2,
+          "showRing": false
         },
         "disabled": {
           "opacity": 0.5

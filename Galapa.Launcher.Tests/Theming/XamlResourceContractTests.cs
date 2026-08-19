@@ -45,6 +45,7 @@ public sealed class XamlResourceContractTests(SkiaHeadlessFixture skia)
         var inspection = await skia.InspectThemedFieldFocusAsync();
 
         Assert.True(inspection.EditorFocused);
+        Assert.False(inspection.RingVisible);
         Assert.Equal(Galapa.Launcher.Theming.ThemePartState.Normal, inspection.Before);
         Assert.Equal(Galapa.Launcher.Theming.ThemePartState.Focused, inspection.After);
         Assert.All(inspection.BorderEdges, edge => Assert.Equal(2, edge));

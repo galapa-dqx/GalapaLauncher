@@ -54,6 +54,8 @@ public sealed class ThemeManagerTests(SkiaHeadlessFixture skia) : IDisposable
                 Assert.Equal(16, Assert.IsType<double>(estellaDictionary["Galapa.Type.button.Size"]));
                 Assert.Equal(0.3, Assert.IsType<double>(estellaDictionary["Galapa.Type.navigation.LetterSpacing"]));
                 Assert.IsAssignableFrom<IBrush>(estellaDictionary["Galapa.Part.button.ContentBrush"]);
+                Assert.False(Assert.IsType<bool>(estellaDictionary["Galapa.Part.input.ShowFocusRing"]));
+                Assert.True(Assert.IsType<bool>(estellaDictionary["Galapa.Part.button.ShowFocusRing"]));
                 Assert.Equal("estella", Settings.Load().ThemeId);
                 Assert.Equal(ThemeVariant.Light, app.RequestedThemeVariant);
 

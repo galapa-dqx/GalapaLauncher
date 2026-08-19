@@ -35,7 +35,8 @@
                                           HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
                                           VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
                     </local:ThemePart>
-                    <local:ThemeFocusRing Name="PART_FocusRing" />
+                    <local:ThemeFocusRing Name="PART_FocusRing"
+                                          IsVisible="{DynamicResource Galapa.Part.button.ShowFocusRing}" />
                 </Grid>
             </ControlTemplate>
         </Setter>
@@ -75,6 +76,9 @@
         <Setter Property="PartStyle" Value="{DynamicResource Galapa.Part.setting-row}" />
         <Setter Property="FallbackPadding" Value="13,0" />
     </Style>
+    <Style Selector="Button.themed.setting-row /template/ local|ThemeFocusRing#PART_FocusRing">
+        <Setter Property="IsVisible" Value="{DynamicResource Galapa.Part.setting-row.ShowFocusRing}" />
+    </Style>
     <Style Selector="Button.themed.setting-row">
         <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.setting-row.ContentBrush}" />
         <Setter Property="Height" Value="{DynamicResource Galapa.Metric.setting-row.Height}" />
@@ -90,6 +94,9 @@
     <Style Selector="Button.themed.carousel-nav /template/ local|ThemePart#PART_ThemeFrame">
         <Setter Property="PartStyle" Value="{DynamicResource Galapa.Part.carousel.nav}" />
         <Setter Property="FallbackPadding" Value="0" />
+    </Style>
+    <Style Selector="Button.themed.carousel-nav /template/ local|ThemeFocusRing#PART_FocusRing">
+        <Setter Property="IsVisible" Value="{DynamicResource Galapa.Part.carousel.nav.ShowFocusRing}" />
     </Style>
     <Style Selector="Button.themed.carousel-nav">
         <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.carousel.nav.ContentBrush}" />
@@ -119,7 +126,8 @@
                             Background="{TemplateBinding BorderBrush}"
                             VerticalAlignment="Bottom" ZIndex="10"
                             IsHitTestVisible="False" />
-                    <local:ThemeFocusRing Name="PART_FocusRing" />
+                    <local:ThemeFocusRing Name="PART_FocusRing"
+                                          IsVisible="{DynamicResource Galapa.Part.tab.ShowFocusRing}" />
                 </Grid>
             </ControlTemplate>
         </Setter>
@@ -220,7 +228,8 @@
                             </local:SwitchThumbPart.Transitions>
                         </local:SwitchThumbPart>
                     </local:ThemePart>
-                    <local:ThemeFocusRing Name="PART_FocusRing" />
+                    <local:ThemeFocusRing Name="PART_FocusRing"
+                                          IsVisible="{DynamicResource Galapa.Part.switch.track.ShowFocusRing}" />
                 </Grid>
             </ControlTemplate>
         </Setter>
@@ -279,7 +288,8 @@
                             </Track.Thumb>
                         </Track>
                     </local:ThemePart>
-                    <local:ThemeFocusRing Name="PART_FocusRing" />
+                    <local:ThemeFocusRing Name="PART_FocusRing"
+                                          IsVisible="{DynamicResource Galapa.Part.scrollbar.track.ShowFocusRing}" />
                 </Grid>
             </ControlTemplate>
         </Setter>

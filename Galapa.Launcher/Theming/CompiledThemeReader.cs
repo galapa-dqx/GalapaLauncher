@@ -66,14 +66,13 @@ public sealed class CompiledThemeReader
             throw new ThemePackageException("Compiled theme label is required.");
         if (theme.Mode is not ("light" or "dark"))
             throw new ThemePackageException("Compiled theme mode must be 'light' or 'dark'.");
-        if (theme.FocusRing is not null)
-        {
-            if (string.IsNullOrWhiteSpace(theme.FocusRing.Color))
-                throw new ThemePackageException("Focus ring color is required when a focus ring is declared.");
-            ValidateColor(theme.FocusRing.Color, "focus ring");
-            if (!Finite(theme.FocusRing.Width, 0, 16) || !Finite(theme.FocusRing.Offset, -32, 32))
-                throw new ThemePackageException("Focus ring metrics are out of range.");
-        }
+        if (theme.FocusRing is null)
+            throw new ThemePackageException("Compiled theme focus ring style is required.");
+        if (string.IsNullOrWhiteSpace(theme.FocusRing.Color))
+            throw new ThemePackageException("Focus ring color is required.");
+        ValidateColor(theme.FocusRing.Color, "focus ring");
+        if (!Finite(theme.FocusRing.Width, 0, 16) || !Finite(theme.FocusRing.Offset, -32, 32))
+            throw new ThemePackageException("Focus ring metrics are out of range.");
 
         if (theme.Controls is null)
             throw new ThemePackageException("Compiled theme controls are required.");
@@ -111,6 +110,9 @@ public sealed class CompiledThemeReader
             throw new ThemePackageException($"Control '{id}' has invalid size.");
         ValidateText(control.Text, id);
 
+        if (control.ShowRing is not null)
+            throw new ThemePackageException($"Control '{id}' may declare showRing only inside its focused state.");
+
         ValidateFieldsForShape(id, control);
 
         if (control.Shape == "Asset")
@@ -133,6 +135,11 @@ public sealed class CompiledThemeReader
             if (!CompiledThemeContract.States.Contains(state))
                 throw new ThemePackageException($"Control '{id}' has unknown state '{state}'.");
             ValidateStateFields(id, control.Shape, state, value);
+            if (value.ShowRing is not null && state != "focused")
+                throw new ThemePackageException($"Control '{id}' state '{state}' cannot declare showRing.");
+            if (state == "focused" && value.ShowRing == false && !HasVisibleFocusOverride(value))
+                throw new ThemePackageException(
+                    $"Control '{id}' focused.showRing=false requires a visible focused-state override.");
             ValidateOptionalColor(value.Fill, $"{id}.{state}.fill", false);
             ValidateOptionalColor(value.Content, $"{id}.{state}.content", true);
             ValidateOptionalColor(value.BorderColor, $"{id}.{state}.borderColor", false);
@@ -151,6 +158,11 @@ public sealed class CompiledThemeReader
             value.Images is not null || value.States is not null || value.Art is not null && parentShape != "Asset")
             throw new ThemePackageException($"Control '{id}' state '{state}' declares fields that states cannot override.");
     }
+
+    private static bool HasVisibleFocusOverride(CompiledControl value) =>
+        value.Fill is not null || value.Content is not null || value.BorderColor is not null ||
+        ThemeMetrics.HasValue(value.BorderThickness) || value.Opacity is not null ||
+        value.Image is not null || value.Art is not null;
 
     private static void ValidateText(CompiledTextStyle? text, string id)
     {

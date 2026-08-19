@@ -50,6 +50,10 @@ public sealed class CompiledThemeReaderTests : IDisposable
             var compiled = Assert.IsType<CompiledTheme>(package.Compiled);
             Assert.Equal(CompiledThemeContract.Controls.Count, compiled.Controls.Count);
             Assert.All(CompiledThemeContract.Controls.Keys, id => Assert.True(compiled.Controls.ContainsKey(id), id));
+            Assert.NotNull(compiled.FocusRing);
+            Assert.Equal(false, compiled.Controls["input"].States!["focused"].ShowRing);
+            Assert.True(ThemeMetrics.HasValue(
+                compiled.Controls["input"].States!["focused"].BorderThickness));
 
         });
 
@@ -125,6 +129,39 @@ public sealed class CompiledThemeReaderTests : IDisposable
     }
 
     [Fact]
+    public async Task ShowRing_IsOnlyValidInsideFocusedState()
+    {
+        var target = await ModifiedTheme("estella", "bad-show-ring", controls =>
+            controls["button"]!["states"]!["hover"]!["showRing"] = false);
+
+        var error = await Assert.ThrowsAsync<ThemePackageException>(() => new CompiledThemeReader().ReadAsync(target));
+        Assert.Contains("cannot declare showRing", error.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task SuppressedFocusRing_RequiresAVisibleFocusedOverride()
+    {
+        var target = await ModifiedTheme("estella", "invisible-focus", controls =>
+            controls["input"]!["states"]!["focused"] = new JsonObject
+            {
+                ["showRing"] = false
+            });
+
+        var error = await Assert.ThrowsAsync<ThemePackageException>(() => new CompiledThemeReader().ReadAsync(target));
+        Assert.Contains("requires a visible", error.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task GlobalFocusRingStyle_CannotDisableTheIndicatorWithNull()
+    {
+        var target = await ModifiedThemeRoot("estella", "null-focus-ring", root =>
+            root["focusRing"] = null);
+
+        var error = await Assert.ThrowsAsync<ThemePackageException>(() => new CompiledThemeReader().ReadAsync(target));
+        Assert.Contains("focus ring style is required", error.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task DuplicateNineSliceCell_IsRejected()
     {
         var target = await ModifiedTheme("aurelia", "bad-slices", controls =>
@@ -165,10 +202,13 @@ public sealed class CompiledThemeReaderTests : IDisposable
         Assert.Throws<FormatException>(() => ThemePaint.ParseColor(source));
 
     private async Task<string> ModifiedTheme(string sourceId, string targetId, Action<JsonObject> modify)
+        => await ModifiedThemeRoot(sourceId, targetId, root => modify(root["controls"]!.AsObject()));
+
+    private async Task<string> ModifiedThemeRoot(string sourceId, string targetId, Action<JsonObject> modify)
     {
         var source = await File.ReadAllTextAsync(Path.Combine(BuiltInFolder, $"{sourceId}.compiled.json"));
         var root = JsonNode.Parse(source)!.AsObject();
-        modify(root["controls"]!.AsObject());
+        modify(root);
         var target = Path.Combine(_temp.Path, $"{targetId}.compiled.json");
         await File.WriteAllTextAsync(target, root.ToJsonString());
         return target;

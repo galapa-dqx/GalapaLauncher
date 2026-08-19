@@ -147,6 +147,8 @@ public sealed class ThemeManager(IThemeCatalog catalog, Settings settings, ILogg
         {
             var normal = CompiledThemeContract.ResolveVisual(control);
             d[$"Galapa.Part.{id}"] = control;
+            d[$"Galapa.Part.{id}.ShowFocusRing"] =
+                control.States?.GetValueOrDefault("focused")?.ShowRing != false;
             AddVisualResources(d, $"Galapa.Part.{id}", normal, inheritedContent);
             if (control.States is not null)
                 foreach (var (state, stateControl) in control.States)
@@ -178,18 +180,10 @@ public sealed class ThemeManager(IThemeCatalog catalog, Settings settings, ILogg
             d[$"Galapa.Type.{role}.ContentBrush"] = d[$"Galapa.Part.{source.ControlId}.ContentBrush"];
         }
 
-        if (theme.FocusRing is { } focus)
-        {
-            d["Galapa.Focus.Brush"] = ThemePaint.Brush(focus.Color)!;
-            d["Galapa.Focus.Width"] = new Thickness(focus.Width);
-            d["Galapa.Focus.Margin"] = new Thickness(-focus.Offset);
-        }
-        else
-        {
-            d["Galapa.Focus.Brush"] = Brushes.Transparent;
-            d["Galapa.Focus.Width"] = new Thickness(0);
-            d["Galapa.Focus.Margin"] = new Thickness(0);
-        }
+        var focus = theme.FocusRing;
+        d["Galapa.Focus.Brush"] = ThemePaint.Brush(focus.Color)!;
+        d["Galapa.Focus.Width"] = new Thickness(focus.Width);
+        d["Galapa.Focus.Margin"] = new Thickness(-focus.Offset);
         return d;
     }
 
