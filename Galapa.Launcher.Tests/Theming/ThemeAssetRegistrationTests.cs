@@ -1,5 +1,4 @@
 using Galapa.Launcher.Theming;
-using Galapa.Launcher.Views.Controls;
 using Microsoft.Extensions.Logging.Abstractions;
 using SkiaSharp;
 
@@ -11,23 +10,22 @@ public sealed class ThemeAssetRegistrationTests(SkiaHeadlessFixture skia)
     [Fact]
     public async Task EveryBuiltInOwnsResolvableFontsAndPreparableRenderAssets()
     {
-        var folder = Path.GetFullPath(Path.Combine(
-            AppContext.BaseDirectory, "..", "..", "..", "..", "Galapa.Launcher", "Assets", "Themes"));
         var reader = new CompiledThemeReader();
-        var packages = new List<ThemePackage>();
-        foreach (var path in Directory.EnumerateFiles(folder, "*.compiled.json"))
+        var packages = new List<ValidatedTheme>();
+        foreach (var path in Directory.EnumerateFiles(TestPaths.BuiltInThemeRoot, "*.compiled.json"))
             packages.Add(await reader.ReadAsync(path));
 
-        await skia.DispatchAsync(async () =>
+        await skia.DispatchAsync(() =>
         {
-            await Task.Run(() =>
-            {
-                foreach (var package in packages)
-                    ThemeFontRegistrar.Validate(package);
-            });
+            var loader = new ThemeLoader();
             foreach (var package in packages)
-                ThemeRenderAssets.Prepare(package);
-            return true;
+            {
+                var loaded = loader.Load(package);
+                Assert.Same(package, loaded.Validation);
+                Assert.Equal(package.Compiled.Controls.Count, loaded.Resources.Controls.Count);
+                Assert.Same(Avalonia.Media.FontManager.Current, loaded.FontManager);
+            }
+            return Task.FromResult(true);
         });
     }
 
@@ -39,25 +37,27 @@ public sealed class ThemeAssetRegistrationTests(SkiaHeadlessFixture skia)
     }
 
     [Fact]
-    public async Task CatalogLoadsRecoveryFirstAndRemainingThemesInBackground()
+    public async Task CatalogDiscoversAllThemesBeforeBackgroundValidation()
     {
-        var catalog = new ThemeCatalog(new CompiledThemeReader(), NullLogger<ThemeCatalog>.Instance);
+        var pipeline = new ThemePipeline(new CompiledThemeReader(), new ThemeLoader(),
+            NullLogger<ThemePipeline>.Instance);
+        var catalog = new ThemeCatalog(pipeline, NullLogger<ThemeCatalog>.Instance);
 
-        await Task.Run(() => catalog.LoadInitialAsync(Galapa.Core.Configuration.Settings.DefaultThemeId));
-        Assert.Single(catalog.Themes);
-        Assert.NotNull(catalog.Find(Galapa.Core.Configuration.Settings.DefaultThemeId));
-
-        await Task.Run(() => catalog.LoadRemainingAsync());
-
+        await Task.Run(() => catalog.InitializeAsync(new ThemeId(Galapa.Core.Configuration.Settings.DefaultThemeId)));
         Assert.Equal(13, catalog.Themes.Count);
+        Assert.Equal("estella", catalog.Themes[0].Id?.Value);
+        Assert.NotNull(catalog.Find(new ThemeId(Galapa.Core.Configuration.Settings.DefaultThemeId)));
+        Assert.Contains(catalog.Themes, entry => entry.State is DiscoveredTheme);
+
+        await Task.Run(() => catalog.ValidateRemainingAsync());
+
+        Assert.All(catalog.Themes, entry => Assert.IsType<ValidatedTheme>(entry.State));
     }
 
     [Fact]
     public async Task FontValidationDoesNotPoisonTheRegisteredTypefaceForRendering()
     {
-        var path = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..",
-            "Galapa.Launcher", "Assets", "Themes", "estella.compiled.json"));
-        var package = await new CompiledThemeReader().ReadAsync(path);
+        var package = await new CompiledThemeReader().ReadAsync(TestPaths.BuiltInTheme("estella"));
         var png = await skia.ValidateAndRenderThemeTextAsync(package);
         using var bitmap = SKBitmap.Decode(png);
         Assert.Contains(Enumerable.Range(0, bitmap.Width * bitmap.Height), index =>

@@ -13,8 +13,7 @@ public sealed class CompiledThemeReaderTests : IDisposable
     ];
 
     private readonly TempDirectory _temp = new();
-    private static string BuiltInFolder => Path.GetFullPath(Path.Combine(
-        AppContext.BaseDirectory, "..", "..", "..", "..", "Galapa.Launcher", "Assets", "Themes"));
+    private static string BuiltInFolder => TestPaths.BuiltInThemeRoot;
 
     public void Dispose() => _temp.Dispose();
 
@@ -23,7 +22,7 @@ public sealed class CompiledThemeReaderTests : IDisposable
     [InlineData("#1234", 0x11, 0x22, 0x33, 0x44)]
     public void CssHexAlphaIsRgbaRatherThanAvaloniaArgb(string source, byte red, byte green, byte blue, byte alpha)
     {
-        var color = ThemePaint.ParseColor(source);
+        var color = ThemeColor.Parse(source);
         Assert.Equal(red, color.R);
         Assert.Equal(green, color.G);
         Assert.Equal(blue, color.B);
@@ -34,7 +33,7 @@ public sealed class CompiledThemeReaderTests : IDisposable
     public async Task CompiledBuiltIns_MatchRendererContract()
     {
         var reader = new CompiledThemeReader();
-        var packages = new List<ThemePackage>();
+        var packages = new List<ValidatedTheme>();
         foreach (var path in Directory.EnumerateFiles(BuiltInFolder, "*.compiled.json"))
         {
             var source = await File.ReadAllTextAsync(path);
@@ -192,14 +191,14 @@ public sealed class CompiledThemeReaderTests : IDisposable
     [InlineData("#a83232", 255)]
     public void CompiledColors_AreParsed(string source, byte expectedAlpha)
     {
-        Assert.Equal(expectedAlpha, ThemePaint.ParseColor(source).A);
+        Assert.Equal(expectedAlpha, ThemeColor.Parse(source).A);
     }
 
     [Theory]
     [InlineData("rgb(256, 0, 0)")]
     [InlineData("rgba(0, 0, 0, 1.01)")]
     public void OutOfRangeCompiledColors_AreRejected(string source) =>
-        Assert.Throws<FormatException>(() => ThemePaint.ParseColor(source));
+        Assert.Throws<FormatException>(() => ThemeColor.Parse(source));
 
     private async Task<string> ModifiedTheme(string sourceId, string targetId, Action<JsonObject> modify)
         => await ModifiedThemeRoot(sourceId, targetId, root => modify(root["controls"]!.AsObject()));

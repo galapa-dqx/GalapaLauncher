@@ -9,23 +9,23 @@ namespace Galapa.Launcher.Tests.Theming;
 [Collection(SkiaRenderingCollection.Name)]
 public sealed class PathRenderingTests(SkiaHeadlessFixture skia)
 {
-    private const string UpdateVariable = "GALAPA_UPDATE_RENDER_FIXTURES";
-    private static readonly string SourceFixtureRoot = Path.Combine(GoldenImage.ProjectRoot, "Fixtures", "Path");
+    private readonly PathTestRenderer _renderer = new(skia);
+    private static readonly string SourceFixtureRoot = TestPaths.Fixtures("Path");
     private static readonly string[] Corners = ["round", "bevel", "notch", "scoop", "squircle"];
 
-    public static TheoryData<string, string, int, int, double> GoldenCases => new()
+    public static TheoryData<string, string, int, int, double> GoldenCases
     {
-        { "round-radius-8", "round", 36, 28, 8 },
-        { "bevel-radius-8", "bevel", 36, 28, 8 },
-        { "notch-radius-8", "notch", 36, 28, 8 },
-        { "scoop-radius-8", "scoop", 36, 28, 8 },
-        { "squircle-radius-8", "squircle", 36, 28, 8 },
-        { "round-clamped", "round", 18, 10, 999 },
-        { "bevel-clamped", "bevel", 18, 10, 999 },
-        { "notch-clamped", "notch", 18, 10, 999 },
-        { "scoop-clamped", "scoop", 18, 10, 999 },
-        { "squircle-clamped", "squircle", 18, 10, 999 }
-    };
+        get
+        {
+            var cases = new TheoryData<string, string, int, int, double>();
+            foreach (var corner in Corners)
+            {
+                cases.Add($"{corner}-radius-8", corner, 36, 28, 8);
+                cases.Add($"{corner}-clamped", corner, 18, 10, 999);
+            }
+            return cases;
+        }
+    }
 
     public static TheoryData<string> CornerCases
     {
@@ -42,30 +42,19 @@ public sealed class PathRenderingTests(SkiaHeadlessFixture skia)
     public async Task RenderingMatchesApprovedFixture(
         string name, string corner, int width, int height, double radius)
     {
-        var actual = await skia.RenderPathAsync(PathStyle(corner, radius), width, height);
+        var actual = await _renderer.RenderAsync(PathStyle(corner, radius), width, height);
         var expectedName = $"{name}-{width}x{height}.png";
         var expectedRoot = Path.Combine(SourceFixtureRoot, "Expected");
 
-        if (Environment.GetEnvironmentVariable(UpdateVariable) == "1")
-        {
-            Directory.CreateDirectory(expectedRoot);
-            await File.WriteAllBytesAsync(Path.Combine(expectedRoot, expectedName), actual);
-            return;
-        }
-
         var expectedPath = Path.Combine(expectedRoot, expectedName);
-        if (!File.Exists(expectedPath))
-            throw new XunitException(
-                $"Missing render fixture '{expectedName}'. Run the test with {UpdateVariable}=1 to create it.");
-
-        GoldenImage.ComparePixels(expectedPath, actual, name, "Path");
+        await GoldenImage.AssertMatchesOrUpdate(expectedPath, actual, name, "Path");
     }
 
     [Theory]
     [MemberData(nameof(CornerCases))]
     public async Task CornerSilhouetteIsHorizontallyAndVerticallySymmetric(string corner)
     {
-        var png = await skia.RenderPathAsync(PathStyle(corner, 8), 36, 28);
+        var png = await _renderer.RenderAsync(PathStyle(corner, 8), 36, 28);
         using var bitmap = Decode(png, corner);
         var maximumDelta = 0;
 
@@ -73,9 +62,9 @@ public sealed class PathRenderingTests(SkiaHeadlessFixture skia)
         for (var x = 0; x < bitmap.Width; x++)
         {
             maximumDelta = Math.Max(maximumDelta,
-                PixelDelta(bitmap.GetPixel(x, y), bitmap.GetPixel(bitmap.Width - 1 - x, y)));
+                GoldenImage.MaxChannelDelta(bitmap.GetPixel(x, y), bitmap.GetPixel(bitmap.Width - 1 - x, y)));
             maximumDelta = Math.Max(maximumDelta,
-                PixelDelta(bitmap.GetPixel(x, y), bitmap.GetPixel(x, bitmap.Height - 1 - y)));
+                GoldenImage.MaxChannelDelta(bitmap.GetPixel(x, y), bitmap.GetPixel(x, bitmap.Height - 1 - y)));
         }
 
         // Skia's analytic antialiasing can quantize mirrored edge coverage a
@@ -89,8 +78,8 @@ public sealed class PathRenderingTests(SkiaHeadlessFixture skia)
     [MemberData(nameof(CornerCases))]
     public async Task RadiusIsClampedToHalfTheShortEdge(string corner)
     {
-        var oversized = await skia.RenderPathAsync(PathStyle(corner, 999), 36, 28);
-        var capped = await skia.RenderPathAsync(PathStyle(corner, 14), 36, 28);
+        var oversized = await _renderer.RenderAsync(PathStyle(corner, 999), 36, 28);
+        var capped = await _renderer.RenderAsync(PathStyle(corner, 14), 36, 28);
 
         Assert.Equal(PixelFingerprint(capped), PixelFingerprint(oversized));
     }
@@ -99,8 +88,8 @@ public sealed class PathRenderingTests(SkiaHeadlessFixture skia)
     [MemberData(nameof(CornerCases))]
     public async Task ChangingRadiusChangesTheCornerSilhouette(string corner)
     {
-        var small = await skia.RenderPathAsync(PathStyle(corner, 4), 36, 28);
-        var large = await skia.RenderPathAsync(PathStyle(corner, 10), 36, 28);
+        var small = await _renderer.RenderAsync(PathStyle(corner, 4), 36, 28);
+        var large = await _renderer.RenderAsync(PathStyle(corner, 10), 36, 28);
 
         Assert.NotEqual(PixelFingerprint(small), PixelFingerprint(large));
     }
@@ -111,7 +100,7 @@ public sealed class PathRenderingTests(SkiaHeadlessFixture skia)
         var fingerprints = new HashSet<string>(StringComparer.Ordinal);
         foreach (var corner in Corners)
         {
-            var png = await skia.RenderPathAsync(PathStyle(corner, 8), 36, 28);
+            var png = await _renderer.RenderAsync(PathStyle(corner, 8), 36, 28);
             fingerprints.Add(PixelFingerprint(png));
         }
 
@@ -124,7 +113,7 @@ public sealed class PathRenderingTests(SkiaHeadlessFixture skia)
         var fingerprints = new HashSet<string>(StringComparer.Ordinal);
         foreach (var corner in Corners)
         {
-            var png = await skia.RenderPathAsync(PathStyle(corner, 0), 36, 28);
+            var png = await _renderer.RenderAsync(PathStyle(corner, 0), 36, 28);
             fingerprints.Add(PixelFingerprint(png));
         }
 
@@ -138,7 +127,7 @@ public sealed class PathRenderingTests(SkiaHeadlessFixture skia)
         {
             BorderThickness = JsonSerializer.SerializeToElement(new[] { 2, 4, 3, 5 })
         };
-        using var bitmap = Decode(await skia.RenderPathAsync(style, 36, 28), "non-uniform border");
+        using var bitmap = Decode(await _renderer.RenderAsync(style, 36, 28), "non-uniform border");
         var origin = SkiaHeadlessFixture.FixtureOutset;
 
         Assert.Equal(SKColor.Parse(SkiaHeadlessFixture.FixtureBackground), bitmap.GetPixel(origin, origin));
@@ -178,8 +167,4 @@ public sealed class PathRenderingTests(SkiaHeadlessFixture skia)
     private static SKBitmap Decode(byte[] png, string name) =>
         SKBitmap.Decode(png) ?? throw new XunitException($"Could not decode the rendered {name} path fixture.");
 
-    private static int PixelDelta(SKColor expected, SKColor actual) =>
-        Math.Max(
-            Math.Max(Math.Abs(expected.Red - actual.Red), Math.Abs(expected.Green - actual.Green)),
-            Math.Max(Math.Abs(expected.Blue - actual.Blue), Math.Abs(expected.Alpha - actual.Alpha)));
 }

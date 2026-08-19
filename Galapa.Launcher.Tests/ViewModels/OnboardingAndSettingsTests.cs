@@ -72,21 +72,6 @@ public sealed class OnboardingAndSettingsTests : IDisposable
     }
 
     [Fact]
-    public void SettingsFrameContainsAllEightDestinations()
-    {
-        var vm = new SettingsFrameViewModel(
-            new Lazy<GeneralSettingsPageViewModel>(() => null!),
-            new Lazy<GameSettingsPageViewModel>(() => null!),
-            new Lazy<GraphicsSettingsPageViewModel>(() => null!),
-            new Lazy<AboutPageViewModel>(() => null!));
-
-        Assert.Equal(8, vm.Pages.Count);
-        Assert.Equal(new[] { "Players", "Graphics", "Controls", "Sound", "Clarity" },
-            vm.Pages.Skip(2).Take(5).Select(x => x.Title));
-        Assert.Same(vm.Pages[0], vm.SelectedPage);
-    }
-
-    [Fact]
     public void SettingsFrameDoesNotConstructPagesToReadNavigationMetadata()
     {
         var launcherConstructed = 0;

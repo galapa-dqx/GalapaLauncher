@@ -8,6 +8,7 @@ namespace Galapa.Launcher.Tests.Theming;
 [Collection(SkiaRenderingCollection.Name)]
 public sealed class InputRenderingTests(SkiaHeadlessFixture skia)
 {
+    private readonly PathTestRenderer _renderer = new(skia);
     private static readonly SKColor Fill = SKColor.Parse("#DDE4E2");
     private static readonly SKColor Border = SKColor.Parse("#22AA78");
 
@@ -18,7 +19,7 @@ public sealed class InputRenderingTests(SkiaHeadlessFixture skia)
         const int height = 38;
         const int gapStart = 10;
         const int gapWidth = 72;
-        var png = await skia.RenderPathAsync(InputStyle(), width, height, gapStart, gapWidth);
+        var png = await _renderer.RenderAsync(InputStyle(), width, height, gapStart, gapWidth);
         using var bitmap = SKBitmap.Decode(png) ?? throw new XunitException("Could not decode input render.");
         var x0 = SkiaHeadlessFixture.FixtureOutset;
         var y0 = SkiaHeadlessFixture.FixtureOutset;
@@ -34,8 +35,8 @@ public sealed class InputRenderingTests(SkiaHeadlessFixture skia)
     [Fact]
     public async Task LabelGapPreservesRoundedCornerGeometry()
     {
-        var withGap = await skia.RenderPathAsync(InputStyle(6), 160, 38, 10, 72);
-        var withoutGap = await skia.RenderPathAsync(InputStyle(6), 160, 38);
+        var withGap = await _renderer.RenderAsync(InputStyle(6), 160, 38, 10, 72);
+        var withoutGap = await _renderer.RenderAsync(InputStyle(6), 160, 38);
         using var actual = SKBitmap.Decode(withGap) ?? throw new XunitException("Could not decode gapped input render.");
         using var expected = SKBitmap.Decode(withoutGap) ?? throw new XunitException("Could not decode reference input render.");
 

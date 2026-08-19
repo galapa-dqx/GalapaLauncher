@@ -30,14 +30,18 @@ public sealed class ThemePartStateTests(SkiaHeadlessFixture skia)
                 }
             };
             var sparse = new CompiledControl { Shape = "Path" };
-            var part = new ThemePart { FallbackPadding = new Avalonia.Thickness(3), PartStyle = decorated };
+            var part = new ThemePart
+            {
+                FallbackPadding = new Avalonia.Thickness(3),
+                PartStyle = ThemePartPresentation.Create(decorated)
+            };
 
             Assert.Equal(29, part.FontSize);
             Assert.Equal(FontStyle.Italic, part.FontStyle);
             Assert.Equal(new Avalonia.Thickness(12), part.Padding);
             Assert.Equal(.4, part.Opacity);
 
-            part.PartStyle = sparse;
+            part.PartStyle = ThemePartPresentation.Create(sparse);
 
             Assert.False(part.IsSet(ThemePart.FontFamilyProperty));
             Assert.False(part.IsSet(ThemePart.FontSizeProperty));

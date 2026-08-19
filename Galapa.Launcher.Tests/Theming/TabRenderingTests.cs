@@ -33,7 +33,7 @@ public sealed class TabRenderingTests(SkiaHeadlessFixture skia)
 
         if (widestPaintedRow < 80)
         {
-            var artifactRoot = Path.Combine(GoldenImage.ProjectRoot, "TestResults", "Tab");
+            var artifactRoot = TestPaths.Results("Tab");
             Directory.CreateDirectory(artifactRoot);
             var artifactPath = Path.Combine(artifactRoot, "selected-tab.actual.png");
             await File.WriteAllBytesAsync(artifactPath, result.Png);

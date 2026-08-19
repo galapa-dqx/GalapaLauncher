@@ -1,5 +1,9 @@
 using Galapa.Core.Game.Authentication;
+using Galapa.Core.Game;
 using Galapa.Launcher.ViewModels;
+using Galapa.Launcher.ViewModels.LoginFrame;
+using Galapa.Launcher.Services;
+using Galapa.Core.Models;
 using Galapa.TestUtilities;
 using Moq;
 
@@ -131,6 +135,32 @@ public class LoginFlowStateTests
     }
 
     [Fact]
+    public async Task GeneratedLoginCommandsAreNonNullAndInvokable()
+    {
+        var navigation = new LoginNavigationService();
+        var flow = new LoginFlowState();
+        var credentials = new Mock<IPlayerCredentialFactory>();
+        var players = new PlayerSelectPageViewModel(navigation, flow, new PlayerList(credentials.Object));
+        var strategy = new Mock<LoginStrategy>();
+        strategy.Setup(value => value.Start()).ReturnsAsync(new AskUsernamePassword());
+        var item = new TestPlayerItem(strategy.Object);
+
+        Assert.NotNull(players.SelectPlayerCommand);
+        await players.SelectPlayerCommand.ExecuteAsync(item);
+        Assert.Same(strategy.Object, flow.Strategy);
+        Assert.IsType<AskUsernamePassword>(navigation.Step);
+
+        var frame = new LoginFrameViewModel(navigation,
+            () => throw new InvalidOperationException(),
+            () => players,
+            () => throw new InvalidOperationException(),
+            () => throw new InvalidOperationException());
+        Assert.NotNull(frame.ReturnToPlayerSelectCommand);
+        frame.ReturnToPlayerSelectCommand.Execute(null);
+        Assert.Same(players, frame.Page);
+    }
+
+    [Fact]
     public void SavePassword_CanBeSetToFalse()
     {
         // Arrange
@@ -169,5 +199,11 @@ public class LoginFlowStateTests
 
         // Assert
         Assert.Null(state.Strategy);
+    }
+
+    private sealed class TestPlayerItem(LoginStrategy strategy) : PlayerListItem
+    {
+        public override LoginStrategy LoginStrategy => strategy;
+        public override string Text => "Test";
     }
 }

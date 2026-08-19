@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
 using Avalonia.Interactivity;
+using Avalonia.Input;
 using Avalonia.Headless;
 using Avalonia.Layout;
 using Avalonia.Markup.Xaml.Styling;
@@ -35,15 +36,6 @@ public sealed class SkiaHeadlessFixture : IDisposable
 
     public Task<byte[]> RenderAsync(string svg, int hostWidth, int hostHeight) =>
         _session.Dispatch(() => Render(svg, hostWidth, hostHeight), CancellationToken.None);
-
-    public Task<byte[]> RenderPathAsync(CompiledControl style, int hostWidth, int hostHeight,
-        double topBorderGapStart = double.NaN, double topBorderGapWidth = 0) =>
-        _session.Dispatch(
-            () => RenderPath(style, hostWidth, hostHeight, topBorderGapStart, topBorderGapWidth),
-            CancellationToken.None);
-
-    public Task<byte[]> RenderThemePartAsync(CompiledControl style, int hostWidth, int hostHeight) =>
-        _session.Dispatch(() => RenderThemePart(style, hostWidth, hostHeight), CancellationToken.None);
 
     public Task<bool> ConstructMainWindowAsync() =>
         _session.Dispatch(() =>
@@ -154,11 +146,11 @@ public sealed class SkiaHeadlessFixture : IDisposable
                         }
                     }
                 };
-                frame.PartStyle = inputStyle;
+                frame.PartStyle = ThemePartPresentation.Create(inputStyle);
                 var before = frame.State;
                 editor.Focus();
                 window.UpdateLayout();
-                var focusedVisual = ThemePartPresentation.For(inputStyle).Visual(frame.State);
+                var focusedVisual = frame.PartStyle.Visual(frame.State);
                 return (editor.IsFocused, ring.IsVisible, before, frame.State, focusedVisual.BorderEdges);
             }
             finally
@@ -167,7 +159,33 @@ public sealed class SkiaHeadlessFixture : IDisposable
             }
         }, CancellationToken.None);
 
-    public Task<byte[]> ValidateAndRenderThemeTextAsync(ThemePackage package) =>
+    public Task<bool> ClickThemedFieldFrameAsync() =>
+        _session.Dispatch(() =>
+        {
+            _ = EnsureThemeStyles();
+            var field = new ThemedField { Label = "Username", Width = 240 };
+            var window = new Window
+            {
+                Width = 280,
+                Height = 100,
+                SystemDecorations = SystemDecorations.None,
+                Content = field
+            };
+            window.Show();
+            try
+            {
+                window.UpdateLayout();
+                var editor = field.FindControl<TextBox>("PART_Editor")!;
+                var origin = field.TranslatePoint(default, window) ?? default;
+                var point = origin + new Vector(2, 19);
+                window.MouseDown(point, MouseButton.Left);
+                window.MouseUp(point, MouseButton.Left);
+                return editor.IsFocused;
+            }
+            finally { window.Close(); }
+        }, CancellationToken.None);
+
+    public Task<byte[]> ValidateAndRenderThemeTextAsync(ValidatedTheme package) =>
         _session.Dispatch(() =>
         {
             ThemeFontRegistrar.Validate(package);
@@ -178,7 +196,7 @@ public sealed class SkiaHeadlessFixture : IDisposable
             return Render(new TextBlock
             {
                 Text = "Galapa",
-                FontFamily = ThemeManager.FontFamilyFor(package.Manifest.Id, text.Family!),
+                FontFamily = ThemeManager.FontFamilyFor(new ThemeId(package.Manifest.Id), text.Family!),
                 FontStyle = ThemeTypography.ToFontStyle(text.Style),
                 FontWeight = (FontWeight)(text.Weight ?? 400),
                 FontSize = 24,
@@ -199,12 +217,12 @@ public sealed class SkiaHeadlessFixture : IDisposable
     public Task<byte[]> RenderSwitchThumbAsync(double position) =>
         _session.Dispatch(() => Render(new SwitchThumbPart
         {
-            PartStyle = new CompiledControl
+            PartStyle = ThemePartPresentation.Create(new CompiledControl
             {
                 Shape = "Path",
                 Fill = "#22AA78",
                 Radius = System.Text.Json.JsonSerializer.SerializeToElement("pill")
-            },
+            }),
             Position = position,
             VisualWidth = 13,
             VisualHeight = 13,
@@ -221,6 +239,9 @@ public sealed class SkiaHeadlessFixture : IDisposable
     public Task<T> DispatchAsync<T>(Func<Task<T>> action) =>
         _session.Dispatch(action, CancellationToken.None);
 
+    public Task<T> DispatchAsync<T>(Func<T> action) =>
+        _session.Dispatch(action, CancellationToken.None);
+
     public void Dispose() => _session.Dispose();
 
     private static byte[] Render(string svg, int hostWidth, int hostHeight)
@@ -231,46 +252,6 @@ public sealed class SkiaHeadlessFixture : IDisposable
         {
             Width = pixelSize.Width,
             Height = pixelSize.Height
-        };
-        return Render(visual, pixelSize);
-    }
-
-    private static byte[] RenderPath(CompiledControl style, int hostWidth, int hostHeight,
-        double topBorderGapStart, double topBorderGapWidth)
-    {
-        var pixelSize = new PixelSize(hostWidth + FixtureOutset * 2, hostHeight + FixtureOutset * 2);
-        var part = new NotchedThemePart
-        {
-            PartStyle = style,
-            Width = hostWidth,
-            Height = hostHeight,
-            TopBorderGapStart = topBorderGapStart,
-            TopBorderGapWidth = topBorderGapWidth
-        };
-        Canvas.SetLeft(part, FixtureOutset);
-        Canvas.SetTop(part, FixtureOutset);
-        var visual = new Canvas
-        {
-            Width = pixelSize.Width,
-            Height = pixelSize.Height,
-            Background = new SolidColorBrush(Color.Parse(FixtureBackground)),
-            Children = { part }
-        };
-        return Render(visual, pixelSize);
-    }
-
-    private static byte[] RenderThemePart(CompiledControl style, int hostWidth, int hostHeight)
-    {
-        var pixelSize = new PixelSize(hostWidth + FixtureOutset * 2, hostHeight + FixtureOutset * 2);
-        var part = new ThemePart { PartStyle = style, Width = hostWidth, Height = hostHeight };
-        Canvas.SetLeft(part, FixtureOutset);
-        Canvas.SetTop(part, FixtureOutset);
-        var visual = new Canvas
-        {
-            Width = pixelSize.Width,
-            Height = pixelSize.Height,
-            Background = new SolidColorBrush(Color.Parse(FixtureBackground)),
-            Children = { part }
         };
         return Render(visual, pixelSize);
     }
@@ -289,17 +270,16 @@ public sealed class SkiaHeadlessFixture : IDisposable
             Padding = System.Text.Json.JsonSerializer.SerializeToElement(new[] { 0, 10, 0, 10 }),
             States = new Dictionary<string, CompiledControl> { ["selected"] = selectedState }
         };
-        app.Resources["Galapa.Part.tab"] = tabStyle;
+        app.Resources["Galapa.Part.tab"] = ThemePartPresentation.Create(tabStyle);
         app.Resources["Galapa.Part.tab.ContentBrush"] = new SolidColorBrush(Color.Parse("#3A7860"));
         app.Resources["Galapa.Part.tab.selected.ContentBrush"] = new SolidColorBrush(Color.Parse("#22AA78"));
         app.Resources["Galapa.Part.tab.selected.BorderBrush"] = new SolidColorBrush(Color.Parse("#22AA78"));
-        app.Resources["Galapa.Type.navigation.ContentBrush"] = new SolidColorBrush(Color.Parse("#3A7860"));
-        app.Resources["Galapa.Type.navigation.Family"] = FontFamily.Default;
-        app.Resources["Galapa.Type.navigation.Size"] = 16d;
-        app.Resources["Galapa.Type.navigation.Weight"] = FontWeight.SemiBold;
-        app.Resources["Galapa.Type.navigation.Style"] = FontStyle.Normal;
-        app.Resources["Galapa.Type.navigation.LetterSpacing"] = 0d;
-        app.Resources["Galapa.Type.navigation.Transform"] = "Original";
+        app.Resources["Galapa.Type.Control.tab.Family"] = FontFamily.Default;
+        app.Resources["Galapa.Type.Control.tab.Size"] = 16d;
+        app.Resources["Galapa.Type.Control.tab.Weight"] = FontWeight.SemiBold;
+        app.Resources["Galapa.Type.Control.tab.Style"] = FontStyle.Normal;
+        app.Resources["Galapa.Type.Control.tab.LetterSpacing"] = 0d;
+        app.Resources["Galapa.Type.Control.tab.Transform"] = "Original";
 
         var strip = new TabStrip
         {
@@ -445,7 +425,7 @@ public sealed class SkiaHeadlessFixture : IDisposable
         return app;
     }
 
-    private static byte[] Render(Control visual, PixelSize pixelSize)
+    internal static byte[] Render(Control visual, PixelSize pixelSize)
     {
         visual.Measure(pixelSize.ToSize(1));
         visual.Arrange(new Rect(pixelSize.ToSize(1)));
@@ -552,9 +532,8 @@ public static class SkiaHeadlessTestApplication
 [Collection(SkiaRenderingCollection.Name)]
 public sealed class NineSliceRenderingTests(SkiaHeadlessFixture skia)
 {
-    private const string UpdateVariable = "GALAPA_UPDATE_RENDER_FIXTURES";
-    private static readonly string ProjectRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", ".."));
-    private static readonly string SourceFixtureRoot = Path.Combine(ProjectRoot, "Fixtures", "NineSlice");
+    private readonly PathTestRenderer _pathRenderer = new(skia);
+    private static readonly string SourceFixtureRoot = TestPaths.Fixtures("NineSlice");
 
     public static TheoryData<string, string, int, int> GoldenCases => new()
     {
@@ -578,19 +557,8 @@ public sealed class NineSliceRenderingTests(SkiaHeadlessFixture skia)
         var actual = await skia.RenderAsync(svg, width, height);
 
         var expectedName = $"{name}-{width}x{height}.png";
-        if (Environment.GetEnvironmentVariable(UpdateVariable) == "1")
-        {
-            var sourceExpected = Path.Combine(SourceFixtureRoot, "Expected");
-            Directory.CreateDirectory(sourceExpected);
-            await File.WriteAllBytesAsync(Path.Combine(sourceExpected, expectedName), actual);
-            return;
-        }
-
         var expectedPath = Path.Combine(SourceFixtureRoot, "Expected", expectedName);
-        if (!File.Exists(expectedPath))
-            throw new XunitException($"Missing render fixture '{expectedName}'. Run the test with {UpdateVariable}=1 to create it.");
-
-        GoldenImage.ComparePixels(expectedPath, actual, name, "NineSlice");
+        await GoldenImage.AssertMatchesOrUpdate(expectedPath, actual, name, "NineSlice");
     }
 
     [Fact]
@@ -617,7 +585,7 @@ public sealed class NineSliceRenderingTests(SkiaHeadlessFixture skia)
     public async Task ProductionThemePartDoesNotClipNineSliceOutset()
     {
         var svg = await File.ReadAllTextAsync(Path.Combine(SourceFixtureRoot, "diagnostic.9.svg"));
-        var png = await skia.RenderThemePartAsync(new CompiledControl { Shape = "Asset", Art = svg }, 20, 20);
+        var png = await _pathRenderer.RenderThemePartAsync(new CompiledControl { Shape = "Asset", Art = svg }, 20, 20);
         using var bitmap = SKBitmap.Decode(png);
         var background = SKColor.Parse(SkiaHeadlessFixture.FixtureBackground);
 
@@ -682,78 +650,4 @@ public sealed class NineSliceRenderingTests(SkiaHeadlessFixture skia)
         }
     }
 
-}
-
-internal static class GoldenImage
-{
-    internal static readonly string ProjectRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", ".."));
-
-    internal static void ComparePixels(string expectedPath, byte[] actualPng, string name, string artifactGroup)
-    {
-        using var expected = SKBitmap.Decode(expectedPath)
-            ?? throw new XunitException($"Could not decode expected image: {expectedPath}");
-        using var actual = SKBitmap.Decode(actualPng)
-            ?? throw new XunitException($"Could not decode actual image for {name}.");
-
-        var mismatchCount = 0;
-        var maximumDelta = 0;
-        var diffWidth = Math.Max(expected.Width, actual.Width);
-        var diffHeight = Math.Max(expected.Height, actual.Height);
-        using var diff = new SKBitmap(diffWidth, diffHeight, SKColorType.Rgba8888, SKAlphaType.Opaque);
-        for (var y = 0; y < diffHeight; y++)
-        for (var x = 0; x < diffWidth; x++)
-        {
-            if (x >= expected.Width || y >= expected.Height || x >= actual.Width || y >= actual.Height)
-            {
-                mismatchCount++;
-                maximumDelta = 255;
-                diff.SetPixel(x, y, new SKColor(255, 0, 255, 255));
-                continue;
-            }
-            var wanted = expected.GetPixel(x, y);
-            var rendered = actual.GetPixel(x, y);
-            var delta = Math.Max(
-                Math.Max(Math.Abs(wanted.Red - rendered.Red), Math.Abs(wanted.Green - rendered.Green)),
-                Math.Max(Math.Abs(wanted.Blue - rendered.Blue), Math.Abs(wanted.Alpha - rendered.Alpha)));
-            maximumDelta = Math.Max(maximumDelta, delta);
-            if (delta == 0)
-            {
-                diff.SetPixel(x, y, new SKColor((byte)(wanted.Red / 3), (byte)(wanted.Green / 3),
-                    (byte)(wanted.Blue / 3), 255));
-            }
-            else
-            {
-                mismatchCount++;
-                diff.SetPixel(x, y, new SKColor(255, 0, 255, 255));
-            }
-        }
-
-        if (mismatchCount == 0) return;
-        var artifactRoot = ArtifactRoot(artifactGroup);
-        var actualPath = Path.Combine(artifactRoot, $"{name}.actual.png");
-        var diffPath = Path.Combine(artifactRoot, $"{name}.diff.png");
-        File.WriteAllBytes(actualPath, actualPng);
-        Save(diff, diffPath);
-        var sizeMessage = expected.Width == actual.Width && expected.Height == actual.Height
-            ? string.Empty
-            : $" Expected {expected.Width}x{expected.Height}, rendered {actual.Width}x{actual.Height}.";
-        throw new XunitException(
-            $"{name}: {mismatchCount} pixels differ (maximum channel delta {maximumDelta}).{sizeMessage} " +
-            $"Actual: {actualPath}; diff: {diffPath}");
-    }
-
-    private static string ArtifactRoot(string artifactGroup)
-    {
-        var path = Path.Combine(ProjectRoot, "TestResults", artifactGroup);
-        Directory.CreateDirectory(path);
-        return path;
-    }
-
-    private static void Save(SKBitmap bitmap, string path)
-    {
-        using var image = SKImage.FromBitmap(bitmap);
-        using var data = image.Encode(SKEncodedImageFormat.Png, 100);
-        using var stream = File.Create(path);
-        data.SaveTo(stream);
-    }
 }
