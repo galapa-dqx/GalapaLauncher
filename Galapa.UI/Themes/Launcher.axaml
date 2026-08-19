@@ -4,81 +4,91 @@
     <Style Selector="Window">
         <Setter Property="Background" Value="{DynamicResource Galapa.Part.window.FillBrush}" />
         <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.window.ContentBrush}" />
-        <Setter Property="FontFamily" Value="{DynamicResource Galapa.Font.Body}" />
-        <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.body.Size}" />
+        <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.Control.setting-help.body.Family}" />
+        <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.Control.setting-help.body.Size}" />
+        <Setter Property="FontWeight" Value="{DynamicResource Galapa.Type.Control.setting-help.body.Weight}" />
+        <Setter Property="FontStyle" Value="{DynamicResource Galapa.Type.Control.setting-help.body.Style}" />
     </Style>
     <Style Selector="UserControl">
         <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.window.ContentBrush}" />
-        <Setter Property="FontFamily" Value="{DynamicResource Galapa.Font.Body}" />
-        <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.body.Size}" />
+        <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.Control.setting-help.body.Family}" />
+        <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.Control.setting-help.body.Size}" />
+        <Setter Property="FontWeight" Value="{DynamicResource Galapa.Type.Control.setting-help.body.Weight}" />
+        <Setter Property="FontStyle" Value="{DynamicResource Galapa.Type.Control.setting-help.body.Style}" />
     </Style>
     <Style Selector="TextBlock">
-        <Setter Property="Foreground" Value="{DynamicResource Galapa.Type.body.ContentBrush}" />
-        <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.body.Family}" />
-        <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.body.Size}" />
+        <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.setting-help.body.ContentBrush}" />
+        <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.Control.setting-help.body.Family}" />
+        <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.Control.setting-help.body.Size}" />
+        <Setter Property="FontWeight" Value="{DynamicResource Galapa.Type.Control.setting-help.body.Weight}" />
+        <Setter Property="FontStyle" Value="{DynamicResource Galapa.Type.Control.setting-help.body.Style}" />
+        <Setter Property="LetterSpacing" Value="{DynamicResource Galapa.Type.Control.setting-help.body.LetterSpacing}" />
+    </Style>
+    <Style Selector="controls|ThemedTextBlock">
+        <Setter Property="controls:ThemedTextBlock.TextTransform" Value="{DynamicResource Galapa.Type.Control.setting-help.body.Transform}" />
     </Style>
     <Style Selector="controls|ThemedTextBlock.brand">
-        <Setter Property="Foreground" Value="{DynamicResource Galapa.Type.brand.ContentBrush}" />
-        <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.brand.Family}" />
-        <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.brand.Size}" />
-        <Setter Property="FontWeight" Value="{DynamicResource Galapa.Type.brand.Weight}" />
-        <Setter Property="FontStyle" Value="{DynamicResource Galapa.Type.brand.Style}" />
-        <Setter Property="LetterSpacing" Value="{DynamicResource Galapa.Type.brand.LetterSpacing}" />
-        <Setter Property="controls:ThemedTextBlock.TextTransform" Value="{DynamicResource Galapa.Type.brand.Transform}" />
+        <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.titlebar.wordmark.ContentBrush}" />
+        <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.Control.titlebar.wordmark.Family}" />
+        <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.Control.titlebar.wordmark.Size}" />
+        <Setter Property="FontWeight" Value="{DynamicResource Galapa.Type.Control.titlebar.wordmark.Weight}" />
+        <Setter Property="FontStyle" Value="{DynamicResource Galapa.Type.Control.titlebar.wordmark.Style}" />
+        <Setter Property="LetterSpacing" Value="{DynamicResource Galapa.Type.Control.titlebar.wordmark.LetterSpacing}" />
+        <Setter Property="controls:ThemedTextBlock.TextTransform" Value="{DynamicResource Galapa.Type.Control.titlebar.wordmark.Transform}" />
     </Style>
     <Style Selector="controls|ThemedTextBlock.navigation">
-        <Setter Property="Foreground" Value="{DynamicResource Galapa.Type.navigation.ContentBrush}" />
-        <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.navigation.Family}" />
-        <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.navigation.Size}" />
-        <Setter Property="FontWeight" Value="{DynamicResource Galapa.Type.navigation.Weight}" />
-        <Setter Property="FontStyle" Value="{DynamicResource Galapa.Type.navigation.Style}" />
-        <Setter Property="LetterSpacing" Value="{DynamicResource Galapa.Type.navigation.LetterSpacing}" />
-        <Setter Property="controls:ThemedTextBlock.TextTransform" Value="{DynamicResource Galapa.Type.navigation.Transform}" />
+        <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.tab.ContentBrush}" />
+        <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.Control.tab.Family}" />
+        <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.Control.tab.Size}" />
+        <Setter Property="FontWeight" Value="{DynamicResource Galapa.Type.Control.tab.Weight}" />
+        <Setter Property="FontStyle" Value="{DynamicResource Galapa.Type.Control.tab.Style}" />
+        <Setter Property="LetterSpacing" Value="{DynamicResource Galapa.Type.Control.tab.LetterSpacing}" />
+        <Setter Property="controls:ThemedTextBlock.TextTransform" Value="{DynamicResource Galapa.Type.Control.tab.Transform}" />
     </Style>
     <Style Selector="controls|ThemedTextBlock.section">
-        <Setter Property="Foreground" Value="{DynamicResource Galapa.Type.sectionHeading.ContentBrush}" />
-        <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.sectionHeading.Family}" />
-        <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.sectionHeading.Size}" />
-        <Setter Property="FontWeight" Value="{DynamicResource Galapa.Type.sectionHeading.Weight}" />
-        <Setter Property="FontStyle" Value="{DynamicResource Galapa.Type.sectionHeading.Style}" />
-        <Setter Property="LetterSpacing" Value="{DynamicResource Galapa.Type.sectionHeading.LetterSpacing}" />
-        <Setter Property="controls:ThemedTextBlock.TextTransform" Value="{DynamicResource Galapa.Type.sectionHeading.Transform}" />
+        <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.settings.heading.ContentBrush}" />
+        <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.Control.settings.heading.Family}" />
+        <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.Control.settings.heading.Size}" />
+        <Setter Property="FontWeight" Value="{DynamicResource Galapa.Type.Control.settings.heading.Weight}" />
+        <Setter Property="FontStyle" Value="{DynamicResource Galapa.Type.Control.settings.heading.Style}" />
+        <Setter Property="LetterSpacing" Value="{DynamicResource Galapa.Type.Control.settings.heading.LetterSpacing}" />
+        <Setter Property="controls:ThemedTextBlock.TextTransform" Value="{DynamicResource Galapa.Type.Control.settings.heading.Transform}" />
     </Style>
     <Style Selector="controls|ThemedTextBlock.field-label">
-        <Setter Property="Foreground" Value="{DynamicResource Galapa.Type.fieldLabel.ContentBrush}" />
-        <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.fieldLabel.Family}" />
-        <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.fieldLabel.Size}" />
-        <Setter Property="FontWeight" Value="{DynamicResource Galapa.Type.fieldLabel.Weight}" />
-        <Setter Property="FontStyle" Value="{DynamicResource Galapa.Type.fieldLabel.Style}" />
-        <Setter Property="LetterSpacing" Value="{DynamicResource Galapa.Type.fieldLabel.LetterSpacing}" />
-        <Setter Property="controls:ThemedTextBlock.TextTransform" Value="{DynamicResource Galapa.Type.fieldLabel.Transform}" />
+        <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.input.label.ContentBrush}" />
+        <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.Control.input.label.Family}" />
+        <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.Control.input.label.Size}" />
+        <Setter Property="FontWeight" Value="{DynamicResource Galapa.Type.Control.input.label.Weight}" />
+        <Setter Property="FontStyle" Value="{DynamicResource Galapa.Type.Control.input.label.Style}" />
+        <Setter Property="LetterSpacing" Value="{DynamicResource Galapa.Type.Control.input.label.LetterSpacing}" />
+        <Setter Property="controls:ThemedTextBlock.TextTransform" Value="{DynamicResource Galapa.Type.Control.input.label.Transform}" />
     </Style>
     <Style Selector="controls|ThemedTextBlock.card-title">
-        <Setter Property="Foreground" Value="{DynamicResource Galapa.Type.cardTitle.ContentBrush}" />
-        <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.cardTitle.Family}" />
-        <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.cardTitle.Size}" />
-        <Setter Property="FontWeight" Value="{DynamicResource Galapa.Type.cardTitle.Weight}" />
-        <Setter Property="FontStyle" Value="{DynamicResource Galapa.Type.cardTitle.Style}" />
-        <Setter Property="LetterSpacing" Value="{DynamicResource Galapa.Type.cardTitle.LetterSpacing}" />
-        <Setter Property="controls:ThemedTextBlock.TextTransform" Value="{DynamicResource Galapa.Type.cardTitle.Transform}" />
+        <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.news-item.ContentBrush}" />
+        <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.Control.news-item.Family}" />
+        <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.Control.news-item.Size}" />
+        <Setter Property="FontWeight" Value="{DynamicResource Galapa.Type.Control.news-item.Weight}" />
+        <Setter Property="FontStyle" Value="{DynamicResource Galapa.Type.Control.news-item.Style}" />
+        <Setter Property="LetterSpacing" Value="{DynamicResource Galapa.Type.Control.news-item.LetterSpacing}" />
+        <Setter Property="controls:ThemedTextBlock.TextTransform" Value="{DynamicResource Galapa.Type.Control.news-item.Transform}" />
     </Style>
     <Style Selector="controls|ThemedTextBlock.setting-value">
-        <Setter Property="Foreground" Value="{DynamicResource Galapa.Type.settingValue.ContentBrush}" />
-        <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.settingValue.Family}" />
-        <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.settingValue.Size}" />
-        <Setter Property="FontWeight" Value="{DynamicResource Galapa.Type.settingValue.Weight}" />
-        <Setter Property="FontStyle" Value="{DynamicResource Galapa.Type.settingValue.Style}" />
-        <Setter Property="LetterSpacing" Value="{DynamicResource Galapa.Type.settingValue.LetterSpacing}" />
-        <Setter Property="controls:ThemedTextBlock.TextTransform" Value="{DynamicResource Galapa.Type.settingValue.Transform}" />
+        <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.setting-row.ContentBrush}" />
+        <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.Control.setting-row.Family}" />
+        <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.Control.setting-row.Size}" />
+        <Setter Property="FontWeight" Value="{DynamicResource Galapa.Type.Control.setting-row.Weight}" />
+        <Setter Property="FontStyle" Value="{DynamicResource Galapa.Type.Control.setting-row.Style}" />
+        <Setter Property="LetterSpacing" Value="{DynamicResource Galapa.Type.Control.setting-row.LetterSpacing}" />
+        <Setter Property="controls:ThemedTextBlock.TextTransform" Value="{DynamicResource Galapa.Type.Control.setting-row.Transform}" />
     </Style>
     <Style Selector="controls|ThemedTextBlock.metadata">
-        <Setter Property="Foreground" Value="{DynamicResource Galapa.Type.metadata.ContentBrush}" />
-        <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.metadata.Family}" />
-        <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.metadata.Size}" />
-        <Setter Property="FontWeight" Value="{DynamicResource Galapa.Type.metadata.Weight}" />
-        <Setter Property="FontStyle" Value="{DynamicResource Galapa.Type.metadata.Style}" />
-        <Setter Property="LetterSpacing" Value="{DynamicResource Galapa.Type.metadata.LetterSpacing}" />
-        <Setter Property="controls:ThemedTextBlock.TextTransform" Value="{DynamicResource Galapa.Type.metadata.Transform}" />
+        <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.news-item.date.ContentBrush}" />
+        <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.Control.news-item.date.Family}" />
+        <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.Control.news-item.date.Size}" />
+        <Setter Property="FontWeight" Value="{DynamicResource Galapa.Type.Control.news-item.date.Weight}" />
+        <Setter Property="FontStyle" Value="{DynamicResource Galapa.Type.Control.news-item.date.Style}" />
+        <Setter Property="LetterSpacing" Value="{DynamicResource Galapa.Type.Control.news-item.date.LetterSpacing}" />
+        <Setter Property="controls:ThemedTextBlock.TextTransform" Value="{DynamicResource Galapa.Type.Control.news-item.date.Transform}" />
     </Style>
     <Style Selector="TextBlock.muted">
         <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.setting-help.body.ContentBrush}" />

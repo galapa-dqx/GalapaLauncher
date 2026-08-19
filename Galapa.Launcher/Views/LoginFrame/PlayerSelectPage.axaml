@@ -7,7 +7,7 @@
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
                         <Button Classes="themed" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Margin="0,0,0,8"
-                                Command="{Binding $parent[ItemsControl].((vm:PlayerSelectPageViewModel)DataContext).SelectPlayer}"
+                                Command="{Binding $parent[ItemsControl].((vm:PlayerSelectPageViewModel)DataContext).SelectPlayerCommand}"
                                 CommandParameter="{Binding}">
                             <StackPanel Orientation="Horizontal" Spacing="9">
                                 <Svg Path="{Binding Icon}" Height="18" Width="18" />

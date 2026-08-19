@@ -57,6 +57,14 @@ public partial class Settings : ObservableValidator
         File.WriteAllText(Paths.Settings, JsonSerializer.Serialize(this));
     }
 
+    public async Task SaveAsync(CancellationToken cancellationToken = default)
+    {
+        Directory.CreateDirectory(Paths.AppData);
+        // Capture a consistent snapshot before yielding to file I/O.
+        var json = JsonSerializer.Serialize(this);
+        await File.WriteAllTextAsync(Paths.Settings, json, cancellationToken);
+    }
+
     public static bool IsValidGameFolder(string? gameFolderPath) =>
         !string.IsNullOrWhiteSpace(gameFolderPath) &&
         Directory.Exists(gameFolderPath) &&

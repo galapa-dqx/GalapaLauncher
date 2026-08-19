@@ -19,14 +19,14 @@ public sealed class NewsGem : Control
         AvaloniaProperty.Register<NewsGem, IBrush?>(nameof(Stroke));
     public static readonly StyledProperty<IBrush?> CurrentColorProperty =
         AvaloniaProperty.Register<NewsGem, IBrush?>(nameof(CurrentColor));
-    public static readonly StyledProperty<CompiledControl?> PartStyleProperty =
-        AvaloniaProperty.Register<NewsGem, CompiledControl?>(nameof(PartStyle));
+    public static readonly StyledProperty<ThemePartPresentation?> PartStyleProperty =
+        AvaloniaProperty.Register<NewsGem, ThemePartPresentation?>(nameof(PartStyle));
 
     public string Category { get => GetValue(CategoryProperty); set => SetValue(CategoryProperty, value); }
     public IBrush? Fill { get => GetValue(FillProperty); set => SetValue(FillProperty, value); }
     public IBrush? Stroke { get => GetValue(StrokeProperty); set => SetValue(StrokeProperty, value); }
     public IBrush? CurrentColor { get => GetValue(CurrentColorProperty); set => SetValue(CurrentColorProperty, value); }
-    public CompiledControl? PartStyle { get => GetValue(PartStyleProperty); set => SetValue(PartStyleProperty, value); }
+    public ThemePartPresentation? PartStyle { get => GetValue(PartStyleProperty); set => SetValue(PartStyleProperty, value); }
 
     static NewsGem() => AffectsRender<NewsGem>(CategoryProperty, FillProperty, StrokeProperty,
         CurrentColorProperty, PartStyleProperty);
@@ -36,13 +36,13 @@ public sealed class NewsGem : Control
     public override void Render(DrawingContext context)
     {
         base.Render(context);
-        if (PartStyle?.Images?.TryGetValue(Category, out var svg) == true)
+        if (PartStyle?.Images.TryGetValue(Category, out var image) == true)
         {
-            ThemeSvgCache.Document(svg).Draw(context, new Rect(Bounds.Size), CurrentColor ?? Fill);
+            image.Draw(context, new Rect(Bounds.Size), CurrentColor ?? Fill);
             return;
         }
 
-        var themedStroke = ThemePaint.Brush(PartStyle?.BorderColor) ?? Stroke;
+        var themedStroke = ThemePaint.Brush(PartStyle?.Normalized.Normal.BorderColor) ?? Stroke;
         var pen = themedStroke is null ? null : new Pen(themedStroke);
         switch (Category)
         {

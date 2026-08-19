@@ -70,8 +70,11 @@ internal sealed class Program
         container.Register<PlayerList>(Reuse.Singleton);
         container.Register<OnboardingFrameViewModel>(Reuse.Singleton);
         container.Register<CompiledThemeReader>(Reuse.Singleton);
+        container.Register<IThemeLoader, ThemeLoader>(Reuse.Singleton);
+        container.Register<ThemePipeline>(Reuse.Singleton);
         container.Register<IThemeCatalog, ThemeCatalog>(Reuse.Singleton);
         container.Register<IThemeManager, ThemeManager>(Reuse.Singleton);
+        container.Register<ISettingsPersistence, SettingsPersistence>(Reuse.Singleton);
 
         // Controller input services
         container.Register<ControllerListService>(Reuse.Singleton);
@@ -133,6 +136,13 @@ internal sealed class Program
         Services = CreateServiceProvider();
         var settings = Services.Resolve<Settings>();
         ConfigFile.RootDirectory = settings.SaveFolderPath;
+        var preferredThemeId = ThemeId.TryParse(settings.ThemeId, out var parsedThemeId)
+            ? parsedThemeId
+            : new ThemeId(Settings.DefaultThemeId);
+        // Validation is renderer-independent and happens before Avalonia owns a
+        // UI thread. This avoids blocking the dispatcher while still ensuring
+        // the selected and recovery entries exist before first paint.
+        Services.Resolve<IThemeCatalog>().InitializeAsync(preferredThemeId).GetAwaiter().GetResult();
 
         return AppBuilder.Configure<App>()
             .UsePlatformDetect()

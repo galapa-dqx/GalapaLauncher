@@ -1,19 +1,21 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Galapa.Launcher.ViewModels.SettingsFrame" xmlns:ui="using:Galapa.UI.Controls"
              xmlns:local="using:Galapa.Launcher.Views.Controls"
+             xmlns:theming="using:Galapa.Launcher.Theming"
              x:Class="Galapa.Launcher.Views.SettingsFrame.GeneralSettingsPage" x:DataType="vm:GeneralSettingsPageViewModel">
     <local:SettingsPageShell>
         <StackPanel Spacing="10">
             <ui:ThemedTextBlock Classes="section" SourceText="Appearance" Margin="0,0,0,1" />
             <ItemsControl Classes="stretch-items" ItemsSource="{Binding Themes}">
                 <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="vm:ThemeChoice">
+                    <DataTemplate x:DataType="theming:ThemeCatalogEntry">
                         <Button Classes="themed setting-row" Classes.active="{Binding IsActive}" Margin="0,0,0,10"
                                 Command="{Binding $parent[UserControl].DataContext.SelectThemeCommand}"
                                 CommandParameter="{Binding}">
                             <Grid ColumnDefinitions="*,Auto">
-                                <ui:ThemedTextBlock Classes="setting-value" SourceText="{Binding Name}" VerticalAlignment="Center" />
-                                <TextBlock Grid.Column="1" Text="{Binding Variant}" Classes="muted" VerticalAlignment="Center" />
+                                <ui:ThemedTextBlock Classes="setting-value" SourceText="{Binding DisplayName}" VerticalAlignment="Center" />
+                                <ui:ThemedTextBlock Grid.Column="1" SourceText="{Binding StatusText}" Classes="metadata"
+                                                    Classes.input-error="{Binding HasError}" VerticalAlignment="Center" />
                             </Grid>
                         </Button>
                     </DataTemplate>

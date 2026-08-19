@@ -96,9 +96,9 @@ public static class CompiledThemeContract
         {
             ["window"] = new("Window"),
             ["panel"] = new(),
-            ["button"] = new(DefaultFont: ThemeFontRole.Heading),
-            ["input"] = new(DefaultFont: ThemeFontRole.Body),
-            ["tab"] = new(DefaultFont: ThemeFontRole.Heading),
+            ["button"] = new(Typography: Heading(16, 600)),
+            ["input"] = new(Typography: Body(16, 400)),
+            ["tab"] = new(Typography: Heading(16, 600)),
             ["carousel"] = new(),
             ["pip"] = new(),
             ["switch.track"] = new(),
@@ -106,8 +106,8 @@ public static class CompiledThemeContract
             ["carousel.nav"] = new(),
             ["titlebar.caption"] = new(),
             ["titlebar.close"] = new(),
-            ["news-item"] = new(DefaultFont: ThemeFontRole.Heading),
-            ["setting-row"] = new(DefaultFont: ThemeFontRole.Heading),
+            ["news-item"] = new(Typography: Heading(16, 600)),
+            ["setting-row"] = new(Typography: Heading(14, 600)),
             ["titlebar"] = new(),
             ["subtabs"] = new(),
             ["scrollbar.track"] = new(),
@@ -115,40 +115,18 @@ public static class CompiledThemeContract
             ["progress.track"] = new(),
             ["progress.indicator"] = new(),
             ["play-ornament"] = new(),
-            ["input.label"] = new("Text"),
-            ["news-item.date"] = new("Text", ThemeFontRole.Body),
-            ["news-item.gem"] = new("Text"),
-            ["titlebar.wordmark"] = new("Text"),
-            ["tab-bar"] = new("Text"),
-            ["settings.heading"] = new("Text"),
-            ["setting-help.title"] = new("Text"),
-            ["setting-help.body"] = new("Text", ThemeFontRole.Body),
-            ["input.placeholder"] = new("Text", ThemeFontRole.Body),
-            ["input.caret"] = new("Text"),
-            ["input.error"] = new("Text", ThemeFontRole.Body),
-            ["play-row"] = new("Text")
-        };
-
-    public static readonly IReadOnlyDictionary<string, CompiledTypographyRole> TypographyRoles =
-        new Dictionary<string, CompiledTypographyRole>(StringComparer.Ordinal)
-        {
-            ["brand"] = new("titlebar.wordmark", 20, ThemeFontRole.Heading, 600),
-            ["navigation"] = new("tab", 16, ThemeFontRole.Heading, 600),
-            ["sectionHeading"] = new("settings.heading", 16, ThemeFontRole.Heading, 600),
-            ["fieldLabel"] = new("input.label", 12, ThemeFontRole.Heading, 600),
-            ["button"] = new("button", 16, ThemeFontRole.Heading, 600),
-            ["cardTitle"] = new("news-item", 16, ThemeFontRole.Heading, 600),
-            ["body"] = new("setting-help.body", 14, ThemeFontRole.Body, 400),
-            ["input"] = new("input", 16, ThemeFontRole.Body, 400),
-            ["settingValue"] = new("setting-row", 14, ThemeFontRole.Heading, 600),
-            ["metadata"] = new("news-item.date", 13, ThemeFontRole.Body, 400)
-        };
-
-    public static readonly IReadOnlyDictionary<ThemeFontRole, string> FontSources =
-        new Dictionary<ThemeFontRole, string>
-        {
-            [ThemeFontRole.Heading] = "titlebar.wordmark",
-            [ThemeFontRole.Body] = "input"
+            ["input.label"] = new("Text", Heading(12, 600)),
+            ["news-item.date"] = new("Text", Body(13, 400)),
+            ["news-item.gem"] = new("Text", Heading(14, 600)),
+            ["titlebar.wordmark"] = new("Text", Heading(20, 600)),
+            ["tab-bar"] = new("Text", Heading(16, 600)),
+            ["settings.heading"] = new("Text", Heading(16, 600)),
+            ["setting-help.title"] = new("Text", Heading(16, 600)),
+            ["setting-help.body"] = new("Text", Body(14, 400)),
+            ["input.placeholder"] = new("Text", Body(16, 400)),
+            ["input.caret"] = new("Text", Body(16, 400)),
+            ["input.error"] = new("Text", Body(13, 400)),
+            ["play-row"] = new("Text", Heading(16, 600))
         };
 
     public static readonly HashSet<string> States =
@@ -168,6 +146,17 @@ public static class CompiledThemeContract
         _ => throw new ArgumentOutOfRangeException(nameof(state), state, null)
     };
 
+    public static ThemePartState PartState(string state) => state switch
+    {
+        "hover" => ThemePartState.Hover,
+        "pressed" => ThemePartState.Pressed,
+        "focused" => ThemePartState.Focused,
+        "disabled" => ThemePartState.Disabled,
+        "selected" => ThemePartState.Selected,
+        "checked" => ThemePartState.Checked,
+        _ => throw new ArgumentOutOfRangeException(nameof(state), state, null)
+    };
+
     public static ResolvedControlVisual ResolveVisual(CompiledControl control, CompiledControl? state = null) =>
         new(
             state?.Fill ?? control.Fill,
@@ -177,11 +166,16 @@ public static class CompiledThemeContract
             state?.Opacity ?? control.Opacity ?? 1,
             state?.Image ?? control.Image,
             state?.Art ?? control.Art);
+
+    private static TypographyDefaults Heading(double size, int weight) =>
+        new("titlebar.wordmark", size, weight);
+
+    private static TypographyDefaults Body(double size, int weight) =>
+        new("input", size, weight);
 }
 
-public enum ThemeFontRole { Heading, Body }
-public sealed record CompiledControlSpec(string? RequiredShape = null, ThemeFontRole DefaultFont = ThemeFontRole.Heading);
-public sealed record CompiledTypographyRole(string ControlId, double FloorSize, ThemeFontRole FontRole, int FloorWeight);
+public sealed record TypographyDefaults(string FamilySourceControlId, double Size, int Weight);
+public sealed record CompiledControlSpec(string? RequiredShape = null, TypographyDefaults? Typography = null);
 public readonly record struct ResolvedControlVisual(
     string? Fill,
     string? Content,
@@ -190,3 +184,64 @@ public readonly record struct ResolvedControlVisual(
     double Opacity,
     string? Image,
     string? Art);
+
+public readonly record struct ThemeEdges(double Top, double Right, double Bottom, double Left)
+{
+    public bool HasAny => Top > 0 || Right > 0 || Bottom > 0 || Left > 0;
+    public bool IsUniform => Math.Abs(Right - Top) < .001 && Math.Abs(Bottom - Top) < .001 &&
+                             Math.Abs(Left - Top) < .001;
+}
+
+public readonly record struct ThemeRadius(bool IsPill, double Value)
+{
+    public double Resolve(double width, double height) => IsPill ? Math.Min(width, height) / 2 : Value;
+}
+
+public sealed record NormalizedControlVisual(
+    ThemeColor? Fill,
+    ThemeColor? Content,
+    bool ContentInherited,
+    ThemeColor? BorderColor,
+    ThemeEdges Border,
+    double Opacity,
+    string? Image,
+    string? Art);
+
+public sealed record NormalizedCompiledControl(
+    CompiledControl Source,
+    ThemeEdges Padding,
+    ThemeRadius Radius,
+    NormalizedControlVisual Normal,
+    IReadOnlyDictionary<string, NormalizedControlVisual> States);
+
+public static class CompiledThemeNormalizer
+{
+    public static IReadOnlyDictionary<string, NormalizedCompiledControl> Normalize(CompiledTheme theme) =>
+        theme.Controls.ToDictionary(pair => pair.Key, pair => Normalize(pair.Value), StringComparer.Ordinal);
+
+    public static NormalizedCompiledControl Normalize(CompiledControl source)
+    {
+        var normal = NormalizeVisual(CompiledThemeContract.ResolveVisual(source));
+        var states = source.States?.ToDictionary(
+            state => state.Key,
+            state => NormalizeVisual(CompiledThemeContract.ResolveVisual(source, state.Value)),
+            StringComparer.Ordinal) ?? new Dictionary<string, NormalizedControlVisual>(StringComparer.Ordinal);
+        var radius = source.Radius.ValueKind == JsonValueKind.String
+            ? new ThemeRadius(true, 0)
+            : new ThemeRadius(false, source.Radius.ValueKind == JsonValueKind.Number ? source.Radius.GetDouble() : 0);
+        return new NormalizedCompiledControl(source, Edges(source.Padding), radius, normal, states);
+    }
+
+    private static NormalizedControlVisual NormalizeVisual(ResolvedControlVisual visual) => new(
+        Color(visual.Fill), visual.Content == "inherit" ? null : Color(visual.Content),
+        visual.Content == "inherit", Color(visual.BorderColor), Edges(visual.BorderThickness), visual.Opacity,
+        visual.Image, visual.Art);
+
+    private static ThemeColor? Color(string? value) => value is null ? null : ThemeColor.Parse(value);
+
+    private static ThemeEdges Edges(JsonElement value)
+    {
+        var edges = ThemeMetrics.ReadEdges(value);
+        return new ThemeEdges(edges[0], edges[1], edges[2], edges[3]);
+    }
+}

@@ -9,7 +9,7 @@
             <TransitioningContentControl.ContentTemplate>
                 <DataTemplate DataType="{x:Type conv:ShowObject}">
                     <Button Classes="themed label" HorizontalAlignment="Left"
-                            Command="{Binding $parent[UserControl].DataContext.ReturnToPlayerSelect}"
+                            Command="{Binding $parent[UserControl].DataContext.ReturnToPlayerSelectCommand}"
                             Content="← Players" AutomationProperties.Name="Back to player selection" />
                 </DataTemplate>
             </TransitioningContentControl.ContentTemplate>

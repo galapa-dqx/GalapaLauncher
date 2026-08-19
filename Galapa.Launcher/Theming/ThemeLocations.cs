@@ -27,10 +27,10 @@ internal static class ThemeLocations
             : Path.GetFileNameWithoutExtension(path);
     }
 
-    public static Uri FontCollectionUri(string id) => new($"{FontScheme}:{id}", UriKind.Absolute);
+    public static Uri FontCollectionUri(ThemeId id) => new($"{FontScheme}:{id.Value}", UriKind.Absolute);
 
-    public static Uri BuiltInFontAssetsUri(string id) =>
-        new($"avares://Galapa.Launcher/Assets/ThemeSources/{id}/fonts", UriKind.Absolute);
+    public static Uri BuiltInFontAssetsUri(ThemeId id) =>
+        new($"avares://Galapa.Launcher/Assets/ThemeSources/{id.Value}/fonts", UriKind.Absolute);
 
-    public static string FontFamilyName(string id, string family) => $"{FontScheme}:{id}#{family}";
+    public static string FontFamilyName(ThemeId id, string family) => $"{FontScheme}:{id.Value}#{family}";
 }

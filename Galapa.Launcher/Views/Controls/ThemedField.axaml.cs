@@ -1,5 +1,8 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Interactivity;
+using Avalonia.VisualTree;
 
 namespace Galapa.Launcher.Views.Controls;
 
@@ -19,5 +22,17 @@ public partial class ThemedField : UserControl
     public bool IsReadOnly { get => GetValue(IsReadOnlyProperty); set => SetValue(IsReadOnlyProperty, value); }
     public char PasswordChar { get => GetValue(PasswordCharProperty); set => SetValue(PasswordCharProperty, value); }
 
-    public ThemedField() => InitializeComponent();
+    public ThemedField()
+    {
+        InitializeComponent();
+        AddHandler(PointerPressedEvent, FocusEditorFromFrame, RoutingStrategies.Tunnel);
+    }
+
+    private void FocusEditorFromFrame(object? sender, PointerPressedEventArgs args)
+    {
+        if (!IsEffectivelyEnabled || args.Source is not Visual source) return;
+        var editor = this.FindControl<TextBox>("PART_Editor");
+        if (editor is null || ReferenceEquals(source, editor) || source.FindAncestorOfType<TextBox>() == editor) return;
+        editor.Focus(NavigationMethod.Pointer);
+    }
 }

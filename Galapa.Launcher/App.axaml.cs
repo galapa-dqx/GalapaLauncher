@@ -24,13 +24,12 @@ public partial class App : Application
     public override void OnFrameworkInitializationCompleted()
     {
         var catalog = Program.Services.Resolve<IThemeCatalog>();
-        // Avalonia's classic desktop lifetime decides whether to show MainWindow as soon as
-        // this callback returns, so initialization must finish synchronously. Run compiled
-        // theme I/O on the pool to avoid blocking its awaits on Avalonia's UI context.
         var settings = Program.Services.Resolve<Settings>();
-        Task.Run(() => catalog.LoadInitialAsync(settings.ThemeId)).GetAwaiter().GetResult();
+        var preferredThemeId = ThemeId.TryParse(settings.ThemeId, out var parsedThemeId)
+            ? parsedThemeId
+            : new ThemeId(Settings.DefaultThemeId);
         var manager = Program.Services.Resolve<IThemeManager>();
-        if (!manager.ApplyInitialAsync(settings.ThemeId).GetAwaiter().GetResult())
+        if (!manager.ApplyInitialAsync(preferredThemeId).GetAwaiter().GetResult().Succeeded)
             throw new ThemePackageException("The embedded Estella recovery theme could not be applied.");
 
         if (this.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
@@ -41,7 +40,7 @@ public partial class App : Application
             desktop.MainWindow = Program.Services.GetRequiredService<MainWindow>();
             desktop.MainWindow.Opened += async (_, _) =>
             {
-                try { await Task.Run(() => catalog.LoadRemainingAsync()); }
+                try { await Task.Run(() => catalog.ValidateRemainingAsync()); }
                 catch (Exception ex)
                 {
                     Program.Services.Resolve<ILogger<App>>().LogError(ex,

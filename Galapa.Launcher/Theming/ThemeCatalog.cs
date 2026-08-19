@@ -1,106 +1,158 @@
-using System.Reflection;
 using Galapa.Core.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace Galapa.Launcher.Theming;
 
-public sealed class ThemeCatalog(CompiledThemeReader compiledReader, ILogger<ThemeCatalog> logger) : IThemeCatalog
+public sealed class ThemeCatalog : IThemeCatalog
 {
-    private readonly List<ThemePackage> _themes = [];
+    private static readonly ThemeId DefaultId = new(Settings.DefaultThemeId);
+    private readonly ThemePipeline _pipeline;
+    private readonly ILogger<ThemeCatalog> _logger;
+    private readonly Func<IReadOnlyList<IThemeSource>> _sourceFactory;
+    private readonly IThemeSource _recoverySource;
+    private readonly List<ThemeCatalogEntry> _themes = [];
     private readonly object _sync = new();
+    private ValidatedTheme? _recoveryValidation;
+    private IReadOnlyList<ThemeDiagnostic> _recoveryDiagnostics = [];
 
-    public IReadOnlyList<ThemePackage> Themes
+    public ThemeCatalog(ThemePipeline pipeline, ILogger<ThemeCatalog> logger)
+        : this(pipeline, logger, ThemeSourceDiscovery.BuiltIns, ThemeSourceDiscovery.Recovery()) { }
+
+    internal ThemeCatalog(ThemePipeline pipeline, ILogger<ThemeCatalog> logger,
+        Func<IReadOnlyList<IThemeSource>> sourceFactory, IThemeSource recoverySource)
+    {
+        _pipeline = pipeline;
+        _logger = logger;
+        _sourceFactory = sourceFactory;
+        _recoverySource = recoverySource;
+    }
+
+    public IReadOnlyList<ThemeCatalogEntry> Themes
     {
         get { lock (_sync) return _themes.ToArray(); }
     }
 
     public event EventHandler? ThemesChanged;
 
-    public ThemePackage? Find(string id)
+    public ThemeCatalogEntry? Find(ThemeId id)
     {
         lock (_sync)
-            return _themes.FirstOrDefault(theme =>
-                string.Equals(theme.Manifest.Id, id, StringComparison.OrdinalIgnoreCase));
+            return _themes.FirstOrDefault(entry => entry.Id == id);
     }
 
-    /// <summary>
-    /// Admits only the selected package and Estella recovery before first
-    /// paint. Remaining built-ins are intentionally deferred.
-    /// </summary>
-    public async Task LoadInitialAsync(string preferredThemeId, CancellationToken cancellationToken = default)
+    public async Task InitializeAsync(ThemeId preferredThemeId,
+        CancellationToken cancellationToken = default)
     {
-        lock (_sync) _themes.Clear();
-        var preferred = SafeThemeId(preferredThemeId) ? preferredThemeId : Settings.DefaultThemeId;
+        var sources = _sourceFactory().ToList();
+        if (!sources.Any(source => source.SourceId == DefaultId.Value))
+            sources.Add(_recoverySource);
+        if (!sources.Any(source => source.SourceId == preferredThemeId.Value))
+            sources.Add(new MissingThemeSource(preferredThemeId));
 
-        if (!string.Equals(preferred, Settings.DefaultThemeId, StringComparison.Ordinal))
+        var entries = new List<ThemeCatalogEntry>();
+        var duplicateIds = sources
+            .Select(source => ThemeId.TryParse(source.SourceId, out var parsed) ? parsed : (ThemeId?)null)
+            .Where(id => id is not null)
+            .GroupBy(id => id!.Value)
+            .Where(group => group.Count() > 1)
+            .Select(group => group.Key)
+            .ToHashSet();
+        foreach (var source in sources.OrderBy(source => source.SourceId == DefaultId.Value ? 0 : 1)
+                     .ThenBy(source => source.SourceId, StringComparer.Ordinal)
+                     .ThenBy(source => source.Description, StringComparer.Ordinal))
         {
-            var selected = await TryLoadDeployedAsync(preferred, cancellationToken);
-            if (selected is not null) Add(selected);
+            var id = ThemeId.TryParse(source.SourceId, out var parsed) ? parsed : (ThemeId?)null;
+            var discovery = new DiscoveredTheme(source, id, source.FallbackDisplayName);
+            var entry = new ThemeCatalogEntry(discovery);
+            if (id is null)
+            {
+                entry.State = new InvalidTheme(discovery, null,
+                    [new ThemeDiagnostic(ThemeDiagnosticStage.Discovery, "theme.id.invalid",
+                        $"Theme source ID '{source.SourceId}' is invalid.")]);
+            }
+            else if (duplicateIds.Contains(id.Value))
+            {
+                entry.State = new InvalidTheme(discovery, null,
+                    [new ThemeDiagnostic(ThemeDiagnosticStage.Discovery, "theme.id.duplicate",
+                        $"Theme ID '{id.Value}' is provided by more than one source.")]);
+            }
+            entries.Add(entry);
         }
 
-        var deployedDefault = await TryLoadDeployedAsync(Settings.DefaultThemeId, cancellationToken);
-        Add(deployedDefault ?? await LoadRecoveryAsync(cancellationToken), first: true);
+        lock (_sync)
+        {
+            _themes.Clear();
+            _themes.AddRange(entries);
+        }
+        ThemesChanged?.Invoke(this, EventArgs.Empty);
+
+        var preferred = Find(preferredThemeId);
+        if (preferred is not null) await _pipeline.ValidateAsync(preferred, cancellationToken);
+        var estella = Find(DefaultId)
+                      ?? throw new ThemePackageException("The Estella catalog entry is missing.");
+        if (!ReferenceEquals(estella, preferred)) await _pipeline.ValidateAsync(estella, cancellationToken);
+        await PrepareRecoveryAsync(estella, cancellationToken);
+
+        if (estella.State is InvalidTheme invalid &&
+            !ReferenceEquals(estella.State.Discovery.Source, _recoverySource))
+        {
+            _logger.LogWarning("Deployed Estella was invalid; using the embedded recovery source: {Diagnostic}",
+                string.Join("; ", invalid.Diagnostics.Select(diagnostic => diagnostic.Message)));
+            if (_recoveryValidation is not null)
+                await _pipeline.RecoverAsync(estella, _recoveryValidation, invalid.Diagnostics, cancellationToken);
+            else
+                await ThemePipeline.SetStateAsync(estella, new InvalidTheme(estella.State.Discovery, invalid.Metadata,
+                    invalid.Diagnostics.Concat(_recoveryDiagnostics).ToArray()));
+        }
         ThemesChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    public async Task LoadRemainingAsync(CancellationToken cancellationToken = default)
+    public async Task ValidateRemainingAsync(CancellationToken cancellationToken = default)
     {
-        var known = Themes.Select(theme => theme.Manifest.Id).ToHashSet(StringComparer.Ordinal);
-        var candidates = ThemeLocations.EnumerateCompiledPaths()
-            .Where(path => !known.Contains(ThemeLocations.IdFromPath(path)))
-            .Select(path => TryLoadPathAsync(path, cancellationToken))
-            .ToArray();
-        var loaded = await Task.WhenAll(candidates);
-        var changed = false;
-        foreach (var package in loaded.OfType<ThemePackage>().OrderBy(theme => theme.Manifest.Id, StringComparer.Ordinal))
-            changed |= Add(package);
-        if (changed) ThemesChanged?.Invoke(this, EventArgs.Empty);
+        var remaining = Themes.Where(entry => entry.State is DiscoveredTheme).ToArray();
+        await Task.WhenAll(remaining.Select(entry => _pipeline.ValidateAsync(entry, cancellationToken)));
+        ThemesChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private async Task<ThemePackage?> TryLoadDeployedAsync(string id, CancellationToken cancellationToken)
+    public async Task<bool> RecoverDefaultAsync(ThemeCatalogEntry entry,
+        IReadOnlyList<ThemeDiagnostic> diagnostics, CancellationToken cancellationToken = default)
     {
-        var path = ThemeLocations.PathFor(id);
-        return File.Exists(path) ? await TryLoadPathAsync(path, cancellationToken) : null;
-    }
-
-    private async Task<ThemePackage?> TryLoadPathAsync(string path, CancellationToken cancellationToken)
-    {
-        try { return await compiledReader.ReadAsync(path, cancellationToken); }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-        catch (Exception ex)
+        if (entry.Id != DefaultId || ReferenceEquals(EffectiveSource(entry.State), _recoverySource)) return false;
+        _logger.LogWarning("Deployed Estella could not be materialized; using the embedded recovery source: {Diagnostic}",
+            string.Join("; ", diagnostics.Select(diagnostic => diagnostic.Message)));
+        if (_recoveryValidation is null)
         {
-            logger.LogError(ex, "Could not load theme package {ThemePath}", path);
-            return null;
+            _logger.LogError("Embedded Estella recovery is unavailable: {Diagnostic}",
+                string.Join("; ", _recoveryDiagnostics.Select(diagnostic => diagnostic.Message)));
+            return false;
         }
+        await _pipeline.RecoverAsync(entry, _recoveryValidation, diagnostics, cancellationToken);
+        ThemesChanged?.Invoke(this, EventArgs.Empty);
+        return true;
     }
 
-    private bool Add(ThemePackage package, bool first = false)
+    private async Task PrepareRecoveryAsync(ThemeCatalogEntry estella, CancellationToken cancellationToken)
     {
-        lock (_sync)
+        if (ReferenceEquals(estella.State.Discovery.Source, _recoverySource))
         {
-            if (_themes.Any(theme => string.Equals(theme.Manifest.Id, package.Manifest.Id, StringComparison.Ordinal)))
-            {
-                logger.LogError("Could not load duplicate theme ID {ThemeId} from {ThemePath}",
-                    package.Manifest.Id, package.SourcePath);
-                return false;
-            }
-            if (first) _themes.Insert(0, package);
-            else _themes.Add(package);
-            return true;
+            _recoveryValidation = estella.State as ValidatedTheme;
+            _recoveryDiagnostics = estella.Diagnostics;
+            return;
         }
+        var discovery = new DiscoveredTheme(_recoverySource, DefaultId, _recoverySource.FallbackDisplayName);
+        var hiddenEntry = new ThemeCatalogEntry(discovery);
+        var state = await _pipeline.ValidateAsync(hiddenEntry, cancellationToken);
+        _recoveryValidation = state as ValidatedTheme;
+        _recoveryDiagnostics = state.Diagnostics;
     }
 
-    private async Task<ThemePackage> LoadRecoveryAsync(CancellationToken cancellationToken)
+    private static IThemeSource? EffectiveSource(ThemeState state) => state switch
     {
-        const string resourceName = "Galapa.Launcher.Recovery.estella.compiled.json";
-        await using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(resourceName)
-                                 ?? throw new ThemePackageException("The embedded Estella recovery theme is missing.");
-        var recovery = await compiledReader.ReadAsync(stream, Settings.DefaultThemeId,
-            "embedded recovery theme", cancellationToken);
-        logger.LogWarning("The deployed Estella theme was unavailable; the embedded recovery copy was loaded.");
-        return recovery;
-    }
-
-    private static bool SafeThemeId(string? id) => id is { Length: > 0 and <= 100 } &&
-        id.All(character => char.IsLower(character) || char.IsDigit(character) || character == '-');
+        ValidatedTheme validated => validated.EffectiveSource,
+        LoadingTheme loading => loading.Validation.EffectiveSource,
+        LoadedTheme loaded => loaded.Validation.EffectiveSource,
+        LoadFailedTheme failed => failed.Validation.EffectiveSource,
+        AppliedTheme applied => applied.Loaded.Validation.EffectiveSource,
+        _ => null
+    };
 }

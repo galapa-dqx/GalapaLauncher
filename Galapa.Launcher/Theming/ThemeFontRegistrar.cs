@@ -13,25 +13,24 @@ public static class ThemeFontRegistrar
     private static readonly ConditionalWeakTable<FontManager, HashSet<string>> Collections = new();
     private static readonly object Sync = new();
 
-    public static void EnsureRegistered(string themeId)
+    public static void EnsureRegistered(ValidatedTheme theme)
     {
         lock (Sync)
         {
             var manager = FontManager.Current;
             var collections = Collections.GetValue(manager,
                 _ => new HashSet<string>(StringComparer.Ordinal));
-            if (collections.Contains(themeId)) return;
-            var collection = new EmbeddedFontCollection(
-                ThemeLocations.FontCollectionUri(themeId),
-                ThemeLocations.BuiltInFontAssetsUri(themeId));
-            manager.AddFontCollection(collection);
-            collections.Add(themeId);
+            var key = theme.EffectiveSource.Description;
+            if (collections.Contains(key)) return;
+            foreach (var source in theme.EffectiveSource.Fonts)
+                manager.AddFontCollection(new EmbeddedFontCollection(source.CollectionUri, source.AssetsUri));
+            collections.Add(key);
         }
     }
 
-    public static void Validate(ThemePackage package)
+    public static void Validate(ValidatedTheme package)
     {
-        EnsureRegistered(package.Manifest.Id);
+        EnsureRegistered(package);
 
         var requests = package.Compiled.Controls.Values
             .Select(control => control.Text)
@@ -50,7 +49,7 @@ public static class ThemeFontRegistrar
             // Querying the collection directly can succeed while a bad manager
             // registration/key remains invisible to Avalonia's text formatter.
             var typeface = new Typeface(
-                new FontFamily(ThemeLocations.FontFamilyName(package.Manifest.Id, request.Family)),
+                new FontFamily(ThemeLocations.FontFamilyName(new ThemeId(package.Manifest.Id), request.Family)),
                 request.Style,
                 request.Weight);
             if (!FontManager.Current.TryGetGlyphTypeface(typeface, out _))

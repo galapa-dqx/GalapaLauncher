@@ -9,8 +9,8 @@ public sealed class ThemedSvg : Control
 {
     private InlineSvgDocument? _document;
 
-    public static readonly StyledProperty<string?> InlineSvgProperty =
-        AvaloniaProperty.Register<ThemedSvg, string?>(nameof(InlineSvg));
+    public static readonly StyledProperty<object?> InlineSvgProperty =
+        AvaloniaProperty.Register<ThemedSvg, object?>(nameof(InlineSvg));
     public static readonly StyledProperty<IBrush?> CurrentColorProperty =
         AvaloniaProperty.Register<ThemedSvg, IBrush?>(nameof(CurrentColor));
     public static readonly StyledProperty<string?> FallbackPathDataProperty =
@@ -18,7 +18,7 @@ public sealed class ThemedSvg : Control
     public static readonly StyledProperty<string?> FallbackInlineSvgProperty =
         AvaloniaProperty.Register<ThemedSvg, string?>(nameof(FallbackInlineSvg));
 
-    public string? InlineSvg { get => GetValue(InlineSvgProperty); set => SetValue(InlineSvgProperty, value); }
+    public object? InlineSvg { get => GetValue(InlineSvgProperty); set => SetValue(InlineSvgProperty, value); }
     public IBrush? CurrentColor { get => GetValue(CurrentColorProperty); set => SetValue(CurrentColorProperty, value); }
     public string? FallbackPathData { get => GetValue(FallbackPathDataProperty); set => SetValue(FallbackPathDataProperty, value); }
     public string? FallbackInlineSvg { get => GetValue(FallbackInlineSvgProperty); set => SetValue(FallbackInlineSvgProperty, value); }
@@ -51,12 +51,17 @@ public sealed class ThemedSvg : Control
         InvalidateVisual();
     }
 
-    private bool TryLoad(string? source)
+    private bool TryLoad(object? source)
     {
-        if (string.IsNullOrWhiteSpace(source)) return false;
+        if (source is InlineSvgDocument document)
+        {
+            _document = document;
+            return true;
+        }
+        if (source is not string { Length: > 0 } inline) return false;
         try
         {
-            _document = ThemeSvgCache.Document(source);
+            _document = InlineSvgDocument.Parse(inline);
             return true;
         }
         catch

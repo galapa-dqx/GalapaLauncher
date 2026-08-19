@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
@@ -12,14 +11,13 @@ namespace Galapa.Launcher.Views.Controls;
 /// </summary>
 public class ThemePart : ContentControl
 {
-    private ThemePartPresentation? _presentation;
     private Geometry? _cachedGeometry;
     private Size _cachedGeometrySize;
     private double _cachedGeometryRadius = double.NaN;
     private string? _cachedGeometryCorner;
 
-    public static readonly StyledProperty<CompiledControl?> PartStyleProperty =
-        AvaloniaProperty.Register<ThemePart, CompiledControl?>(nameof(PartStyle));
+    public static readonly StyledProperty<ThemePartPresentation?> PartStyleProperty =
+        AvaloniaProperty.Register<ThemePart, ThemePartPresentation?>(nameof(PartStyle));
     public static readonly StyledProperty<ThemePartState> StateProperty =
         AvaloniaProperty.Register<ThemePart, ThemePartState>(nameof(State));
     public static readonly StyledProperty<Thickness> FallbackPaddingProperty =
@@ -27,7 +25,7 @@ public class ThemePart : ContentControl
     public static readonly StyledProperty<bool> UseThemePaddingProperty =
         AvaloniaProperty.Register<ThemePart, bool>(nameof(UseThemePadding), true);
 
-    public CompiledControl? PartStyle { get => GetValue(PartStyleProperty); set => SetValue(PartStyleProperty, value); }
+    public ThemePartPresentation? PartStyle { get => GetValue(PartStyleProperty); set => SetValue(PartStyleProperty, value); }
     public ThemePartState State { get => GetValue(StateProperty); set => SetValue(StateProperty, value); }
     public Thickness FallbackPadding { get => GetValue(FallbackPaddingProperty); set => SetValue(FallbackPaddingProperty, value); }
     public bool UseThemePadding { get => GetValue(UseThemePaddingProperty); set => SetValue(UseThemePaddingProperty, value); }
@@ -54,20 +52,19 @@ public class ThemePart : ContentControl
     {
         base.Render(context);
         var style = PartStyle;
-        var presentation = _presentation;
-        if (style is null || presentation is null || Bounds.Width <= 0 || Bounds.Height <= 0) return;
+        if (style is null || Bounds.Width <= 0 || Bounds.Height <= 0) return;
         var drawRect = GetDrawRect();
-        var visual = presentation.Visual(State);
+        var visual = style.Visual(State);
         var contentBrush = visual.ContentInherited ? Foreground : visual.Content;
-        if (style.Shape == "Asset")
+        if (style.Control.Shape == "Asset")
         {
             visual.Slices?.Draw(context, drawRect, contentBrush);
             return;
         }
-        if (style.Shape != "Path") return;
+        if (style.Control.Shape != "Path") return;
 
-        var radius = ThemeMetrics.ReadRadius(style.Radius, drawRect.Width, drawRect.Height);
-        var corner = style.Corner ?? "round";
+        var radius = style.Normalized.Radius.Resolve(drawRect.Width, drawRect.Height);
+        var corner = style.Control.Corner ?? "round";
         var geometry = GeometryFor(drawRect.Size, radius, corner);
         using (context.PushTransform(Matrix.CreateTranslation(drawRect.X, drawRect.Y)))
         {
@@ -83,7 +80,6 @@ public class ThemePart : ContentControl
     private void ApplyStyle()
     {
         var style = PartStyle;
-        _presentation = null;
         _cachedGeometry = null;
         if (style is null)
         {
@@ -93,11 +89,11 @@ public class ThemePart : ContentControl
         // Theme packages are validated before installation. Do not hide a
         // renderer-contract violation here: a silent failure leaves an empty
         // but interactive control and makes transactional application moot.
-        _presentation = ThemePartPresentation.For(style);
         ApplyPadding();
 
-        var text = style.Text;
-        if (text?.Family is not null) SetCurrentValue(FontFamilyProperty, ThemeManager.FontFamilyFor(style.ThemeId, text.Family));
+        var text = style.Control.Text;
+        if (text?.Family is not null) SetCurrentValue(FontFamilyProperty,
+            ThemeManager.FontFamilyFor(new ThemeId(style.Control.ThemeId), text.Family));
         else ClearValue(FontFamilyProperty);
         if (text?.Size is { } size) SetCurrentValue(FontSizeProperty, size); else ClearValue(FontSizeProperty);
         if (text?.Weight is { } weight) SetCurrentValue(FontWeightProperty, (FontWeight)weight); else ClearValue(FontWeightProperty);
@@ -109,20 +105,21 @@ public class ThemePart : ContentControl
     private void ApplyPadding()
     {
         var style = PartStyle;
-        var visual = _presentation?.Visual(State);
+        var visual = style?.Visual(State);
         var padding = !UseThemePadding
             ? FallbackPadding
             : visual?.Slices is not null
                 ? visual.Slices.ContentPadding
-                : style is not null && ThemeMetrics.HasValue(style.Padding)
-                    ? ThemeMetrics.ToThickness(style.Padding)
+                : style is not null && ThemeMetrics.HasValue(style.Control.Padding)
+                    ? new Thickness(style.Normalized.Padding.Left, style.Normalized.Padding.Top,
+                        style.Normalized.Padding.Right, style.Normalized.Padding.Bottom)
                     : FallbackPadding;
         if (Padding != padding) SetCurrentValue(PaddingProperty, padding);
     }
 
     private void ApplyVisualState()
     {
-        var visual = _presentation?.Visual(State);
+        var visual = PartStyle?.Visual(State);
         ApplyPadding();
         if (visual?.ContentInherited == false && visual.Content is not null) SetCurrentValue(ForegroundProperty, visual.Content);
         else ClearValue(ForegroundProperty);
@@ -246,13 +243,13 @@ public class ThemePart : ContentControl
     {
         var brush = visual.Border;
         var edges = visual.BorderEdges;
-        if (brush is null || edges.All(x => x <= 0)) return;
+        if (brush is null || !visual.HasBorder) return;
         var bounds = geometry.Bounds;
         var hasTopGap = edges[0] > 0 && double.IsFinite(gapStart) && gapWidth > 0 &&
                         gapStart < bounds.Width && gapStart + gapWidth > 0;
         var gapLeft = bounds.Left + Math.Clamp(gapStart, 0, bounds.Width);
         var gapRight = bounds.Left + Math.Clamp(gapStart + gapWidth, 0, bounds.Width);
-        if (edges.All(x => Math.Abs(x - edges[0]) < .001))
+        if (visual.UniformBorder)
         {
             var pen = visual.InsideBorderPen!;
             using var outerClip = context.PushGeometryClip(geometry);
@@ -374,23 +371,55 @@ public sealed class SwitchThumbPart : ThemePart
     }
 }
 
-internal sealed class ThemePartPresentation
+public sealed class ThemePartPresentation
 {
-    private static readonly ConditionalWeakTable<CompiledControl, ThemePartPresentation> Cache = new();
     private readonly ThemePartVisual _normal;
     private readonly IReadOnlyDictionary<string, ThemePartVisual> _states;
 
-    private ThemePartPresentation(CompiledControl control)
+    private ThemePartPresentation(NormalizedCompiledControl control, IReadOnlyDictionary<string, NineSliceSvg> slices,
+        IReadOnlyDictionary<string, InlineSvgDocument> documents)
     {
-        _normal = ThemePartVisual.Create(control, null);
-        _states = control.States?.ToDictionary(
-            pair => pair.Key,
-            pair => ThemePartVisual.Create(control, pair.Value),
-            StringComparer.Ordinal) ?? new Dictionary<string, ThemePartVisual>();
+        Normalized = control;
+        Control = control.Source;
+        Images = Control.Images?.Where(pair => documents.ContainsKey(pair.Value))
+            .ToDictionary(pair => pair.Key, pair => documents[pair.Value], StringComparer.Ordinal)
+            ?? new Dictionary<string, InlineSvgDocument>(StringComparer.Ordinal);
+        _normal = ThemePartVisual.Create(control.Normal, Control.Shape, slices);
+        _states = control.States.ToDictionary(pair => pair.Key,
+            pair => ThemePartVisual.Create(pair.Value, Control.Shape, slices), StringComparer.Ordinal);
     }
 
-    public static ThemePartPresentation For(CompiledControl control) =>
-        Cache.GetValue(control, static value => new ThemePartPresentation(value));
+    public CompiledControl Control { get; }
+    public NormalizedCompiledControl Normalized { get; }
+    public IReadOnlyDictionary<string, InlineSvgDocument> Images { get; }
+
+    internal static ThemePartPresentation Load(NormalizedCompiledControl control,
+        IReadOnlyDictionary<string, NineSliceSvg> slices,
+        IReadOnlyDictionary<string, InlineSvgDocument> documents) =>
+        new(control, slices, documents);
+
+    /// <summary>Creates an isolated presentation for renderer tests and app-owned controls.</summary>
+    public static ThemePartPresentation Create(CompiledControl control)
+    {
+        var parser = new ThemeSvgIrParser();
+        var documents = new Dictionary<string, InlineSvgDocument>(StringComparer.Ordinal);
+        var slices = new Dictionary<string, NineSliceSvg>(StringComparer.Ordinal);
+        void Assets(CompiledControl value)
+        {
+            if (value.Art is not null && !slices.ContainsKey(value.Art))
+                slices[value.Art] = NineSliceSvg.Load(parser.ParseNineSlice(value.Art));
+            if (value.Image is not null && !documents.ContainsKey(value.Image))
+                documents[value.Image] = InlineSvgDocument.Load(parser.ParseDocument(value.Image));
+            if (value.Images is not null)
+                foreach (var image in value.Images.Values)
+                    if (!documents.ContainsKey(image))
+                        documents[image] = InlineSvgDocument.Load(parser.ParseDocument(image));
+        }
+        Assets(control);
+        if (control.States is not null)
+            foreach (var state in control.States.Values) Assets(state);
+        return new ThemePartPresentation(CompiledThemeNormalizer.Normalize(control), slices, documents);
+    }
 
     public ThemePartVisual Visual(ThemePartState state)
     {
@@ -399,7 +428,7 @@ internal sealed class ThemePartPresentation
     }
 }
 
-internal sealed class ThemePartVisual
+public sealed class ThemePartVisual
 {
     private ThemePartVisual(IBrush? fill, IBrush? content, bool contentInherited, IBrush? border,
         double[] borderEdges, double opacity, NineSliceSvg? slices)
@@ -411,7 +440,11 @@ internal sealed class ThemePartVisual
         BorderEdges = borderEdges;
         Opacity = opacity;
         Slices = slices;
-        if (border is not null && borderEdges.All(x => Math.Abs(x - borderEdges[0]) < .001) && borderEdges[0] > 0)
+        HasBorder = border is not null && (borderEdges[0] > 0 || borderEdges[1] > 0 ||
+            borderEdges[2] > 0 || borderEdges[3] > 0);
+        UniformBorder = HasBorder && Math.Abs(borderEdges[1] - borderEdges[0]) < .001 &&
+            Math.Abs(borderEdges[2] - borderEdges[0]) < .001 && Math.Abs(borderEdges[3] - borderEdges[0]) < .001;
+        if (UniformBorder)
             InsideBorderPen = new Pen(border, borderEdges[0] * 2);
     }
 
@@ -420,20 +453,22 @@ internal sealed class ThemePartVisual
     public bool ContentInherited { get; }
     public IBrush? Border { get; }
     public double[] BorderEdges { get; }
+    public bool HasBorder { get; }
+    public bool UniformBorder { get; }
     public Pen? InsideBorderPen { get; }
     public double Opacity { get; }
     public NineSliceSvg? Slices { get; }
 
-    public static ThemePartVisual Create(CompiledControl control, CompiledControl? state)
+    public static ThemePartVisual Create(NormalizedControlVisual resolved, string? shape,
+        IReadOnlyDictionary<string, NineSliceSvg> slices)
     {
-        var resolved = CompiledThemeContract.ResolveVisual(control, state);
         return new ThemePartVisual(
             ThemePaint.Brush(resolved.Fill),
-            resolved.Content == "inherit" ? null : ThemePaint.Brush(resolved.Content),
-            resolved.Content == "inherit",
+            ThemePaint.Brush(resolved.Content),
+            resolved.ContentInherited,
             ThemePaint.Brush(resolved.BorderColor),
-            ThemeMetrics.ReadEdges(resolved.BorderThickness),
+            [resolved.Border.Top, resolved.Border.Right, resolved.Border.Bottom, resolved.Border.Left],
             resolved.Opacity,
-            control.Shape == "Asset" && resolved.Art is not null ? ThemeSvgCache.NineSlice(resolved.Art) : null);
+            shape == "Asset" && resolved.Art is not null ? slices[resolved.Art] : null);
     }
 }

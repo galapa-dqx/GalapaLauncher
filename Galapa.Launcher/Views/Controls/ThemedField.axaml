@@ -45,12 +45,12 @@
             <Setter Property="BorderBrush" Value="{DynamicResource Galapa.Focus.Brush}" />
         </Style>
     </UserControl.Styles>
-    <Grid>
+    <Grid Background="Transparent">
         <local:NotchedThemePart Name="PART_FieldFrame" PartStyle="{DynamicResource Galapa.Part.input}"
                          FallbackPadding="10,6"
                          TopBorderGapStart="{DynamicResource Galapa.Metric.input.label.LeftInset}"
                          TopBorderGapWidth="{Binding Bounds.Width, ElementName=PART_FieldLabelSeat}">
-            <TextBox Classes="field-editor" Text="{Binding Text, ElementName=Root, Mode=TwoWay}"
+            <TextBox Name="PART_Editor" Classes="field-editor" Text="{Binding Text, ElementName=Root, Mode=TwoWay}"
                      IsReadOnly="{Binding IsReadOnly, ElementName=Root}"
                      PasswordChar="{Binding PasswordChar, ElementName=Root}"
                      AutomationProperties.Name="{Binding Label, ElementName=Root}" />

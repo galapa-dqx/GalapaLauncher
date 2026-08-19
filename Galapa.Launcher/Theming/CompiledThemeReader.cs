@@ -1,9 +1,4 @@
-using System.Globalization;
 using System.Text.Json;
-using System.Xml.Linq;
-using Avalonia;
-using Avalonia.Media;
-using Galapa.Launcher.Views.Controls;
 
 namespace Galapa.Launcher.Theming;
 
@@ -14,7 +9,7 @@ public sealed class CompiledThemeReader
         PropertyNameCaseInsensitive = true
     };
 
-    public async Task<ThemePackage> ReadAsync(string path, CancellationToken cancellationToken = default)
+    public async Task<ValidatedTheme> ReadAsync(string path, CancellationToken cancellationToken = default)
     {
         if (!File.Exists(path))
             throw new ThemePackageException($"Compiled theme not found: {path}");
@@ -22,16 +17,27 @@ public sealed class CompiledThemeReader
         var fileName = Path.GetFileName(path);
         if (!fileName.EndsWith(".compiled.json", StringComparison.OrdinalIgnoreCase))
             throw new ThemePackageException($"Compiled theme must use the '.compiled.json' suffix: {fileName}");
-        var id = fileName[..^".compiled.json".Length];
-        await using var stream = File.OpenRead(path);
-        return await ReadAsync(stream, id, path, cancellationToken);
+        var source = new LooseBuiltInThemeSource(path);
+        var id = ThemeId.TryParse(source.SourceId, out var parsed) ? parsed : (ThemeId?)null;
+        return await ValidateAsync(new DiscoveredTheme(source, id, source.FallbackDisplayName), cancellationToken);
     }
 
-    public async Task<ThemePackage> ReadAsync(Stream stream, string id, string source,
+    public async Task<ValidatedTheme> ReadAsync(Stream stream, string id, string source,
         CancellationToken cancellationToken = default)
     {
+        await using var memory = new MemoryStream();
+        await stream.CopyToAsync(memory, cancellationToken);
+        var themeSource = new MemoryThemeSource(id, source, memory.ToArray());
+        var parsedId = ThemeId.TryParse(id, out var parsed) ? parsed : (ThemeId?)null;
+        return await ValidateAsync(new DiscoveredTheme(themeSource, parsedId, id), cancellationToken);
+    }
+
+    public async Task<ValidatedTheme> ValidateAsync(DiscoveredTheme discovery,
+        CancellationToken cancellationToken = default)
+    {
+        await using var stream = await discovery.Source.OpenCompiledJsonAsync(cancellationToken);
         if (!stream.CanRead)
-            throw new ThemePackageException($"Compiled theme source is not readable: {source}");
+            throw new ThemePackageException($"Compiled theme source is not readable: {discovery.Source.Description}");
         CompiledTheme theme;
         try
         {
@@ -43,21 +49,85 @@ public sealed class CompiledThemeReader
             throw new ThemePackageException($"Compiled theme JSON is malformed: {ex.Message}");
         }
 
-        Validate(theme);
-        if (!IsSafeId(id))
-            throw new ThemePackageException($"Compiled theme does not contain a safe ID: {id}");
+        var recoverableMetadata = discovery.Id is { } recoverableId && !string.IsNullOrWhiteSpace(theme.Label)
+            ? new ThemeManifest
+            {
+                Id = recoverableId.Value,
+                DisplayName = theme.Label,
+                Author = theme.Meta?.Maintainer ?? "Galapa Project",
+                PackageVersion = theme.Meta?.Version ?? "compiled",
+                BaseVariant = theme.Mode == "dark" ? ThemeBaseVariant.Dark : ThemeBaseVariant.Light
+            }
+            : null;
+        try { Validate(theme); }
+        catch (ThemePackageException exception)
+        {
+            throw new ThemePackageException(exception.Message, recoverableMetadata, exception);
+        }
+        if (discovery.Id is not { } id)
+            throw new ThemePackageException($"Compiled theme does not contain a safe ID: {discovery.Source.SourceId}");
         foreach (var control in theme.Controls.Values)
-            AssignThemeId(control, id);
+            AssignThemeId(control, id.Value);
 
         var manifest = new ThemeManifest
         {
-            Id = id,
+            Id = id.Value,
             DisplayName = theme.Label,
             Author = theme.Meta?.Maintainer ?? "Galapa Project",
             PackageVersion = theme.Meta?.Version ?? "compiled",
             BaseVariant = theme.Mode == "dark" ? ThemeBaseVariant.Dark : ThemeBaseVariant.Light,
         };
-        return new ThemePackage(manifest, source, theme);
+        IReadOnlyDictionary<string, NormalizedCompiledControl> normalized;
+        ValidatedThemeAssets assets;
+        try
+        {
+            normalized = CompiledThemeNormalizer.Normalize(theme);
+            assets = ParseAssets(theme);
+        }
+        catch (ThemePackageException exception)
+        {
+            throw new ThemePackageException(exception.Message, manifest, exception);
+        }
+        return new ValidatedTheme(discovery, discovery.Source, manifest, theme, normalized,
+            ThemeColor.Parse(theme.FocusRing.Color), assets, []);
+    }
+
+    private static ValidatedThemeAssets ParseAssets(CompiledTheme theme)
+    {
+        var parser = new ThemeSvgIrParser();
+        var documents = new Dictionary<string, SvgDocumentIr>(StringComparer.Ordinal);
+        var slices = new Dictionary<string, NineSliceIr>(StringComparer.Ordinal);
+        foreach (var (controlId, control) in theme.Controls)
+        {
+            ParseControlAssets(controlId, control, control.Shape, parser, documents, slices);
+            if (control.States is null) continue;
+            foreach (var (stateId, state) in control.States)
+                ParseControlAssets($"{controlId}.{stateId}", state, control.Shape, parser, documents, slices);
+        }
+        return new ValidatedThemeAssets(documents, slices, parser.ParseCount);
+    }
+
+    private static void ParseControlAssets(string path, CompiledControl control, string? inheritedShape,
+        ThemeSvgIrParser parser, IDictionary<string, SvgDocumentIr> documents, IDictionary<string, NineSliceIr> slices)
+    {
+        try
+        {
+            if (control.Art is not null && !slices.ContainsKey(control.Art))
+            {
+                if (inheritedShape != "Asset")
+                    throw new InvalidDataException("Only Asset controls may contain nine-slice artwork.");
+                slices[control.Art] = parser.ParseNineSlice(control.Art);
+            }
+            if (control.Image is not null && !documents.ContainsKey(control.Image))
+                documents[control.Image] = parser.ParseDocument(control.Image);
+            if (control.Images is not null)
+                foreach (var image in control.Images.Values)
+                    if (!documents.ContainsKey(image)) documents[image] = parser.ParseDocument(image);
+        }
+        catch (Exception exception) when (exception is not ThemePackageException)
+        {
+            throw new ThemePackageException($"SVG '{path}' cannot be rendered: {exception.Message}");
+        }
     }
 
     public static void Validate(CompiledTheme theme)
@@ -119,15 +189,15 @@ public sealed class CompiledThemeReader
         {
             if (string.IsNullOrWhiteSpace(control.Art))
                 throw new ThemePackageException($"Asset control '{id}' has no art.");
-            ValidateSvg(control.Art, $"{id}.art", nineSlice: true);
+            ValidateSvgEnvelope(control.Art, $"{id}.art");
         }
         else if (control.Art is not null)
             throw new ThemePackageException($"Only Asset controls may declare art ('{id}').");
 
-        if (control.Image is not null) ValidateSvg(control.Image, $"{id}.image", nineSlice: false);
+        if (control.Image is not null) ValidateSvgEnvelope(control.Image, $"{id}.image");
         if (control.Images is not null)
             foreach (var (variant, svg) in control.Images)
-                ValidateSvg(svg, $"{id}.images.{variant}", nineSlice: false);
+                ValidateSvgEnvelope(svg, $"{id}.images.{variant}");
 
         if (control.States is null) return;
         foreach (var (state, value) in control.States)
@@ -146,8 +216,8 @@ public sealed class CompiledThemeReader
             ValidateEdges(value.BorderThickness, $"{id}.{state}.borderThickness", 0, 32);
             if (value.Opacity is { } stateOpacity && !Finite(stateOpacity, 0, 1))
                 throw new ThemePackageException($"Control '{id}' state '{state}' has invalid opacity.");
-            if (value.Image is not null) ValidateSvg(value.Image, $"{id}.{state}.image", false);
-            if (value.Art is not null) ValidateSvg(value.Art, $"{id}.{state}.art", true);
+            if (value.Image is not null) ValidateSvgEnvelope(value.Image, $"{id}.{state}.image");
+            if (value.Art is not null) ValidateSvgEnvelope(value.Art, $"{id}.{state}.art");
         }
     }
 
@@ -176,30 +246,9 @@ public sealed class CompiledThemeReader
             throw new ThemePackageException($"Control '{id}' contains invalid typography.");
     }
 
-    private static void ValidateSvg(string svg, string label, bool nineSlice)
+    private static void ValidateSvgEnvelope(string svg, string label)
     {
         if (svg.Length > 2_000_000) throw new ThemePackageException($"SVG '{label}' is too large.");
-        XElement root;
-        try { root = ThemeSvgCache.Root(svg); }
-        catch (Exception ex) { throw new ThemePackageException($"SVG '{label}' is malformed: {ex.Message}"); }
-        if (root.Name.LocalName != "svg") throw new ThemePackageException($"'{label}' is not an SVG document.");
-        foreach (var element in root.DescendantsAndSelf())
-        {
-            if (element.Name.LocalName is "script" or "foreignObject")
-                throw new ThemePackageException($"SVG '{label}' contains forbidden content.");
-            foreach (var attribute in element.Attributes())
-            {
-                if (attribute.Name.LocalName.StartsWith("on", StringComparison.OrdinalIgnoreCase))
-                    throw new ThemePackageException($"SVG '{label}' contains an event handler.");
-                if ((attribute.Name.LocalName is "href" or "src") && !attribute.Value.StartsWith('#'))
-                    throw new ThemePackageException($"SVG '{label}' contains an external reference.");
-                if (attribute.Value.Contains("url(", StringComparison.OrdinalIgnoreCase))
-                    throw new ThemePackageException($"SVG '{label}' contains a URL paint or reference.");
-            }
-        }
-        try { ThemeSvgValidator.Validate(root, nineSlice); }
-        catch (Exception ex) when (ex is not ThemePackageException)
-        { throw new ThemePackageException($"SVG '{label}' cannot be rendered: {ex.Message}"); }
     }
 
     private static void ValidateOptionalColor(string? value, string label, bool allowInherit)
@@ -211,7 +260,7 @@ public sealed class CompiledThemeReader
 
     private static void ValidateColor(string value, string label)
     {
-        try { _ = ThemePaint.ParseColor(value); }
+        try { _ = ThemeColor.Parse(value); }
         catch { throw new ThemePackageException($"'{label}' contains invalid color '{value}'."); }
     }
 
@@ -233,9 +282,6 @@ public sealed class CompiledThemeReader
     }
 
     private static bool Finite(double value, double min, double max) => double.IsFinite(value) && value >= min && value <= max;
-    private static bool IsSafeId(string id) => id is { Length: > 0 and <= 100 } &&
-        id.All(c => char.IsLower(c) || char.IsDigit(c) || c == '-');
-
     private static void AssignThemeId(CompiledControl control, string themeId)
     {
         control.ThemeId = themeId;
@@ -266,9 +312,25 @@ public sealed class CompiledThemeReader
         if (invalid)
             throw new ThemePackageException($"Control '{id}' declares fields that are not valid for shape '{control.Shape}'.");
     }
+
+    private sealed class MemoryThemeSource(string id, string description, byte[] bytes) : IThemeSource
+    {
+        public string SourceId => id;
+        public string FallbackDisplayName => id;
+        public string Description => description;
+        public IReadOnlyList<ThemeFontSourceDescriptor> Fonts =>
+            ThemeId.TryParse(id, out var parsed)
+                ? [new ThemeFontSourceDescriptor(ThemeLocations.FontCollectionUri(parsed), ThemeLocations.BuiltInFontAssetsUri(parsed))]
+                : [];
+        public ValueTask<Stream> OpenCompiledJsonAsync(CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult<Stream>(new MemoryStream(bytes, writable: false));
+        }
+    }
 }
 
-public static class ThemeMetrics
+public static partial class ThemeMetrics
 {
     public static bool HasValue(JsonElement value) =>
         value.ValueKind is not (JsonValueKind.Undefined or JsonValueKind.Null);
@@ -289,90 +351,4 @@ public static class ThemeMetrics
         throw new ThemePackageException("Expected a number or four-element edge array.");
     }
 
-    public static double ReadRadius(JsonElement value, double width, double height)
-    {
-        if (value.ValueKind == JsonValueKind.String && value.GetString() == "pill") return Math.Min(width, height) / 2;
-        return value.ValueKind == JsonValueKind.Number ? value.GetDouble() : 0;
-    }
-
-    public static Thickness ToThickness(JsonElement value, double fallback = 0)
-    {
-        var edges = ReadEdges(value, fallback);
-        return new Thickness(edges[3], edges[0], edges[1], edges[2]);
-    }
-}
-
-public static class ThemeTypography
-{
-    public static FontStyle ToFontStyle(string? value) => value switch
-    {
-        "italic" => FontStyle.Italic,
-        "oblique" => FontStyle.Oblique,
-        _ => FontStyle.Normal
-    };
-
-    public static string ToTransform(string? value) => value switch
-    {
-        "uppercase" => "Upper",
-        "lowercase" => "Lower",
-        "capitalize" => "Title",
-        _ => "Original"
-    };
-}
-
-public static class ThemePaint
-{
-    public static Color ParseColor(string value)
-    {
-        if (value.Equals("transparent", StringComparison.OrdinalIgnoreCase)) return Colors.Transparent;
-        if (value.StartsWith('#')) return ParseCssHex(value);
-        var match = System.Text.RegularExpressions.Regex.Match(value,
-            @"^rgba?\(\s*(\d+(?:\.\d+)?)\s*[, ]\s*(\d+(?:\.\d+)?)\s*[, ]\s*(\d+(?:\.\d+)?)(?:\s*[,/]\s*(\d*\.?\d+))?\s*\)$",
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        if (!match.Success) throw new FormatException($"Invalid color: {value}");
-        var red = double.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
-        var green = double.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture);
-        var blue = double.Parse(match.Groups[3].Value, CultureInfo.InvariantCulture);
-        var alpha = match.Groups[4].Success ? double.Parse(match.Groups[4].Value, CultureInfo.InvariantCulture) : 1;
-        if (!double.IsFinite(red) || red is < 0 or > 255 ||
-            !double.IsFinite(green) || green is < 0 or > 255 ||
-            !double.IsFinite(blue) || blue is < 0 or > 255 ||
-            !double.IsFinite(alpha) || alpha is < 0 or > 1)
-            throw new FormatException($"Color component is out of range: {value}");
-        return Color.FromArgb(
-            byte.CreateChecked(Math.Round(alpha * 255, MidpointRounding.AwayFromZero)),
-            byte.CreateChecked(Math.Round(red, MidpointRounding.AwayFromZero)),
-            byte.CreateChecked(Math.Round(green, MidpointRounding.AwayFromZero)),
-            byte.CreateChecked(Math.Round(blue, MidpointRounding.AwayFromZero)));
-    }
-
-    private static Color ParseCssHex(string value)
-    {
-        static byte Nibble(char value) => value switch
-        {
-            >= '0' and <= '9' => (byte)(value - '0'),
-            >= 'a' and <= 'f' => (byte)(value - 'a' + 10),
-            >= 'A' and <= 'F' => (byte)(value - 'A' + 10),
-            _ => throw new FormatException("Invalid hexadecimal color component.")
-        };
-
-        static byte Pair(ReadOnlySpan<char> value) => (byte)((Nibble(value[0]) << 4) | Nibble(value[1]));
-
-        var hex = value.AsSpan(1);
-        return hex.Length switch
-        {
-            3 => Color.FromArgb(255, (byte)(Nibble(hex[0]) * 17), (byte)(Nibble(hex[1]) * 17), (byte)(Nibble(hex[2]) * 17)),
-            4 => Color.FromArgb((byte)(Nibble(hex[3]) * 17), (byte)(Nibble(hex[0]) * 17), (byte)(Nibble(hex[1]) * 17), (byte)(Nibble(hex[2]) * 17)),
-            6 => Color.FromArgb(255, Pair(hex[..2]), Pair(hex.Slice(2, 2)), Pair(hex.Slice(4, 2))),
-            8 => Color.FromArgb(Pair(hex.Slice(6, 2)), Pair(hex[..2]), Pair(hex.Slice(2, 2)), Pair(hex.Slice(4, 2))),
-            _ => throw new FormatException($"Invalid CSS hexadecimal color: {value}")
-        };
-    }
-
-    public static IBrush? Brush(string? value, IBrush? inherited = null) => value switch
-    {
-        null => null,
-        "inherit" => inherited,
-        _ => new SolidColorBrush(ParseColor(value))
-    };
 }
