@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "duston", "displayName": "Duston", "author": "Galapa Project", "packageVersion": "1.0.0", "baseVariant": "Dark",
+  "colors": { "background": "#141008", "surface": "#1C170A", "secondarySurface": "#261E10", "border": "#3C3018", "text": "#E8DCC8", "muted": "#8A7858", "accent": "#A87830", "success": "#4A8A3A", "danger": "#C04030" },
+  "fonts": {
+    "heading": { "file": "fonts/CrimsonPro.ttf", "family": "Crimson Pro", "license": "fonts/OFL-CrimsonPro.txt" },
+    "body": { "file": "fonts/SourceSans3.ttf", "family": "Source Sans 3", "license": "fonts/OFL-SourceSans3.txt" },
+    "headingBaseSize": 16, "bodyBaseSize": 13
+  },
+  "typography": {
+    "brand": { "family": "Heading", "sizeScale": 1.25, "weight": 700, "style": "Normal", "letterSpacing": 0.4, "transform": "Upper" },
+    "navigation": { "family": "Heading", "sizeScale": 1, "weight": 700, "style": "Normal", "letterSpacing": 0.8, "transform": "Upper" },
+    "sectionHeading": { "family": "Heading", "sizeScale": 1, "weight": 700, "style": "Normal", "letterSpacing": 0.8, "transform": "Upper" },
+    "fieldLabel": { "family": "Heading", "sizeScale": 0.875, "weight": 700, "style": "Normal", "letterSpacing": 0.8, "transform": "Upper" },
+    "button": { "family": "Heading", "sizeScale": 1, "weight": 700, "style": "Normal", "letterSpacing": 0.6, "transform": "Upper" },
+    "cardTitle": { "family": "Heading", "sizeScale": 1, "weight": 700, "style": "Normal", "letterSpacing": 0.4, "transform": "Upper" },
+    "body": { "family": "Body", "sizeScale": 1, "weight": 400, "style": "Normal", "letterSpacing": 0, "transform": "Original" },
+    "input": { "family": "Body", "sizeScale": 1.2307692307692308, "weight": 400, "style": "Normal", "letterSpacing": 0, "transform": "Original" },
+    "settingValue": { "family": "Body", "sizeScale": 1.0769230769230769, "weight": 600, "style": "Normal", "letterSpacing": 0, "transform": "Original" },
+    "metadata": { "family": "Body", "sizeScale": 1, "weight": 400, "style": "Normal", "letterSpacing": 0.1, "transform": "Original" }
+  },
+  "geometry": {
+    "panel": { "radius": 0, "borderThickness": 1, "shape": "Angular" }, "card": { "radius": 0, "borderThickness": 1, "shape": "Angular" },
+    "input": { "radius": 0, "borderThickness": 1, "shape": "Angular" }, "button": { "radius": 0, "borderThickness": 1, "shape": "Angular" },
+    "iconButton": { "radius": 0, "borderThickness": 0, "shape": "Angular" }, "switch": { "radius": 0, "borderThickness": 1, "shape": "Angular" },
+    "scrollbarTrack": { "radius": 0, "borderThickness": 0, "shape": "Asset" }, "scrollbarThumb": { "radius": 0, "borderThickness": 0, "shape": "Asset" },
+    "indicator": { "radius": 0, "borderThickness": 1, "shape": "Angular" }
+  },
+  "assets": {
+    "chrome.minimize": "assets/minimize.svg", "chrome.maximize": "assets/maximize.svg", "chrome.close": "assets/close.svg", "controller.leftBumper": "assets/bumper-left.svg", "controller.rightBumper": "assets/bumper-right.svg", "carousel.previous": "assets/chevron-left.svg", "carousel.next": "assets/chevron-right.svg", "news.marker": "assets/news-marker.svg", "scrollbar.trackCapTop": "assets/scrollbar-track-top.svg", "scrollbar.trackCapBottom": "assets/scrollbar-track-bottom.svg", "scrollbar.thumbCapTop": "assets/scrollbar-thumb-top.svg", "scrollbar.thumbCapBottom": "assets/scrollbar-thumb-bottom.svg", "ornament.left": "assets/ornament-left.svg", "ornament.right": "assets/ornament-right.svg"
+  }
+}

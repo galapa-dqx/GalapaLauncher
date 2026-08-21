@@ -21,6 +21,9 @@ public partial class AppFrame : UserControl, IControllerInputHandler
         if (this.DataContext is not AppFrameViewModel vm || vm.Pages.Count == 0)
             return false;
 
+        if (vm.IsOnboarding)
+            return false;
+
         var currentIndex = vm.SelectedPage != null ? vm.Pages.IndexOf(vm.SelectedPage) : 0;
         var newIndex = action switch
         {

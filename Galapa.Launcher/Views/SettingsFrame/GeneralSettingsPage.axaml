@@ -1,20 +1,38 @@
-<UserControl xmlns="https://github.com/avaloniaui"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             xmlns:vm="using:Galapa.Launcher.ViewModels.SettingsFrame"
-             mc:Ignorable="d" d:DesignWidth="600" d:DesignHeight="450"
-             x:Class="Galapa.Launcher.Views.SettingsFrame.GeneralSettingsPage"
-             x:DataType="vm:GeneralSettingsPageViewModel">
-
-    <ScrollViewer>
-        <StackPanel Spacing="20" Margin="10">
-            <TextBlock Text="General Settings" FontSize="24" FontWeight="Bold" />
-
-            <StackPanel Spacing="10">
-                <TextBlock Text="Application Settings" FontSize="18" FontWeight="SemiBold" />
-                <!-- Add general settings controls here -->
-            </StackPanel>
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Galapa.Launcher.ViewModels.SettingsFrame" xmlns:ui="using:Galapa.UI.Controls"
+             xmlns:local="using:Galapa.Launcher.Views.Controls"
+             xmlns:theming="using:Galapa.Launcher.Theming"
+             x:Class="Galapa.Launcher.Views.SettingsFrame.GeneralSettingsPage" x:DataType="vm:GeneralSettingsPageViewModel">
+    <local:SplitPageShell Classes="settings">
+        <StackPanel Spacing="10">
+            <ui:ThemedTextBlock Classes="section" SourceText="Appearance" Margin="0,0,0,1" />
+            <ItemsControl Classes="stretch-items" ItemsSource="{Binding Themes}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="theming:ThemeCatalogEntry">
+                        <Button Classes="themed setting-row" Classes.active="{Binding IsActive}" Margin="0,0,0,10"
+                                Command="{Binding $parent[UserControl].DataContext.SelectThemeCommand}"
+                                CommandParameter="{Binding}">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <ui:ThemedTextBlock Classes="setting-value" SourceText="{Binding DisplayName}" VerticalAlignment="Center" />
+                                <ui:ThemedTextBlock Grid.Column="1" SourceText="{Binding StatusText}" Classes="metadata"
+                                                    Classes.input-error="{Binding HasError}" VerticalAlignment="Center" />
+                            </Grid>
+                        </Button>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock Text="{Binding ThemeError}" TextWrapping="Wrap" />
         </StackPanel>
-    </ScrollViewer>
+        <local:SplitPageShell.HelpContent>
+            <StackPanel Spacing="10">
+                <ui:ThemedTextBlock Classes="section" SourceText="Theme" />
+                <TextBlock TextWrapping="Wrap"
+                           Text="Select the launcher’s visual language. Changes apply immediately and are restored the next time Galapa starts." />
+                <TextBlock TextWrapping="Wrap" Margin="0,6,0,0"
+                           Text="Each package contains its own colors, heading and body fonts, typography treatments, geometry, ornaments, and licenses." />
+                <TextBlock Classes="muted" TextWrapping="Wrap" Margin="0,6,0,0"
+                           Text="Theme packages contain data and assets only; they cannot execute AXAML or code." />
+            </StackPanel>
+        </local:SplitPageShell.HelpContent>
+    </local:SplitPageShell>
 </UserControl>

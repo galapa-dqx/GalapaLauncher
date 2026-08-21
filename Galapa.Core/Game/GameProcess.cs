@@ -32,10 +32,10 @@ public partial class GameProcess(Settings settings)
         if (this.SessionId is null) throw new InvalidOperationException("SessionId is null");
         if (settings.GameFolderPath is null) throw new InvalidOperationException("GameFolderPath is null");
 
-        var gamePath = Path.Combine(settings.GameFolderPath, "game", "DQXGame.exe");
+        var gamePath = Path.Combine(settings.GameFolderPath, Settings.GameExecutableRelativePath);
 
         this._process = new Process();
-        this._process.StartInfo.WorkingDirectory = Path.Combine(settings.GameFolderPath, "game");
+        this._process.StartInfo.WorkingDirectory = this.WorkingDirectory;
         this._process.StartInfo.UseShellExecute = false;
         this._process.StartInfo.FileName = gamePath;
         this._process.StartInfo.Arguments = this.GetArguments();
@@ -45,14 +45,17 @@ public partial class GameProcess(Settings settings)
     }
 
     /// <summary>
-    ///     Working directory for the game process (the <c>game</c> subfolder of the install).
+    ///     Working directory for the game process, derived from the configured executable path.
     /// </summary>
     public string WorkingDirectory
     {
         get
         {
             if (settings.GameFolderPath is null) throw new InvalidOperationException("GameFolderPath is null");
-            return Path.Combine(settings.GameFolderPath, "game");
+            var executableDirectory = Path.GetDirectoryName(Settings.GameExecutableRelativePath);
+            return string.IsNullOrEmpty(executableDirectory)
+                ? settings.GameFolderPath
+                : Path.Combine(settings.GameFolderPath, executableDirectory);
         }
     }
 
@@ -66,7 +69,7 @@ public partial class GameProcess(Settings settings)
         if (this.SessionId is null) throw new InvalidOperationException("SessionId is null");
         if (settings.GameFolderPath is null) throw new InvalidOperationException("GameFolderPath is null");
 
-        var gamePath = Path.Combine(settings.GameFolderPath, "game", "DQXGame.exe");
+        var gamePath = Path.Combine(settings.GameFolderPath, Settings.GameExecutableRelativePath);
         return $"\"{gamePath}\" {this.GetArguments()}";
     }
 

@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "id": "estella",
+  "displayName": "Estella",
+  "author": "Galapa Project",
+  "packageVersion": "1.0.0",
+  "baseVariant": "Light",
+  "colors": {
+    "background": "#EEF4F8", "surface": "#F5F9FC", "secondarySurface": "#DDE8F0",
+    "border": "#B8CCD8", "text": "#0E1E28", "muted": "#4A6A80",
+    "accent": "#3878AA", "success": "#2A7A3A", "danger": "#C04040"
+  },
+  "fonts": {
+    "heading": { "file": "fonts/PlayfairDisplay.ttf", "family": "Playfair Display", "license": "fonts/OFL-PlayfairDisplay.txt" },
+    "body": { "file": "fonts/SourceSans3.ttf", "family": "Source Sans 3", "license": "fonts/OFL-SourceSans3.txt" },
+    "headingBaseSize": 16, "bodyBaseSize": 13
+  },
+  "typography": {
+    "brand": { "family": "Heading", "sizeScale": 1.25, "weight": 700, "style": "Normal", "letterSpacing": 0, "transform": "Original" },
+    "navigation": { "family": "Heading", "sizeScale": 1, "weight": 600, "style": "Normal", "letterSpacing": 0.3, "transform": "Original" },
+    "sectionHeading": { "family": "Heading", "sizeScale": 1, "weight": 700, "style": "Normal", "letterSpacing": 0.2, "transform": "Original" },
+    "fieldLabel": { "family": "Heading", "sizeScale": 0.875, "weight": 500, "style": "Italic", "letterSpacing": 0, "transform": "Original" },
+    "button": { "family": "Heading", "sizeScale": 1, "weight": 700, "style": "Normal", "letterSpacing": 0.2, "transform": "Original" },
+    "cardTitle": { "family": "Heading", "sizeScale": 1, "weight": 600, "style": "Normal", "letterSpacing": 0, "transform": "Original" },
+    "body": { "family": "Body", "sizeScale": 1, "weight": 400, "style": "Normal", "letterSpacing": 0, "transform": "Original" },
+    "input": { "family": "Body", "sizeScale": 1.2307692307692308, "weight": 400, "style": "Normal", "letterSpacing": 0, "transform": "Original" },
+    "settingValue": { "family": "Body", "sizeScale": 1.0769230769230769, "weight": 600, "style": "Normal", "letterSpacing": 0, "transform": "Original" },
+    "metadata": { "family": "Body", "sizeScale": 1, "weight": 400, "style": "Normal", "letterSpacing": 0.1, "transform": "Original" }
+  },
+  "geometry": {
+    "panel": { "radius": 4, "borderThickness": 1, "shape": "Rounded" },
+    "card": { "radius": 4, "borderThickness": 1, "shape": "Rounded" },
+    "input": { "radius": 4, "borderThickness": 1, "shape": "Rounded" },
+    "button": { "radius": 4, "borderThickness": 1, "shape": "Rounded" },
+    "iconButton": { "radius": 4, "borderThickness": 0, "shape": "Rounded" },
+    "switch": { "radius": 99, "borderThickness": 1, "shape": "Pill" },
+    "scrollbarTrack": { "radius": 0, "borderThickness": 0, "shape": "Asset" },
+    "scrollbarThumb": { "radius": 0, "borderThickness": 0, "shape": "Asset" },
+    "indicator": { "radius": 99, "borderThickness": 1, "shape": "Circle" }
+  },
+  "assets": {
+    "chrome.minimize": "assets/minimize.svg", "chrome.maximize": "assets/maximize.svg", "chrome.close": "assets/close.svg",
+    "controller.leftBumper": "assets/bumper-left.svg", "controller.rightBumper": "assets/bumper-right.svg",
+    "carousel.previous": "assets/chevron-left.svg", "carousel.next": "assets/chevron-right.svg",
+    "news.marker": "assets/news-marker.svg",
+    "scrollbar.trackCapTop": "assets/scrollbar-track-top.svg", "scrollbar.trackCapBottom": "assets/scrollbar-track-bottom.svg",
+    "scrollbar.thumbCapTop": "assets/scrollbar-thumb-top.svg", "scrollbar.thumbCapBottom": "assets/scrollbar-thumb-bottom.svg",
+    "ornament.left": "assets/ornament-left.svg", "ornament.right": "assets/ornament-right.svg"
+  }
+}

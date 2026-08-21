@@ -7,9 +7,11 @@ using Galapa.Core.Configuration;
 using Galapa.Core.Game;
 using Galapa.Core.Models;
 using Galapa.Launcher.Services;
+using Galapa.Launcher.Theming;
 using Galapa.Launcher.ViewModels;
 using Galapa.Launcher.ViewModels.AppFrame;
 using Galapa.Launcher.ViewModels.LoginFrame;
+using Galapa.Launcher.ViewModels.OnboardingFrame;
 using Galapa.Launcher.ViewModels.SettingsFrame;
 using Galapa.Launcher.Views;
 using Microsoft.Extensions.Logging;
@@ -60,11 +62,19 @@ internal sealed class Program
         container.Register<SettingsFrameViewModel>(Reuse.Singleton);
         container.Register<GeneralSettingsPageViewModel>(Reuse.Singleton);
         container.Register<GameSettingsPageViewModel>(Reuse.Singleton);
+        container.Register<GraphicsSettingsPageViewModel>(Reuse.Singleton);
         container.Register<AboutPageViewModel>(Reuse.Singleton);
         container.Register<LoginFlowState>(Reuse.Singleton);
         container.Register<LoginNavigationService>(Reuse.Singleton);
         container.Register<IPlayerCredentialFactory, WindowsCredentialManagerFactory>(Reuse.Singleton);
         container.Register<PlayerList>(Reuse.Singleton);
+        container.Register<OnboardingFrameViewModel>(Reuse.Singleton);
+        container.Register<CompiledThemeReader>(Reuse.Singleton);
+        container.Register<IThemeLoader, ThemeLoader>(Reuse.Singleton);
+        container.Register<ThemePipeline>(Reuse.Singleton);
+        container.Register<IThemeCatalog, ThemeCatalog>(Reuse.Singleton);
+        container.Register<IThemeManager, ThemeManager>(Reuse.Singleton);
+        container.Register<ISettingsPersistence, SettingsPersistence>(Reuse.Singleton);
 
         // Controller input services
         container.Register<ControllerListService>(Reuse.Singleton);
@@ -126,6 +136,11 @@ internal sealed class Program
         Services = CreateServiceProvider();
         var settings = Services.Resolve<Settings>();
         ConfigFile.RootDirectory = settings.SaveFolderPath;
+        var preferredThemeId = ThemeId.ParseOrDefault(settings.ThemeId);
+        // Validation is renderer-independent and happens before Avalonia owns a
+        // UI thread. This avoids blocking the dispatcher while still ensuring
+        // the selected and recovery entries exist before first paint.
+        Services.Resolve<IThemeCatalog>().InitializeAsync(preferredThemeId).GetAwaiter().GetResult();
 
         return AppBuilder.Configure<App>()
             .UsePlatformDetect()

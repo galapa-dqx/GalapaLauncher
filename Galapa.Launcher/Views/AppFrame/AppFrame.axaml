@@ -1,25 +1,11 @@
-﻿<UserControl xmlns="https://github.com/avaloniaui"
+<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:Galapa.Launcher.ViewModels.AppFrame"
-             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
              x:Class="Galapa.Launcher.Views.AppFrame.AppFrame"
              x:DataType="vm:AppFrameViewModel">
-
-    <Grid ColumnDefinitions="*" RowDefinitions="Auto,*">
-        <!-- Navigation Bar -->
-        <TabStrip HorizontalAlignment="Center"
-                  ItemsSource="{Binding Pages}"
-                  SelectedItem="{Binding SelectedPage}"
-                  SelectedIndex="0">
-            <TabStrip.ItemTemplate>
-                <DataTemplate x:DataType="vm:AppFrameTab">
-                    <Svg Path="{Binding Icon}" Width="30" Height="30" />
-                </DataTemplate>
-            </TabStrip.ItemTemplate>
-        </TabStrip>
-
-        <TransitioningContentControl Grid.Row="1" Content="{Binding SelectedPage.ViewModel.Value}" />
+    <Grid>
+        <TransitioningContentControl Content="{Binding SelectedPage.ViewModel.Value}"
+                                     IsVisible="{Binding !IsOnboarding}" />
+        <ContentControl Content="{Binding Onboarding}" IsVisible="{Binding IsOnboarding}" />
     </Grid>
 </UserControl>

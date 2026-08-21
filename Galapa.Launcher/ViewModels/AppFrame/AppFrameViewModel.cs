@@ -1,34 +1,34 @@
-﻿using System;
-using System.Collections.Generic;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Galapa.Core.Configuration;
+using Galapa.Launcher.ViewModels.OnboardingFrame;
 
 namespace Galapa.Launcher.ViewModels.AppFrame;
 
-public class AppFrameTabBase<TViewModel>(Lazy<TViewModel> viewModel, string icon)
+public sealed class AppFrameTab(Lazy<AppPageViewModel> viewModel, string title)
 {
-    public Lazy<TViewModel> ViewModel { get; } = viewModel;
-    public string Icon { get; } = icon;
+    public Lazy<AppPageViewModel> ViewModel { get; } = viewModel;
+    public string Title { get; } = title;
 }
 
-public class AppFrameTab(Lazy<AppPageViewModel> viewModel, string icon)
-    : AppFrameTabBase<AppPageViewModel>(viewModel, icon);
-
-public partial class AppFrameViewModel(
-    Settings settings,
-    Lazy<HomePageViewModel> homePage,
-    Lazy<SettingsPageViewModel> settingsPage
-) : ObservableObject
+public partial class AppFrameViewModel : ObservableObject
 {
     [ObservableProperty] private AppFrameTab? _selectedPage;
-    [ObservableProperty] private Settings? _settings = settings;
+    [ObservableProperty] private bool _isOnboarding;
 
-    public List<AppFrameTab> Pages { get; } =
-    [
-        new(new Lazy<AppPageViewModel>(() => homePage.Value),
-            "/Assets/Icons/solar--rocket-bold-duotone.svg"),
+    public AppFrameViewModel(Settings settings, Lazy<HomePageViewModel> homePage,
+        Lazy<SettingsPageViewModel> settingsPage, OnboardingFrameViewModel onboarding)
+    {
+        Onboarding = onboarding;
+        Pages =
+        [
+            new(new Lazy<AppPageViewModel>(() => homePage.Value), "Launcher"),
+            new(new Lazy<AppPageViewModel>(() => settingsPage.Value), "Settings")
+        ];
+        SelectedPage = Pages[0];
+        IsOnboarding = !Settings.IsValidGameFolder(settings.GameFolderPath);
+        onboarding.Completed += (_, _) => IsOnboarding = false;
+    }
 
-        new(new Lazy<AppPageViewModel>(() => settingsPage.Value),
-            "/Assets/Icons/solar--settings-bold-duotone.svg")
-    ];
+    public List<AppFrameTab> Pages { get; }
+    public OnboardingFrameViewModel Onboarding { get; }
 }

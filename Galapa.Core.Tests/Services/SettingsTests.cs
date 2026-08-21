@@ -56,7 +56,7 @@ public class SettingsTests : IDisposable
         // Assert
         Assert.NotNull(result);
         Assert.NotEqual(ValidationResult.Success, result);
-        Assert.Equal("DQXGame.exe does not exist", result.ErrorMessage);
+        Assert.Equal(@"Game\DQXGame.exe does not exist", result.ErrorMessage);
     }
 
     [Fact]
@@ -90,6 +90,7 @@ public class SettingsTests : IDisposable
         Assert.NotNull(settings.SaveFolderPath);
         Assert.NotNull(settings.ErrorReporting);
         Assert.False(settings.ErrorReporting.Value);
+        Assert.Equal("estella", settings.ThemeId);
 
         // GameFolderPath will be InstallInfo.Location which might be null
         // We just verify the settings object was created
@@ -103,7 +104,8 @@ public class SettingsTests : IDisposable
         {
             GameFolderPath = "C:\\TestGamePath",
             SaveFolderPath = "C:\\TestSavePath",
-            ErrorReporting = true
+            ErrorReporting = true,
+            ThemeId = "kyururu"
         };
 
         // Act
@@ -127,7 +129,8 @@ public class SettingsTests : IDisposable
         {
             GameFolderPath = "C:\\OriginalGamePath",
             SaveFolderPath = "C:\\OriginalSavePath",
-            ErrorReporting = true
+            ErrorReporting = true,
+            ThemeId = "kyururu"
         };
         originalSettings.Save();
 
@@ -139,6 +142,7 @@ public class SettingsTests : IDisposable
         Assert.Equal("C:\\OriginalGamePath", loadedSettings.GameFolderPath);
         Assert.Equal("C:\\OriginalSavePath", loadedSettings.SaveFolderPath);
         Assert.True(loadedSettings.ErrorReporting);
+        Assert.Equal("kyururu", loadedSettings.ThemeId);
     }
 
     [Fact]
@@ -150,6 +154,7 @@ public class SettingsTests : IDisposable
         // Assert
         Assert.NotNull(settings.ErrorReporting);
         Assert.False(settings.ErrorReporting.Value);
+        Assert.Equal("estella", settings.ThemeId);
 
         // Default save folder should contain "Dragon Quest X"
         Assert.NotNull(settings.SaveFolderPath);
@@ -244,7 +249,8 @@ public class SettingsTests : IDisposable
         {
             GameFolderPath = "C:\\RoundTripGame",
             SaveFolderPath = "C:\\RoundTripSave",
-            ErrorReporting = true
+            ErrorReporting = true,
+            ThemeId = "duston"
         };
 
         // Act
@@ -255,6 +261,53 @@ public class SettingsTests : IDisposable
         Assert.Equal(original.GameFolderPath, loaded.GameFolderPath);
         Assert.Equal(original.SaveFolderPath, loaded.SaveFolderPath);
         Assert.Equal(original.ErrorReporting, loaded.ErrorReporting);
+        Assert.Equal(original.ThemeId, loaded.ThemeId);
+    }
+
+    [Fact]
+    public async Task SaveAsync_CancellationPreservesExistingFileAndRemovesTemporaryFile()
+    {
+        var settings = new Settings { ThemeId = "estella" };
+        await settings.SaveAsync();
+        var before = await File.ReadAllTextAsync(Paths.Settings);
+        settings.ThemeId = "duston";
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => settings.SaveAsync(cancellation.Token));
+
+        Assert.Equal(before, await File.ReadAllTextAsync(Paths.Settings));
+        Assert.Empty(Directory.EnumerateFiles(Paths.AppData, "settings.*.tmp"));
+    }
+
+    [Fact]
+    public async Task SaveAsync_FailedReplacePreservesExistingFileAndRemovesTemporaryFile()
+    {
+        var settings = new Settings { ThemeId = "estella" };
+        await settings.SaveAsync();
+        var before = await File.ReadAllTextAsync(Paths.Settings);
+        settings.ThemeId = "duston";
+        await using var held = new FileStream(Paths.Settings, FileMode.Open, FileAccess.Read, FileShare.Read);
+
+        var failure = await Assert.ThrowsAnyAsync<Exception>(() => settings.SaveAsync());
+        Assert.True(failure is IOException or UnauthorizedAccessException);
+
+        Assert.Equal(before, await File.ReadAllTextAsync(Paths.Settings));
+        Assert.Empty(Directory.EnumerateFiles(Paths.AppData, "settings.*.tmp"));
+    }
+
+    [Fact]
+    public async Task ConcurrentSavesAreSerializedAndAlwaysLeaveCompleteJson()
+    {
+        var saves = Enumerable.Range(0, 20).Select(index =>
+            new Settings { ThemeId = $"theme-{index}", GameFolderPath = index.ToString() }.SaveAsync()).ToArray();
+
+        await Task.WhenAll(saves);
+
+        var loaded = Settings.Load();
+        Assert.StartsWith("theme-", loaded.ThemeId, StringComparison.Ordinal);
+        Assert.True(int.TryParse(loaded.GameFolderPath, out _));
+        Assert.Empty(Directory.EnumerateFiles(Paths.AppData, "settings.*.tmp"));
     }
 
     [Fact]

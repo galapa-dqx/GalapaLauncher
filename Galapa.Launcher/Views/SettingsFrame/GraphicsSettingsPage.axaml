@@ -1,0 +1,42 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Galapa.Launcher.ViewModels.SettingsFrame" xmlns:ui="using:Galapa.UI.Controls"
+             xmlns:local="using:Galapa.Launcher.Views.Controls"
+             x:Class="Galapa.Launcher.Views.SettingsFrame.GraphicsSettingsPage" x:DataType="vm:GraphicsSettingsPageViewModel">
+    <local:SplitPageShell Classes="settings">
+        <StackPanel Spacing="10">
+            <ui:ThemedTextBlock Classes="section" SourceText="Application" Margin="0,0,0,1" />
+            <ItemsControl Classes="stretch-items" ItemsSource="{Binding Settings}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate><StackPanel Spacing="10" /></ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:GraphicsSettingItem">
+                        <Button Classes="themed setting-row"
+                                Classes.active="{Binding IsSelected}"
+                                Command="{Binding $parent[UserControl].((vm:GraphicsSettingsPageViewModel)DataContext).SelectCommand}"
+                                CommandParameter="{Binding}"
+                                AutomationProperties.Name="{Binding Label}">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="19">
+                                <ui:ThemedTextBlock Classes="setting-value" SourceText="{Binding Label}"
+                                                    TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                <ui:ThemedTextBlock Grid.Column="1" SourceText="{Binding Value}" IsVisible="{Binding !IsToggle}"
+                                                    Classes="setting-value" VerticalAlignment="Center" />
+                                <ToggleButton Grid.Column="1" Classes="themed-switch" IsVisible="{Binding IsToggle}"
+                                              IsChecked="{Binding IsChecked, Mode=TwoWay}"
+                                              AutomationProperties.Name="{Binding Label}" />
+                            </Grid>
+                        </Button>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
+        <local:SplitPageShell.HelpContent>
+            <StackPanel>
+                <ui:ThemedTextBlock Classes="setting-help-title" SourceText="{Binding SelectedSetting.HelpTitle}"
+                                    Margin="0,0,0,19" />
+                <ui:ThemedTextBlock Classes="setting-help-body" SourceText="{Binding SelectedSetting.HelpBody}"
+                                    TextWrapping="Wrap" LineHeight="18.85" />
+            </StackPanel>
+        </local:SplitPageShell.HelpContent>
+    </local:SplitPageShell>
+</UserControl>

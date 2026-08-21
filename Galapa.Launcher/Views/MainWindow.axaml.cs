@@ -1,4 +1,3 @@
-using System;
 using Avalonia.Controls;
 using Galapa.Launcher.Services;
 using Galapa.Launcher.ViewModels;
@@ -11,6 +10,17 @@ public partial class MainWindow : Window
     private readonly ControllerActionSource _actionSource;
     private readonly ControllerInputRouter _inputRouter;
     private readonly ActiveControllerService _activeControllerService;
+
+    // Lets the headless contract test execute the actual compiled XAML without
+    // starting DirectInput or constructing the application service graph.
+    internal MainWindow(bool _)
+    {
+        _pollingService = null!;
+        _actionSource = null!;
+        _inputRouter = null!;
+        _activeControllerService = null!;
+        InitializeComponent();
+    }
 
     public MainWindow(
         MainWindowViewModel mainWindowViewModel,
@@ -26,8 +36,6 @@ public partial class MainWindow : Window
         this._activeControllerService = activeControllerService;
 
         InitializeComponent();
-        ExtendClientAreaToDecorationsHint = true;
-
         // Start controller services
         this._pollingService.Start();
         this._actionSource.Start();
@@ -44,4 +52,5 @@ public partial class MainWindow : Window
         this._actionSource.Stop();
         this._pollingService.Stop();
     }
+
 }

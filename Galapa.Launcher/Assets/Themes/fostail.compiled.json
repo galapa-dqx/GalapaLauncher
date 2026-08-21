@@ -1,0 +1,436 @@
+{
+  "label": "Fostail",
+  "mode": "dark",
+  "focusRing": {
+    "color": "#9068e0",
+    "width": 2,
+    "offset": -2
+  },
+  "controls": {
+    "window": {
+      "shape": "Window",
+      "fill": "#0d0b14",
+      "content": "#d8d0f0",
+      "borderColor": "#2c2545"
+    },
+    "panel": {
+      "shape": "Path",
+      "fill": "#131020",
+      "borderColor": "#2c2545",
+      "borderThickness": 1
+    },
+    "button": {
+      "shape": "Path",
+      "fill": "#9068e0",
+      "content": "#131020",
+      "radius": "pill",
+      "padding": [
+        6,
+        20,
+        6,
+        20
+      ],
+      "text": {
+        "family": "Crimson Pro",
+        "fallback": "serif",
+        "weight": 700,
+        "style": "normal",
+        "size": 16,
+        "case": "uppercase"
+      },
+      "states": {
+        "hover": {
+          "fill": "#9c7be5"
+        },
+        "pressed": {
+          "fill": "#7957bd"
+        },
+        "disabled": {
+          "opacity": 0.5
+        }
+      }
+    },
+    "input": {
+      "shape": "Path",
+      "content": "#d8d0f0",
+      "borderColor": "#2c2545",
+      "borderThickness": 1,
+      "padding": [
+        6,
+        10,
+        6,
+        10
+      ],
+      "text": {
+        "family": "Source Sans 3",
+        "fallback": "sans-serif",
+        "weight": 400,
+        "style": "normal",
+        "size": 16
+      },
+      "states": {
+        "focused": {
+          "borderColor": "#9068e0",
+          "borderThickness": 2,
+          "showRing": false
+        },
+        "disabled": {
+          "opacity": 0.5
+        }
+      }
+    },
+    "tab": {
+      "shape": "Path",
+      "content": "#7870a8",
+      "borderColor": "transparent",
+      "borderThickness": [
+        0,
+        0,
+        2,
+        0
+      ],
+      "padding": [
+        0,
+        10,
+        0,
+        10
+      ],
+      "text": {
+        "family": "Crimson Pro",
+        "fallback": "serif",
+        "weight": 700,
+        "style": "normal",
+        "case": "uppercase"
+      },
+      "states": {
+        "hover": {
+          "content": "#9068e0"
+        },
+        "selected": {
+          "content": "#9068e0",
+          "borderColor": "#9068e0"
+        }
+      }
+    },
+    "carousel": {
+      "shape": "Path",
+      "borderColor": "#2c2545",
+      "borderThickness": 1,
+      "radius": 0,
+      "padding": 2
+    },
+    "pip": {
+      "shape": "Path",
+      "fill": "transparent",
+      "borderColor": "#2c2545",
+      "borderThickness": 1,
+      "radius": "pill",
+      "size": {
+        "width": 10,
+        "height": 10
+      },
+      "states": {
+        "selected": {
+          "fill": "#9068e0",
+          "borderColor": "#9068e0"
+        }
+      }
+    },
+    "switch.track": {
+      "shape": "Path",
+      "fill": "#1a1530",
+      "borderColor": "#2c2545",
+      "borderThickness": 1,
+      "radius": "pill",
+      "padding": 2,
+      "size": {
+        "width": 34,
+        "height": 17
+      },
+      "states": {
+        "disabled": {
+          "opacity": 0.5
+        }
+      }
+    },
+    "switch.thumb": {
+      "shape": "Path",
+      "fill": "#2c2545",
+      "radius": "pill",
+      "size": {
+        "width": 13,
+        "height": 13
+      },
+      "states": {
+        "checked": {
+          "fill": "#9068e0"
+        }
+      }
+    },
+    "carousel.nav": {
+      "shape": "Path",
+      "fill": "#131020",
+      "content": "#7870a8",
+      "borderColor": "#7870a8",
+      "borderThickness": 1,
+      "radius": "pill",
+      "size": {
+        "width": 31,
+        "height": 31
+      },
+      "states": {
+        "hover": {
+          "content": "#9068e0",
+          "borderColor": "#9068e0"
+        }
+      }
+    },
+    "titlebar.caption": {
+      "shape": "Path",
+      "content": "#7870a8",
+      "size": {
+        "width": 34,
+        "height": 34
+      },
+      "states": {
+        "hover": {
+          "fill": "#131020"
+        }
+      }
+    },
+    "titlebar.close": {
+      "shape": "Path",
+      "content": "#e05c6a",
+      "size": {
+        "width": 34,
+        "height": 34
+      },
+      "states": {
+        "hover": {
+          "fill": "#e05c6a",
+          "content": "#131020"
+        }
+      }
+    },
+    "news-item": {
+      "shape": "Path",
+      "fill": "#131020",
+      "content": "#7870a8",
+      "borderColor": "#2c2545",
+      "borderThickness": 1,
+      "padding": [
+        0,
+        12,
+        0,
+        12
+      ],
+      "text": {
+        "family": "Crimson Pro",
+        "fallback": "serif",
+        "weight": 700,
+        "style": "normal",
+        "size": 16
+      },
+      "size": {
+        "height": 43
+      },
+      "states": {
+        "hover": {
+          "borderColor": "#7870a8"
+        }
+      }
+    },
+    "setting-row": {
+      "shape": "Path",
+      "fill": "#131020",
+      "content": "#7870a8",
+      "borderColor": "#2c2545",
+      "borderThickness": 1,
+      "padding": [
+        0,
+        13,
+        0,
+        13
+      ],
+      "text": {
+        "family": "Crimson Pro",
+        "fallback": "serif",
+        "weight": 700,
+        "style": "normal",
+        "size": 14,
+        "case": "uppercase"
+      },
+      "size": {
+        "height": 43
+      },
+      "states": {
+        "selected": {
+          "content": "#9068e0",
+          "borderColor": "#9068e0",
+          "borderThickness": 2
+        }
+      }
+    },
+    "titlebar": {
+      "shape": "Path",
+      "fill": "#1a1530",
+      "borderColor": "#2c2545",
+      "borderThickness": [
+        0,
+        0,
+        1,
+        0
+      ],
+      "padding": [
+        0,
+        0,
+        0,
+        23
+      ],
+      "size": {
+        "height": 34
+      }
+    },
+    "subtabs": {
+      "shape": "Path",
+      "fill": "#1a1530",
+      "borderColor": "#2c2545",
+      "borderThickness": [
+        0,
+        0,
+        1,
+        0
+      ],
+      "size": {
+        "height": 34
+      }
+    },
+    "scrollbar.track": {
+      "shape": "Path",
+      "fill": "#1a1530",
+      "radius": "pill",
+      "size": {
+        "width": 8
+      }
+    },
+    "scrollbar.thumb": {
+      "shape": "Path",
+      "fill": "#7870a8",
+      "radius": "pill",
+      "size": {
+        "width": 8
+      }
+    },
+    "progress.track": {
+      "shape": "Path",
+      "fill": "#1a1530",
+      "radius": "pill",
+      "size": {
+        "height": 4
+      }
+    },
+    "progress.indicator": {
+      "shape": "Path",
+      "fill": "#9068e0",
+      "radius": "pill",
+      "size": {
+        "height": 4
+      }
+    },
+    "play-ornament": {
+      "shape": "Path"
+    },
+    "input.label": {
+      "shape": "Text",
+      "content": "#58507f",
+      "text": {
+        "family": "Crimson Pro",
+        "fallback": "serif",
+        "weight": 700,
+        "style": "normal",
+        "size": 12
+      },
+      "leftInset": 10
+    },
+    "news-item.date": {
+      "shape": "Text",
+      "content": "#58507f",
+      "text": {
+        "size": 13
+      }
+    },
+    "news-item.gem": {
+      "shape": "Text"
+    },
+    "titlebar.wordmark": {
+      "shape": "Text",
+      "content": "#9068e0",
+      "text": {
+        "family": "Crimson Pro",
+        "fallback": "serif",
+        "weight": 700,
+        "style": "normal",
+        "size": 20,
+        "case": "uppercase"
+      }
+    },
+    "tab-bar": {
+      "shape": "Text",
+      "content": "#7870a8"
+    },
+    "settings.heading": {
+      "shape": "Text",
+      "content": "#7870a8",
+      "text": {
+        "family": "Crimson Pro",
+        "fallback": "serif",
+        "weight": 700,
+        "style": "normal",
+        "size": 16,
+        "case": "uppercase"
+      }
+    },
+    "setting-help.title": {
+      "shape": "Text",
+      "content": "#d8d0f0",
+      "text": {
+        "family": "Crimson Pro",
+        "fallback": "serif",
+        "weight": 700,
+        "style": "normal",
+        "size": 16,
+        "case": "uppercase"
+      }
+    },
+    "setting-help.body": {
+      "shape": "Text",
+      "content": "#d8d0f0",
+      "text": {
+        "size": 13
+      }
+    },
+    "input.placeholder": {
+      "shape": "Text",
+      "content": "rgba(120, 112, 168, 0.6)"
+    },
+    "input.caret": {
+      "shape": "Text",
+      "content": "#9068e0"
+    },
+    "input.error": {
+      "shape": "Text",
+      "content": "#e05c6a",
+      "text": {
+        "family": "Source Sans 3",
+        "fallback": "sans-serif",
+        "weight": 400,
+        "style": "normal",
+        "size": 13
+      }
+    },
+    "play-row": {
+      "shape": "Text",
+      "content": "#2c2545"
+    }
+  }
+}

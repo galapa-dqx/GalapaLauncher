@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <rect id="frame" x="2" y="2" width="20" height="20" fill="none"/>
+  <rect id="content" x="6" y="6" width="12" height="12" fill="none"/>
+
+  <svg id="0_0" x="0" y="0" width="8" height="8" viewBox="0 0 8 8">
+    <rect x="0" y="0" width="4" height="4" fill="#ff2020"/>
+    <rect x="4" y="0" width="4" height="4" fill="#ff9090"/>
+    <rect x="0" y="4" width="4" height="4" fill="#900000"/>
+    <rect x="4" y="4" width="4" height="4" fill="#ffd0d0"/>
+  </svg>
+  <svg id="1_0" x="8" y="0" width="8" height="8" viewBox="0 0 8 8" data-slice-repeat="stretch">
+    <rect x="0" y="0" width="4" height="4" fill="#ff7a18"/>
+    <rect x="4" y="0" width="4" height="4" fill="#ffb77a"/>
+    <rect x="0" y="4" width="4" height="4" fill="#9a3500"/>
+    <rect x="4" y="4" width="4" height="4" fill="#ffe0c2"/>
+  </svg>
+  <svg id="2_0" x="16" y="0" width="8" height="8" viewBox="0 0 8 8">
+    <rect x="0" y="0" width="4" height="4" fill="#ffd21f"/>
+    <rect x="4" y="0" width="4" height="4" fill="#ffe98b"/>
+    <rect x="0" y="4" width="4" height="4" fill="#987600"/>
+    <rect x="4" y="4" width="4" height="4" fill="#fff5c2"/>
+  </svg>
+
+  <svg id="0_1" x="0" y="8" width="8" height="8" viewBox="0 0 8 8" data-slice-repeat="stretch">
+    <rect x="0" y="0" width="4" height="4" fill="#82df20"/>
+    <rect x="4" y="0" width="4" height="4" fill="#bdf083"/>
+    <rect x="0" y="4" width="4" height="4" fill="#3d8500"/>
+    <rect x="4" y="4" width="4" height="4" fill="#e5f9c9"/>
+  </svg>
+  <svg id="1_1" x="8" y="8" width="8" height="8" viewBox="0 0 8 8" data-slice-repeat="stretch">
+    <rect x="0" y="0" width="4" height="4" fill="#18b86b"/>
+    <rect x="4" y="0" width="4" height="4" fill="#78dda9"/>
+    <rect x="0" y="4" width="4" height="4" fill="#006638"/>
+    <rect x="4" y="4" width="4" height="4" fill="#c3f2d9"/>
+  </svg>
+  <svg id="2_1" x="16" y="8" width="8" height="8" viewBox="0 0 8 8" data-slice-repeat="stretch">
+    <rect x="0" y="0" width="4" height="4" fill="#19cbd1"/>
+    <rect x="4" y="0" width="4" height="4" fill="#83e7ea"/>
+    <rect x="0" y="4" width="4" height="4" fill="#007579"/>
+    <rect x="4" y="4" width="4" height="4" fill="#c4f5f6"/>
+  </svg>
+
+  <svg id="0_2" x="0" y="16" width="8" height="8" viewBox="0 0 8 8">
+    <rect x="0" y="0" width="4" height="4" fill="#2878f0"/>
+    <rect x="4" y="0" width="4" height="4" fill="#8bb8f8"/>
+    <rect x="0" y="4" width="4" height="4" fill="#063f9c"/>
+    <rect x="4" y="4" width="4" height="4" fill="#ccdefb"/>
+  </svg>
+  <svg id="1_2" x="8" y="16" width="8" height="8" viewBox="0 0 8 8" data-slice-repeat="stretch">
+    <rect x="0" y="0" width="4" height="4" fill="#8148e8"/>
+    <rect x="4" y="0" width="4" height="4" fill="#b99aef"/>
+    <rect x="0" y="4" width="4" height="4" fill="#43158f"/>
+    <rect x="4" y="4" width="4" height="4" fill="#dfd1f8"/>
+  </svg>
+  <svg id="2_2" x="16" y="16" width="8" height="8" viewBox="0 0 8 8">
+    <rect x="0" y="0" width="4" height="4" fill="#e43abf"/>
+    <rect x="4" y="0" width="4" height="4" fill="#ef95db"/>
+    <rect x="0" y="4" width="4" height="4" fill="#89116f"/>
+    <rect x="4" y="4" width="4" height="4" fill="#f8d0ef"/>
+  </svg>
+</svg>

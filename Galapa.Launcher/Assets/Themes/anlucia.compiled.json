@@ -1,0 +1,442 @@
+{
+  "label": "Anlucia",
+  "mode": "light",
+  "focusRing": {
+    "color": "#b87228",
+    "width": 2,
+    "offset": -2
+  },
+  "controls": {
+    "window": {
+      "shape": "Window",
+      "fill": "#fdf6ec",
+      "content": "#2c1a08",
+      "borderColor": "#dccaac"
+    },
+    "panel": {
+      "shape": "Path",
+      "fill": "#fffaf3",
+      "borderColor": "#dccaac",
+      "borderThickness": 1
+    },
+    "button": {
+      "shape": "Path",
+      "fill": "#b87228",
+      "content": "#fffaf3",
+      "radius": "pill",
+      "corner": "bevel",
+      "padding": [
+        6,
+        20,
+        6,
+        20
+      ],
+      "text": {
+        "family": "Crimson Pro",
+        "fallback": "serif",
+        "weight": 700,
+        "style": "normal",
+        "size": 16,
+        "case": "uppercase"
+      },
+      "states": {
+        "hover": {
+          "fill": "#c18347"
+        },
+        "pressed": {
+          "fill": "#9b5f20"
+        },
+        "disabled": {
+          "opacity": 0.5
+        }
+      }
+    },
+    "input": {
+      "shape": "Path",
+      "content": "#2c1a08",
+      "borderColor": "#dccaac",
+      "borderThickness": 1,
+      "padding": [
+        6,
+        10,
+        6,
+        10
+      ],
+      "text": {
+        "family": "Source Sans 3",
+        "fallback": "sans-serif",
+        "weight": 400,
+        "style": "normal",
+        "size": 16
+      },
+      "states": {
+        "focused": {
+          "borderColor": "#b87228",
+          "borderThickness": 2,
+          "showRing": false
+        },
+        "disabled": {
+          "opacity": 0.5
+        }
+      }
+    },
+    "tab": {
+      "shape": "Path",
+      "content": "#8a6e52",
+      "borderColor": "transparent",
+      "borderThickness": [
+        0,
+        0,
+        2,
+        0
+      ],
+      "padding": [
+        0,
+        10,
+        0,
+        10
+      ],
+      "text": {
+        "family": "Crimson Pro",
+        "fallback": "serif",
+        "weight": 700,
+        "style": "normal",
+        "case": "uppercase"
+      },
+      "states": {
+        "hover": {
+          "content": "#b87228"
+        },
+        "selected": {
+          "content": "#b87228",
+          "borderColor": "#b87228"
+        }
+      }
+    },
+    "carousel": {
+      "shape": "Path",
+      "borderColor": "#dccaac",
+      "borderThickness": 1,
+      "radius": 0,
+      "padding": 2
+    },
+    "pip": {
+      "shape": "Path",
+      "fill": "transparent",
+      "borderColor": "#dccaac",
+      "borderThickness": 1,
+      "radius": 6.5,
+      "corner": "bevel",
+      "size": {
+        "width": 13,
+        "height": 13
+      },
+      "states": {
+        "selected": {
+          "fill": "#b87228",
+          "borderColor": "#b87228"
+        }
+      }
+    },
+    "switch.track": {
+      "shape": "Path",
+      "fill": "#f2e6d2",
+      "borderColor": "#dccaac",
+      "borderThickness": 1,
+      "radius": "pill",
+      "padding": 2,
+      "size": {
+        "width": 34,
+        "height": 17
+      },
+      "states": {
+        "disabled": {
+          "opacity": 0.5
+        }
+      }
+    },
+    "switch.thumb": {
+      "shape": "Path",
+      "fill": "#dccaac",
+      "radius": "pill",
+      "size": {
+        "width": 13,
+        "height": 13
+      },
+      "states": {
+        "checked": {
+          "fill": "#b87228"
+        }
+      }
+    },
+    "carousel.nav": {
+      "shape": "Path",
+      "fill": "#fffaf3",
+      "content": "#dccaac",
+      "borderColor": "#dccaac",
+      "borderThickness": 1,
+      "radius": "pill",
+      "size": {
+        "width": 31,
+        "height": 31
+      },
+      "states": {
+        "hover": {
+          "content": "#b87228",
+          "borderColor": "#b87228"
+        }
+      }
+    },
+    "titlebar.caption": {
+      "shape": "Path",
+      "content": "#8a6e52",
+      "size": {
+        "width": 34,
+        "height": 34
+      },
+      "states": {
+        "hover": {
+          "fill": "#fffaf3"
+        }
+      }
+    },
+    "titlebar.close": {
+      "shape": "Path",
+      "content": "#c03020",
+      "size": {
+        "width": 34,
+        "height": 34
+      },
+      "states": {
+        "hover": {
+          "fill": "#c03020",
+          "content": "#fffaf3"
+        }
+      }
+    },
+    "news-item": {
+      "shape": "Path",
+      "fill": "#fffaf3",
+      "content": "#8a6e52",
+      "borderColor": "#dccaac",
+      "borderThickness": 1,
+      "padding": [
+        0,
+        12,
+        0,
+        12
+      ],
+      "text": {
+        "family": "Crimson Pro",
+        "fallback": "serif",
+        "weight": 700,
+        "style": "normal",
+        "size": 16
+      },
+      "size": {
+        "height": 43
+      },
+      "states": {
+        "hover": {
+          "borderColor": "#8a6e52"
+        }
+      }
+    },
+    "setting-row": {
+      "shape": "Path",
+      "fill": "#fffaf3",
+      "content": "#8a6e52",
+      "borderColor": "#dccaac",
+      "borderThickness": 1,
+      "padding": [
+        0,
+        13,
+        0,
+        13
+      ],
+      "text": {
+        "family": "Crimson Pro",
+        "fallback": "serif",
+        "weight": 700,
+        "style": "normal",
+        "size": 14,
+        "case": "uppercase"
+      },
+      "size": {
+        "height": 43
+      },
+      "states": {
+        "selected": {
+          "content": "#b87228",
+          "borderColor": "#b87228",
+          "borderThickness": 2
+        }
+      }
+    },
+    "titlebar": {
+      "shape": "Path",
+      "fill": "#f2e6d2",
+      "borderColor": "#dccaac",
+      "borderThickness": [
+        0,
+        0,
+        1,
+        0
+      ],
+      "padding": [
+        0,
+        0,
+        0,
+        23
+      ],
+      "size": {
+        "height": 34
+      }
+    },
+    "subtabs": {
+      "shape": "Path",
+      "fill": "#f2e6d2",
+      "borderColor": "#dccaac",
+      "borderThickness": [
+        0,
+        0,
+        1,
+        0
+      ],
+      "size": {
+        "height": 34
+      }
+    },
+    "scrollbar.track": {
+      "shape": "Path",
+      "fill": "#f2e6d2",
+      "radius": 4,
+      "corner": "bevel",
+      "size": {
+        "width": 8
+      }
+    },
+    "scrollbar.thumb": {
+      "shape": "Path",
+      "fill": "#8a6e52",
+      "radius": 4,
+      "corner": "bevel",
+      "size": {
+        "width": 8
+      }
+    },
+    "progress.track": {
+      "shape": "Path",
+      "fill": "#f2e6d2",
+      "radius": "pill",
+      "size": {
+        "height": 4
+      }
+    },
+    "progress.indicator": {
+      "shape": "Path",
+      "fill": "#b87228",
+      "radius": "pill",
+      "size": {
+        "height": 4
+      }
+    },
+    "play-ornament": {
+      "shape": "Path",
+      "image": "<svg width=\"35\" height=\"12\" viewBox=\"0 0 35 12\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\">\r\n<path d=\"M2.72639 3.35294C1.44345 3.35294 0.363518 4.5152 0.363518 6C0.363518 7.4848 1.44345 8.64706 2.72639 8.64706C3.64674 8.64706 4.45802 8.05368 4.84786 7.16602C5.00209 6.81482 5.08926 6.41926 5.08926 6C5.08926 5.58074 5.00209 5.18518 4.84786 4.83398C4.45802 3.94632 3.64674 3.35294 2.72639 3.35294ZM11.8158 6.17647C11.8197 6.74645 11.8435 7.25003 11.8903 7.72369C14.1997 7.66052 18.6336 7.5339 21.804 7.41176C24.0407 7.3256 26.6287 7.23754 28.7506 7.14878C29.8114 7.10441 30.7543 7.06007 31.4766 7.01574C31.8379 6.99357 32.1428 6.97147 32.3794 6.94956C32.6203 6.92725 32.7787 6.90589 32.8544 6.88752C33.183 6.80774 33.6136 6.56031 33.9769 6.31778C34.0492 6.2695 34.1174 6.2214 34.181 6.17647H11.8158ZM34.181 5.82353C34.1174 5.7786 34.0492 5.7305 33.9769 5.68221C33.6136 5.43969 33.183 5.19226 32.8544 5.11248C32.7787 5.09411 32.6203 5.07275 32.3794 5.05044C32.1428 5.02853 31.8379 5.00643 31.4766 4.98426C30.7543 4.93992 29.8114 4.89559 28.7506 4.85122C26.6287 4.76246 24.0407 4.6744 21.804 4.58823C18.6336 4.4661 14.1997 4.33983 11.8903 4.27665C11.8435 4.75022 11.8197 5.25368 11.8158 5.82353H34.181ZM8.98856 0.352941C9.65742 2.03858 10.0245 3.12416 10.1388 4.75264C10.1655 5.13441 10.1785 5.54532 10.1785 6C10.1785 6.45468 10.1655 6.86558 10.1388 7.24736C10.0245 8.87584 9.65742 9.96142 8.98856 11.6471H12.4714C11.7338 9.48313 11.4508 8.24012 11.4508 6C11.4508 3.75988 11.7338 2.51687 12.4714 0.352941H8.98856ZM9.78588 7.05882C9.80488 6.73281 9.81499 6.38307 9.81499 6C9.81499 5.61693 9.80488 5.26719 9.78588 4.94118H9.26972V7.05882H9.78588ZM8.9062 7.05882V4.94118H8.17916V7.05882H8.9062ZM7.81564 7.05882V4.94118H7.08861V7.05882H7.81564ZM6.72509 7.05882V4.94118H5.99805V7.05882H6.72509ZM5.27705 4.94118C5.39007 5.27094 5.45278 5.62766 5.45278 6C5.45278 6.37234 5.39007 6.72906 5.27705 7.05882H5.63453V4.94118H5.27705ZM2.72639 4.94118C2.53292 4.94118 2.34395 5.04231 2.19708 5.23242C2.05018 5.42259 1.95391 5.69337 1.95391 6C1.95391 6.30663 2.05018 6.57741 2.19708 6.76758C2.34395 6.95769 2.53292 7.05882 2.72639 7.05882C2.91986 7.05882 3.10883 6.95769 3.25569 6.76758C3.40259 6.57741 3.49886 6.30663 3.49886 6C3.49886 5.69337 3.40259 5.42259 3.25569 5.23242C3.10883 5.04231 2.91986 4.94118 2.72639 4.94118ZM2.72639 4.58823C3.05993 4.58823 3.34793 4.76382 3.54643 5.02079C3.74487 5.27771 3.86238 5.62442 3.86238 6C3.86238 6.37558 3.74487 6.72229 3.54643 6.9792C3.34793 7.23618 3.05993 7.41176 2.72639 7.41176C2.39285 7.41176 2.10485 7.23618 1.90634 6.9792C1.7079 6.72229 1.59039 6.37558 1.59039 6C1.59039 5.62442 1.7079 5.27771 1.90634 5.02079C2.10485 4.76382 2.39285 4.58823 2.72639 4.58823ZM2.72639 3C3.77844 3 4.67787 3.65243 5.13221 4.58823H9.76068C9.62988 3.04432 9.2541 1.98878 8.55511 0.240234L8.4589 0H12.9759L12.8953 0.232652C12.3809 1.72324 12.0788 2.757 11.9301 3.9244C14.2475 3.98784 18.6589 4.11359 21.8182 4.23529C24.052 4.32135 26.6439 4.40985 28.7662 4.49862C29.8275 4.54302 30.7732 4.58745 31.4994 4.63201C31.8623 4.65428 32.1717 4.6768 32.4138 4.69922C32.6516 4.72123 32.8363 4.74413 32.9424 4.76988C33.3409 4.86659 33.8191 5.14857 34.1828 5.39131C34.3681 5.51501 34.5301 5.63283 34.6457 5.71978C34.7035 5.76329 34.75 5.79946 34.782 5.82456C34.798 5.83704 34.8105 5.84674 34.819 5.85352C34.8231 5.85686 34.8263 5.85963 34.8285 5.86144C34.8297 5.86235 34.8308 5.86302 34.8314 5.86351L34.8324 5.86454L35 6L34.8324 6.13545L34.8314 6.13649C34.8308 6.13698 34.8297 6.13765 34.8285 6.13856C34.8263 6.14037 34.8231 6.14314 34.819 6.14648C34.8105 6.15326 34.798 6.16296 34.782 6.17544C34.75 6.20054 34.7035 6.23671 34.6457 6.28022C34.5301 6.36717 34.3681 6.48499 34.1828 6.60869C33.8191 6.85143 33.3409 7.13341 32.9424 7.23012C32.8363 7.25587 32.6516 7.27877 32.4138 7.30078C32.1717 7.3232 31.8623 7.34572 31.4994 7.36799C30.7732 7.41255 29.8275 7.45698 28.7662 7.50138C26.6439 7.59015 24.052 7.67865 21.8182 7.76471C18.659 7.88641 14.2475 8.01216 11.9301 8.0756C12.0788 9.243 12.3809 10.2768 12.8953 11.7673L12.9759 12H8.4589L8.55511 11.7598C9.2541 10.0112 9.62988 8.95568 9.76068 7.41176H5.13221C4.67787 8.34757 3.77844 9 2.72639 9C1.19861 9 0 7.63398 0 6C0 4.36602 1.19861 3 2.72639 3Z\" fill=\"#dccaac\"/>\r\n</svg>\r\n"
+    },
+    "input.label": {
+      "shape": "Text",
+      "content": "#aa9275",
+      "text": {
+        "family": "Crimson Pro",
+        "fallback": "serif",
+        "weight": 700,
+        "style": "normal",
+        "size": 12,
+        "case": "uppercase"
+      },
+      "leftInset": 10
+    },
+    "news-item.date": {
+      "shape": "Text",
+      "content": "#aa9275",
+      "text": {
+        "size": 13
+      }
+    },
+    "news-item.gem": {
+      "shape": "Text"
+    },
+    "titlebar.wordmark": {
+      "shape": "Text",
+      "content": "#b87228",
+      "text": {
+        "family": "Crimson Pro",
+        "fallback": "serif",
+        "weight": 700,
+        "style": "normal",
+        "size": 20,
+        "case": "uppercase"
+      }
+    },
+    "tab-bar": {
+      "shape": "Text",
+      "content": "#8a6e52"
+    },
+    "settings.heading": {
+      "shape": "Text",
+      "content": "#8a6e52",
+      "text": {
+        "family": "Crimson Pro",
+        "fallback": "serif",
+        "weight": 700,
+        "style": "normal",
+        "size": 16,
+        "case": "uppercase"
+      }
+    },
+    "setting-help.title": {
+      "shape": "Text",
+      "content": "#2c1a08",
+      "text": {
+        "family": "Crimson Pro",
+        "fallback": "serif",
+        "weight": 700,
+        "style": "normal",
+        "size": 16,
+        "case": "uppercase"
+      }
+    },
+    "setting-help.body": {
+      "shape": "Text",
+      "content": "#2c1a08",
+      "text": {
+        "size": 13
+      }
+    },
+    "input.placeholder": {
+      "shape": "Text",
+      "content": "rgba(138, 110, 82, 0.6)"
+    },
+    "input.caret": {
+      "shape": "Text",
+      "content": "#b87228"
+    },
+    "input.error": {
+      "shape": "Text",
+      "content": "#c03020",
+      "text": {
+        "family": "Source Sans 3",
+        "fallback": "sans-serif",
+        "weight": 400,
+        "style": "normal",
+        "size": 13
+      }
+    },
+    "play-row": {
+      "shape": "Text",
+      "content": "#dccaac"
+    }
+  }
+}

@@ -1,26 +1,140 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Galapa.Launcher.ViewModels"
+        xmlns:appvm="using:Galapa.Launcher.ViewModels.AppFrame"
         xmlns:appframe="using:Galapa.Launcher.Views.AppFrame"
-        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
-        MinHeight="400" MinWidth="640"
+        xmlns:ui="using:Galapa.UI.Controls"
+        xmlns:local="using:Galapa.Launcher.Views.Controls"
+        xmlns:chrome="using:Avalonia.Controls.Chrome"
         x:Class="Galapa.Launcher.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        XYFocus.NavigationModes="Enabled"
-        XYFocus.UpNavigationStrategy="Projection"
-        XYFocus.DownNavigationStrategy="Projection"
-        XYFocus.LeftNavigationStrategy="Projection"
-        XYFocus.RightNavigationStrategy="Projection"
-        Icon="/Assets/avalonia-logo.ico"
-        Title="Galapa Launcher">
-
-    <Design.DataContext>
-        <!-- This only sets the DataContext for the previewer in an IDE,
-             to set the actual DataContext for runtime, set the DataContext property in code (look at App.axaml.cs) -->
-        <vm:MainWindowViewModel />
-    </Design.DataContext>
-
-    <appframe:AppFrame DataContext="{Binding AppFrameViewModel}" />
+        Width="960" Height="680" MinWidth="720" MinHeight="540"
+        SystemDecorations="Full" CanResize="True"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaChromeHints="PreferSystemChrome"
+        ExtendClientAreaTitleBarHeightHint="{StaticResource Galapa.TitleBarHeight}"
+        XYFocus.NavigationModes="Enabled" Title="Galapa Launcher">
+    <Window.Styles>
+        <!-- Keep Avalonia's single managed caption surface (and its window-state logic),
+             but own the small visual template so hover/pressed paints remain reliable
+             while the client area is extended beneath it. -->
+        <Style Selector="chrome|CaptionButtons">
+            <Setter Property="Height" Value="{StaticResource Galapa.TitleBarHeight}" />
+            <Setter Property="MaxHeight" Value="{StaticResource Galapa.TitleBarHeight}" />
+            <Setter Property="VerticalAlignment" Value="Stretch" />
+            <Setter Property="Opacity" Value="1" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <StackPanel Orientation="Horizontal" Spacing="0" VerticalAlignment="Stretch">
+                        <Button Name="PART_FullScreenButton" Classes="caption-button" IsVisible="False" />
+                        <Button Name="PART_MinimizeButton" Classes="caption-button"
+                                AutomationProperties.Name="Minimize"
+                                Win32Properties.NonClientHitTestResult="MinButton">
+                            <Viewbox Width="11" Height="11">
+                                <Path Stretch="UniformToFill"
+                                      Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                      Data="M2048 1229v-205h-2048v205h2048z" />
+                            </Viewbox>
+                        </Button>
+                        <Button Name="PART_RestoreButton" Classes="caption-button"
+                                AutomationProperties.Name="Maximize"
+                                Win32Properties.NonClientHitTestResult="MaxButton">
+                            <Viewbox Width="11" Height="11">
+                                <Path Name="RestoreButtonPath" Stretch="UniformToFill"
+                                      Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                      Data="M2048 2048v-2048h-2048v2048h2048zM1843 1843h-1638v-1638h1638v1638z" />
+                            </Viewbox>
+                        </Button>
+                        <Button Name="PART_CloseButton" Classes="caption-button caption-close"
+                                AutomationProperties.Name="Close"
+                                Win32Properties.NonClientHitTestResult="Close">
+                            <Viewbox Width="11" Height="11">
+                                <Path Stretch="UniformToFill"
+                                      Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                      Data="M1169 1024l879 -879l-145 -145l-879 879l-879 -879l-145 145l879 879l-879 879l145 145l879 -879l879 879l145 -145z" />
+                            </Viewbox>
+                        </Button>
+                    </StackPanel>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="Button.caption-button">
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border Background="{TemplateBinding Background}">
+                        <ContentPresenter Content="{TemplateBinding Content}"
+                                          HorizontalContentAlignment="Center"
+                                          VerticalContentAlignment="Center" />
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+            <Setter Property="Width" Value="46" />
+            <Setter Property="Height" Value="{StaticResource Galapa.TitleBarHeight}" />
+            <Setter Property="MinHeight" Value="{StaticResource Galapa.TitleBarHeight}" />
+            <Setter Property="MaxHeight" Value="{StaticResource Galapa.TitleBarHeight}" />
+            <Setter Property="VerticalAlignment" Value="Stretch" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.titlebar.caption.ContentBrush}" />
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+        <Style Selector="Button.caption-button:pointerover">
+            <Setter Property="Background" Value="{DynamicResource Galapa.Part.titlebar.caption.hover.FillBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.titlebar.caption.hover.ContentBrush}" />
+        </Style>
+        <Style Selector="Button.caption-button:pressed">
+            <Setter Property="Opacity" Value="0.72" />
+        </Style>
+        <Style Selector="Button.caption-close">
+            <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.titlebar.close.ContentBrush}" />
+        </Style>
+        <Style Selector="Button.caption-close:pointerover">
+            <Setter Property="Background" Value="{DynamicResource Galapa.Part.titlebar.close.hover.FillBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.titlebar.close.hover.ContentBrush}" />
+        </Style>
+        <Style Selector="chrome|CaptionButtons:maximized /template/ Path#RestoreButtonPath">
+            <Setter Property="Data" Value="M2048 410h-410v-410h-1638v1638h410v410h1638v-1638zM1434 1434h-1229v-1229h1229v1229zM1843 1843h-1229v-205h1024v-1024h205v1229z" />
+        </Style>
+    </Window.Styles>
+    <Border BorderBrush="{DynamicResource Galapa.Part.window.BorderBrush}" BorderThickness="1">
+    <Grid Background="{DynamicResource Galapa.Part.window.FillBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <local:ThemePart Name="PART_TitleBar"
+                         Win32Properties.NonClientHitTestResult="Caption"
+                         Height="{StaticResource Galapa.TitleBarHeight}"
+                         PartStyle="{DynamicResource Galapa.Part.titlebar}"
+                         FallbackPadding="0"
+                         UseThemePadding="False">
+            <!-- Paint beneath native chrome without intercepting Windows title-bar hit testing. -->
+            <Grid ColumnDefinitions="Auto,*,138" Win32Properties.NonClientHitTestResult="Caption">
+                <ui:ThemedTextBlock Classes="brand" SourceText="Galapa" VerticalAlignment="Center"
+                                    Margin="{DynamicResource Galapa.Metric.titlebar.Padding}" IsHitTestVisible="False" />
+                <StackPanel Grid.ColumnSpan="3" Orientation="Horizontal" HorizontalAlignment="Center"
+                            Win32Properties.NonClientHitTestResult="Caption"
+                            VerticalAlignment="Stretch" IsVisible="{Binding !AppFrameViewModel.IsOnboarding}">
+                    <local:ThemedSvg InlineSvg="{x:Static local:ThemeGlyphs.BumperLeft}" Width="16" Height="16"
+                                     Margin="0,0,4,0" VerticalAlignment="Center" IsHitTestVisible="False"
+                                     CurrentColor="{DynamicResource Galapa.Part.tab-bar.ContentBrush}" />
+                    <TabStrip Classes="top-tabs" Height="{StaticResource Galapa.TitleBarHeight}"
+                              Win32Properties.NonClientHitTestResult="Client"
+                              ItemsSource="{Binding AppFrameViewModel.Pages}"
+                              SelectedItem="{Binding AppFrameViewModel.SelectedPage}">
+                        <TabStrip.ItemTemplate>
+                            <DataTemplate x:DataType="appvm:AppFrameTab">
+                                <ui:ThemedTextBlock Classes="navigation" SourceText="{Binding Title}" />
+                            </DataTemplate>
+                        </TabStrip.ItemTemplate>
+                    </TabStrip>
+                    <local:ThemedSvg InlineSvg="{x:Static local:ThemeGlyphs.BumperRight}" Width="16" Height="16"
+                                     Margin="4,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"
+                                     CurrentColor="{DynamicResource Galapa.Part.tab-bar.ContentBrush}" />
+                </StackPanel>
+            </Grid>
+        </local:ThemePart>
+        <appframe:AppFrame Grid.Row="1" DataContext="{Binding AppFrameViewModel}" />
+    </Grid>
+    </Border>
 </Window>

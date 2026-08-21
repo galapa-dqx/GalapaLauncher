@@ -1,20 +1,26 @@
-<UserControl xmlns="https://github.com/avaloniaui"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             xmlns:vm="using:Galapa.Launcher.ViewModels.SettingsFrame"
-             mc:Ignorable="d" d:DesignWidth="600" d:DesignHeight="450"
-             x:Class="Galapa.Launcher.Views.SettingsFrame.GameSettingsPage"
-             x:DataType="vm:GameSettingsPageViewModel">
-
-    <ScrollViewer>
-        <StackPanel Spacing="20" Margin="10">
-            <TextBlock Text="Game Settings" FontSize="24" FontWeight="Bold" />
-
-            <StackPanel Spacing="10">
-                <TextBlock Text="Game Configuration" FontSize="18" FontWeight="SemiBold" />
-                <!-- Add game settings controls here -->
-            </StackPanel>
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Galapa.Launcher.ViewModels.SettingsFrame" xmlns:ui="using:Galapa.UI.Controls"
+             xmlns:local="using:Galapa.Launcher.Views.Controls"
+             x:Class="Galapa.Launcher.Views.SettingsFrame.GameSettingsPage" x:DataType="vm:GameSettingsPageViewModel">
+    <local:SplitPageShell Classes="settings">
+        <StackPanel Spacing="10">
+            <ui:ThemedTextBlock Classes="section" SourceText="Folders" Margin="0,0,0,1" />
+            <local:ThemedField Label="Dragon Quest X folder" Text="{Binding Settings.GameFolderPath}"
+                               AutomationProperties.Name="Dragon Quest X folder" />
+            <local:ThemedField Label="Save and configuration folder" Text="{Binding Settings.SaveFolderPath}"
+                               AutomationProperties.Name="Save and configuration folder" />
+            <Button Classes="themed label" Height="43" HorizontalAlignment="Stretch"
+                    Content="Save folders" Command="{Binding SaveCommand}" />
+            <ui:ThemedTextBlock Classes="input-error" SourceText="{Binding SaveError}" TextWrapping="Wrap" />
         </StackPanel>
-    </ScrollViewer>
+        <local:SplitPageShell.HelpContent>
+            <StackPanel Spacing="10">
+                <ui:ThemedTextBlock Classes="section" SourceText="Game folders" />
+                <TextBlock TextWrapping="Wrap"
+                           Text="Choose the Dragon Quest X installation and the folder Galapa uses for game configuration and local data." />
+                <TextBlock Classes="muted" TextWrapping="Wrap" Margin="0,6,0,0"
+                           Text="{Binding GameExecutableHelpText}" />
+            </StackPanel>
+        </local:SplitPageShell.HelpContent>
+    </local:SplitPageShell>
 </UserControl>

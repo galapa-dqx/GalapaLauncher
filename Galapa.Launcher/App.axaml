@@ -9,13 +9,12 @@
 
     <Application.Styles>
         <FluentTheme />
+        <StyleInclude Source="avares://Galapa.UI/Themes/Launcher.axaml" />
+        <StyleInclude Source="avares://Galapa.Launcher/Styles/CompiledThemeStyles.axaml" />
     </Application.Styles>
 
     <Application.Resources>
         <ResourceDictionary>
-            <ResourceDictionary.MergedDictionaries>
-                <ResourceInclude Source="avares://Galapa.UI/Themes/Generic.axaml" />
-            </ResourceDictionary.MergedDictionaries>
             <conv:BoolToObjectOrNullConverter x:Key="BoolToObjectOrNull" />
         </ResourceDictionary>
     </Application.Resources>

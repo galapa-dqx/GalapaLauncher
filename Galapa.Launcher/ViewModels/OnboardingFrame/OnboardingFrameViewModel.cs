@@ -1,31 +1,37 @@
-﻿using System;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Galapa.Core.Configuration;
-using Page = Galapa.Launcher.Views.OnboardingFrame;
+using Galapa.Launcher.Theming;
 
 namespace Galapa.Launcher.ViewModels.OnboardingFrame;
 
-public partial class OnboardingFrameViewModel : ObservableObject
+public partial class OnboardingFrameViewModel(Settings settings, ISettingsPersistence persistence) : ObservableObject
 {
-    [ObservableProperty] private Type? _currentPage;
-    [ObservableProperty] private Settings _settings;
+    [ObservableProperty] private string? _gameFolderPath = settings.GameFolderPath;
+    [ObservableProperty] private string? _validationMessage;
+    public event EventHandler? Completed;
 
-    public OnboardingFrameViewModel(Settings settings)
+    [RelayCommand]
+    private async Task CompleteAsync()
     {
-        this.Settings = settings;
-    }
-
-    public Type? NextPage
-    {
-        get
+        if (!Settings.IsValidGameFolder(GameFolderPath))
         {
-            // if (this.Settings.GameFolderPath is null) return typeof(SelectGameFolderPage);
+            ValidationMessage = $"Choose the Dragon Quest X folder containing {Settings.GameExecutableDisplayPath}.";
+            return;
+        }
 
-            if (this.Settings.GameFolderPath is null)
-            {
-            }
-
-            return null;
+        var previous = settings.GameFolderPath;
+        try
+        {
+            settings.GameFolderPath = GameFolderPath;
+            await persistence.SaveAsync(settings);
+            ValidationMessage = null;
+            Completed?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex)
+        {
+            settings.GameFolderPath = previous;
+            ValidationMessage = $"Galapa could not save this folder: {ex.Message}";
         }
     }
 }
