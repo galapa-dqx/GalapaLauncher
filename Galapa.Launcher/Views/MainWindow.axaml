@@ -103,20 +103,24 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
         <local:ThemePart Name="PART_TitleBar"
+                         Win32Properties.NonClientHitTestResult="Caption"
                          Height="{StaticResource Galapa.TitleBarHeight}"
                          PartStyle="{DynamicResource Galapa.Part.titlebar}"
                          FallbackPadding="0"
                          UseThemePadding="False">
             <!-- Paint beneath native chrome without intercepting Windows title-bar hit testing. -->
-            <Grid ColumnDefinitions="Auto,*,138">
+            <Grid ColumnDefinitions="Auto,*,138" Win32Properties.NonClientHitTestResult="Caption">
                 <ui:ThemedTextBlock Classes="brand" SourceText="Galapa" VerticalAlignment="Center"
                                     Margin="{DynamicResource Galapa.Metric.titlebar.Padding}" IsHitTestVisible="False" />
                 <StackPanel Grid.ColumnSpan="3" Orientation="Horizontal" HorizontalAlignment="Center"
+                            Win32Properties.NonClientHitTestResult="Caption"
                             VerticalAlignment="Stretch" IsVisible="{Binding !AppFrameViewModel.IsOnboarding}">
                     <local:ThemedSvg InlineSvg="{x:Static local:ThemeGlyphs.BumperLeft}" Width="16" Height="16"
                                      Margin="0,0,4,0" VerticalAlignment="Center" IsHitTestVisible="False"
                                      CurrentColor="{DynamicResource Galapa.Part.tab-bar.ContentBrush}" />
-                    <TabStrip Classes="top-tabs" Height="{StaticResource Galapa.TitleBarHeight}" ItemsSource="{Binding AppFrameViewModel.Pages}"
+                    <TabStrip Classes="top-tabs" Height="{StaticResource Galapa.TitleBarHeight}"
+                              Win32Properties.NonClientHitTestResult="Client"
+                              ItemsSource="{Binding AppFrameViewModel.Pages}"
                               SelectedItem="{Binding AppFrameViewModel.SelectedPage}">
                         <TabStrip.ItemTemplate>
                             <DataTemplate x:DataType="appvm:AppFrameTab">

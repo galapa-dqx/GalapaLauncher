@@ -2,7 +2,7 @@
              xmlns:vm="using:Galapa.Launcher.ViewModels.SettingsFrame" xmlns:ui="using:Galapa.UI.Controls"
              xmlns:local="using:Galapa.Launcher.Views.Controls"
              x:Class="Galapa.Launcher.Views.SettingsFrame.GraphicsSettingsPage" x:DataType="vm:GraphicsSettingsPageViewModel">
-    <local:SettingsPageShell>
+    <local:SplitPageShell Classes="settings">
         <StackPanel Spacing="10">
             <ui:ThemedTextBlock Classes="section" SourceText="Application" Margin="0,0,0,1" />
             <ItemsControl Classes="stretch-items" ItemsSource="{Binding Settings}">
@@ -30,13 +30,13 @@
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
         </StackPanel>
-        <local:SettingsPageShell.HelpContent>
+        <local:SplitPageShell.HelpContent>
             <StackPanel>
                 <ui:ThemedTextBlock Classes="setting-help-title" SourceText="{Binding SelectedSetting.HelpTitle}"
                                     Margin="0,0,0,19" />
                 <ui:ThemedTextBlock Classes="setting-help-body" SourceText="{Binding SelectedSetting.HelpBody}"
                                     TextWrapping="Wrap" LineHeight="18.85" />
             </StackPanel>
-        </local:SettingsPageShell.HelpContent>
-    </local:SettingsPageShell>
+        </local:SplitPageShell.HelpContent>
+    </local:SplitPageShell>
 </UserControl>

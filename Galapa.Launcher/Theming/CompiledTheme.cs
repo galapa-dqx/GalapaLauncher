@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace Galapa.Launcher.Theming;
 
@@ -40,8 +39,6 @@ public sealed record CompiledFocusRing
 /// </summary>
 public sealed record CompiledControl
 {
-    [JsonIgnore]
-    public string ThemeId { get; internal set; } = string.Empty;
     public string? Shape { get; init; }
     public string? Fill { get; init; }
     public string? Content { get; init; }
@@ -115,7 +112,7 @@ public static class CompiledThemeContract
             ["progress.track"] = new(),
             ["progress.indicator"] = new(),
             ["play-ornament"] = new(),
-            ["input.label"] = new("Text", Heading(12, 600)),
+            ["input.label"] = new("Text", Heading(12, 600), DefaultLeftInset: 10),
             ["news-item.date"] = new("Text", Body(13, 400)),
             ["news-item.gem"] = new("Text", Heading(14, 600)),
             ["titlebar.wordmark"] = new("Text", Heading(20, 600)),
@@ -129,43 +126,48 @@ public static class CompiledThemeContract
             ["play-row"] = new("Text", Heading(16, 600))
         };
 
-    public static readonly HashSet<string> States =
-    [
-        "hover", "pressed", "focused", "disabled", "selected", "checked"
-    ];
+    public static readonly IReadOnlyDictionary<string, ThemePartState> StateNames =
+        new Dictionary<string, ThemePartState>(StringComparer.Ordinal)
+        {
+            ["hover"] = ThemePartState.Hover,
+            ["pressed"] = ThemePartState.Pressed,
+            ["focused"] = ThemePartState.Focused,
+            ["disabled"] = ThemePartState.Disabled,
+            ["selected"] = ThemePartState.Selected,
+            ["checked"] = ThemePartState.Checked
+        };
+    private static readonly IReadOnlyDictionary<ThemePartState, string> NamesByState =
+        StateNames.ToDictionary(pair => pair.Value, pair => pair.Key);
 
-    public static string? StateName(ThemePartState state) => state switch
+    public static readonly IReadOnlySet<string> States = StateNames.Keys.ToHashSet(StringComparer.Ordinal);
+    public static string? StateName(ThemePartState state) =>
+        state == ThemePartState.Normal ? null : NamesByState.GetValueOrDefault(state)
+            ?? throw new ArgumentOutOfRangeException(nameof(state), state, null);
+    public static ThemePartState PartState(string state) => StateNames.TryGetValue(state, out var result)
+        ? result
+        : throw new ArgumentOutOfRangeException(nameof(state), state, null);
+
+    public static IEnumerable<CompiledControlAsset> EnumerateAssets(string controlId, CompiledControl control)
     {
-        ThemePartState.Normal => null,
-        ThemePartState.Hover => "hover",
-        ThemePartState.Pressed => "pressed",
-        ThemePartState.Focused => "focused",
-        ThemePartState.Disabled => "disabled",
-        ThemePartState.Selected => "selected",
-        ThemePartState.Checked => "checked",
-        _ => throw new ArgumentOutOfRangeException(nameof(state), state, null)
-    };
+        foreach (var asset in EnumerateControl(controlId, control, control.Shape)) yield return asset;
+        if (control.States is null) yield break;
+        foreach (var (stateName, state) in control.States)
+            foreach (var asset in EnumerateControl($"{controlId}.{stateName}", state, control.Shape))
+                yield return asset;
+    }
 
-    public static ThemePartState PartState(string state) => state switch
+    private static IEnumerable<CompiledControlAsset> EnumerateControl(string path, CompiledControl control,
+        string? inheritedShape)
     {
-        "hover" => ThemePartState.Hover,
-        "pressed" => ThemePartState.Pressed,
-        "focused" => ThemePartState.Focused,
-        "disabled" => ThemePartState.Disabled,
-        "selected" => ThemePartState.Selected,
-        "checked" => ThemePartState.Checked,
-        _ => throw new ArgumentOutOfRangeException(nameof(state), state, null)
-    };
-
-    public static ResolvedControlVisual ResolveVisual(CompiledControl control, CompiledControl? state = null) =>
-        new(
-            state?.Fill ?? control.Fill,
-            state?.Content ?? control.Content,
-            state?.BorderColor ?? control.BorderColor,
-            ThemeMetrics.HasValue(state?.BorderThickness ?? default) ? state!.BorderThickness : control.BorderThickness,
-            state?.Opacity ?? control.Opacity ?? 1,
-            state?.Image ?? control.Image,
-            state?.Art ?? control.Art);
+        if (control.Art is not null)
+            yield return new CompiledControlAsset(path, control.Art, ThemeControlAssetKind.NineSlice,
+                inheritedShape == "Asset");
+        if (control.Image is not null)
+            yield return new CompiledControlAsset(path, control.Image, ThemeControlAssetKind.Document, true);
+        if (control.Images is null) yield break;
+        foreach (var (name, source) in control.Images)
+            yield return new CompiledControlAsset($"{path}.{name}", source, ThemeControlAssetKind.Document, true);
+    }
 
     private static TypographyDefaults Heading(double size, int weight) =>
         new("titlebar.wordmark", size, weight);
@@ -175,15 +177,11 @@ public static class CompiledThemeContract
 }
 
 public sealed record TypographyDefaults(string FamilySourceControlId, double Size, int Weight);
-public sealed record CompiledControlSpec(string? RequiredShape = null, TypographyDefaults? Typography = null);
-public readonly record struct ResolvedControlVisual(
-    string? Fill,
-    string? Content,
-    string? BorderColor,
-    JsonElement BorderThickness,
-    double Opacity,
-    string? Image,
-    string? Art);
+public sealed record CompiledControlSpec(string? RequiredShape = null, TypographyDefaults? Typography = null,
+    double? DefaultLeftInset = null);
+public enum ThemeControlAssetKind { Document, NineSlice }
+public readonly record struct CompiledControlAsset(string Path, string Source, ThemeControlAssetKind Kind,
+    bool IsAllowed);
 
 public readonly record struct ThemeEdges(double Top, double Right, double Bottom, double Left)
 {
@@ -221,10 +219,10 @@ public static class CompiledThemeNormalizer
 
     public static NormalizedCompiledControl Normalize(CompiledControl source)
     {
-        var normal = NormalizeVisual(CompiledThemeContract.ResolveVisual(source));
+        var normal = NormalizeVisual(source);
         var states = source.States?.ToDictionary(
             state => state.Key,
-            state => NormalizeVisual(CompiledThemeContract.ResolveVisual(source, state.Value)),
+            state => NormalizeVisual(source, state.Value),
             StringComparer.Ordinal) ?? new Dictionary<string, NormalizedControlVisual>(StringComparer.Ordinal);
         var radius = source.Radius.ValueKind == JsonValueKind.String
             ? new ThemeRadius(true, 0)
@@ -232,10 +230,17 @@ public static class CompiledThemeNormalizer
         return new NormalizedCompiledControl(source, Edges(source.Padding), radius, normal, states);
     }
 
-    private static NormalizedControlVisual NormalizeVisual(ResolvedControlVisual visual) => new(
-        Color(visual.Fill), visual.Content == "inherit" ? null : Color(visual.Content),
-        visual.Content == "inherit", Color(visual.BorderColor), Edges(visual.BorderThickness), visual.Opacity,
-        visual.Image, visual.Art);
+    private static NormalizedControlVisual NormalizeVisual(CompiledControl control, CompiledControl? state = null)
+    {
+        var content = state?.Content ?? control.Content;
+        var border = ThemeMetrics.HasValue(state?.BorderThickness ?? default)
+            ? state!.BorderThickness
+            : control.BorderThickness;
+        return new NormalizedControlVisual(
+            Color(state?.Fill ?? control.Fill), content == "inherit" ? null : Color(content), content == "inherit",
+            Color(state?.BorderColor ?? control.BorderColor), Edges(border), state?.Opacity ?? control.Opacity ?? 1,
+            state?.Image ?? control.Image, state?.Art ?? control.Art);
+    }
 
     private static ThemeColor? Color(string? value) => value is null ? null : ThemeColor.Parse(value);
 

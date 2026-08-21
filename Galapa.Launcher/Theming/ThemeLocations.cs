@@ -17,8 +17,6 @@ internal static class ThemeLocations
             ? Directory.EnumerateFiles(BuiltInFolder, $"*{CompiledSuffix}").OrderBy(path => path, StringComparer.Ordinal)
             : [];
 
-    public static string PathFor(string id) => Path.Combine(BuiltInFolder, $"{id}{CompiledSuffix}");
-
     public static string IdFromPath(string path)
     {
         var name = Path.GetFileName(path);

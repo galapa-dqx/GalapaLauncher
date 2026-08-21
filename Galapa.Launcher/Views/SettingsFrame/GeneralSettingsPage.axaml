@@ -3,7 +3,7 @@
              xmlns:local="using:Galapa.Launcher.Views.Controls"
              xmlns:theming="using:Galapa.Launcher.Theming"
              x:Class="Galapa.Launcher.Views.SettingsFrame.GeneralSettingsPage" x:DataType="vm:GeneralSettingsPageViewModel">
-    <local:SettingsPageShell>
+    <local:SplitPageShell Classes="settings">
         <StackPanel Spacing="10">
             <ui:ThemedTextBlock Classes="section" SourceText="Appearance" Margin="0,0,0,1" />
             <ItemsControl Classes="stretch-items" ItemsSource="{Binding Themes}">
@@ -23,7 +23,7 @@
             </ItemsControl>
             <TextBlock Text="{Binding ThemeError}" TextWrapping="Wrap" />
         </StackPanel>
-        <local:SettingsPageShell.HelpContent>
+        <local:SplitPageShell.HelpContent>
             <StackPanel Spacing="10">
                 <ui:ThemedTextBlock Classes="section" SourceText="Theme" />
                 <TextBlock TextWrapping="Wrap"
@@ -33,6 +33,6 @@
                 <TextBlock Classes="muted" TextWrapping="Wrap" Margin="0,6,0,0"
                            Text="Theme packages contain data and assets only; they cannot execute AXAML or code." />
             </StackPanel>
-        </local:SettingsPageShell.HelpContent>
-    </local:SettingsPageShell>
+        </local:SplitPageShell.HelpContent>
+    </local:SplitPageShell>
 </UserControl>

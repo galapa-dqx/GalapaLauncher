@@ -91,14 +91,12 @@ public class ThemePart : ContentControl
         // but interactive control and makes transactional application moot.
         ApplyPadding();
 
-        var text = style.Control.Text;
-        if (text?.Family is not null) SetCurrentValue(FontFamilyProperty,
-            ThemeManager.FontFamilyFor(new ThemeId(style.Control.ThemeId), text.Family));
+        var text = style.Typography;
+        if (text.AppliesToPart) SetCurrentValue(FontFamilyProperty, text.Family);
         else ClearValue(FontFamilyProperty);
-        if (text?.Size is { } size) SetCurrentValue(FontSizeProperty, size); else ClearValue(FontSizeProperty);
-        if (text?.Weight is { } weight) SetCurrentValue(FontWeightProperty, (FontWeight)weight); else ClearValue(FontWeightProperty);
-        if (text?.Style is not null) SetCurrentValue(FontStyleProperty, ThemeTypography.ToFontStyle(text.Style));
-        else ClearValue(FontStyleProperty);
+        if (text.AppliesToPart) SetCurrentValue(FontSizeProperty, text.Size); else ClearValue(FontSizeProperty);
+        if (text.AppliesToPart) SetCurrentValue(FontWeightProperty, text.Weight); else ClearValue(FontWeightProperty);
+        if (text.AppliesToPart) SetCurrentValue(FontStyleProperty, text.Style); else ClearValue(FontStyleProperty);
         ApplyVisualState();
     }
 
@@ -111,8 +109,7 @@ public class ThemePart : ContentControl
             : visual?.Slices is not null
                 ? visual.Slices.ContentPadding
                 : style is not null && ThemeMetrics.HasValue(style.Control.Padding)
-                    ? new Thickness(style.Normalized.Padding.Left, style.Normalized.Padding.Top,
-                        style.Normalized.Padding.Right, style.Normalized.Padding.Bottom)
+                    ? style.Normalized.Padding.ToThickness()
                     : FallbackPadding;
         if (Padding != padding) SetCurrentValue(PaddingProperty, padding);
     }
@@ -377,7 +374,7 @@ public sealed class ThemePartPresentation
     private readonly IReadOnlyDictionary<string, ThemePartVisual> _states;
 
     private ThemePartPresentation(NormalizedCompiledControl control, IReadOnlyDictionary<string, NineSliceSvg> slices,
-        IReadOnlyDictionary<string, InlineSvgDocument> documents)
+        IReadOnlyDictionary<string, InlineSvgDocument> documents, ThemeTypographyPresentation typography)
     {
         Normalized = control;
         Control = control.Source;
@@ -387,16 +384,19 @@ public sealed class ThemePartPresentation
         _normal = ThemePartVisual.Create(control.Normal, Control.Shape, slices);
         _states = control.States.ToDictionary(pair => pair.Key,
             pair => ThemePartVisual.Create(pair.Value, Control.Shape, slices), StringComparer.Ordinal);
+        Typography = typography;
     }
 
     public CompiledControl Control { get; }
     public NormalizedCompiledControl Normalized { get; }
     public IReadOnlyDictionary<string, InlineSvgDocument> Images { get; }
+    public ThemeTypographyPresentation Typography { get; }
 
     internal static ThemePartPresentation Load(NormalizedCompiledControl control,
         IReadOnlyDictionary<string, NineSliceSvg> slices,
-        IReadOnlyDictionary<string, InlineSvgDocument> documents) =>
-        new(control, slices, documents);
+        IReadOnlyDictionary<string, InlineSvgDocument> documents,
+        ThemeTypographyPresentation typography) =>
+        new(control, slices, documents, typography);
 
     /// <summary>Creates an isolated presentation for renderer tests and app-owned controls.</summary>
     public static ThemePartPresentation Create(CompiledControl control)
@@ -404,21 +404,19 @@ public sealed class ThemePartPresentation
         var parser = new ThemeSvgIrParser();
         var documents = new Dictionary<string, InlineSvgDocument>(StringComparer.Ordinal);
         var slices = new Dictionary<string, NineSliceSvg>(StringComparer.Ordinal);
-        void Assets(CompiledControl value)
+        foreach (var asset in CompiledThemeContract.EnumerateAssets("test", control))
         {
-            if (value.Art is not null && !slices.ContainsKey(value.Art))
-                slices[value.Art] = NineSliceSvg.Load(parser.ParseNineSlice(value.Art));
-            if (value.Image is not null && !documents.ContainsKey(value.Image))
-                documents[value.Image] = InlineSvgDocument.Load(parser.ParseDocument(value.Image));
-            if (value.Images is not null)
-                foreach (var image in value.Images.Values)
-                    if (!documents.ContainsKey(image))
-                        documents[image] = InlineSvgDocument.Load(parser.ParseDocument(image));
+            if (asset.Kind == ThemeControlAssetKind.NineSlice && !slices.ContainsKey(asset.Source))
+                slices[asset.Source] = NineSliceSvg.Load(parser.ParseNineSlice(asset.Source));
+            else if (asset.Kind == ThemeControlAssetKind.Document && !documents.ContainsKey(asset.Source))
+                documents[asset.Source] = InlineSvgDocument.Load(parser.ParseDocument(asset.Source));
         }
-        Assets(control);
-        if (control.States is not null)
-            foreach (var state in control.States.Values) Assets(state);
-        return new ThemePartPresentation(CompiledThemeNormalizer.Normalize(control), slices, documents);
+        var text = control.Text;
+        var typography = new ThemeTypographyPresentation(
+            text?.Family is { } family ? new FontFamily(family) : FontFamily.Default,
+            text?.Size ?? 16, (FontWeight)(text?.Weight ?? 400), ThemeTypography.ToFontStyle(text?.Style),
+            text?.LetterSpacing ?? 0, ThemeTypography.ToTransform(text?.Case), text is not null);
+        return new ThemePartPresentation(CompiledThemeNormalizer.Normalize(control), slices, documents, typography);
     }
 
     public ThemePartVisual Visual(ThemePartState state)
@@ -427,6 +425,9 @@ public sealed class ThemePartPresentation
         return key is not null && _states.TryGetValue(key, out var visual) ? visual : _normal;
     }
 }
+
+public sealed record ThemeTypographyPresentation(FontFamily Family, double Size, FontWeight Weight,
+    FontStyle Style, double LetterSpacing, string Transform, bool AppliesToPart);
 
 public sealed class ThemePartVisual
 {

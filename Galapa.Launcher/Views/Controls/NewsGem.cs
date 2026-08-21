@@ -21,15 +21,18 @@ public sealed class NewsGem : Control
         AvaloniaProperty.Register<NewsGem, IBrush?>(nameof(CurrentColor));
     public static readonly StyledProperty<ThemePartPresentation?> PartStyleProperty =
         AvaloniaProperty.Register<NewsGem, ThemePartPresentation?>(nameof(PartStyle));
+    public static readonly StyledProperty<ThemePartState> StateProperty =
+        AvaloniaProperty.Register<NewsGem, ThemePartState>(nameof(State));
 
     public string Category { get => GetValue(CategoryProperty); set => SetValue(CategoryProperty, value); }
     public IBrush? Fill { get => GetValue(FillProperty); set => SetValue(FillProperty, value); }
     public IBrush? Stroke { get => GetValue(StrokeProperty); set => SetValue(StrokeProperty, value); }
     public IBrush? CurrentColor { get => GetValue(CurrentColorProperty); set => SetValue(CurrentColorProperty, value); }
     public ThemePartPresentation? PartStyle { get => GetValue(PartStyleProperty); set => SetValue(PartStyleProperty, value); }
+    public ThemePartState State { get => GetValue(StateProperty); set => SetValue(StateProperty, value); }
 
     static NewsGem() => AffectsRender<NewsGem>(CategoryProperty, FillProperty, StrokeProperty,
-        CurrentColorProperty, PartStyleProperty);
+        CurrentColorProperty, PartStyleProperty, StateProperty);
 
     protected override Size MeasureOverride(Size availableSize) => new(11, 14);
 
@@ -42,7 +45,7 @@ public sealed class NewsGem : Control
             return;
         }
 
-        var themedStroke = ThemePaint.Brush(PartStyle?.Normalized.Normal.BorderColor) ?? Stroke;
+        var themedStroke = PartStyle?.Visual(State).Border ?? Stroke;
         var pen = themedStroke is null ? null : new Pen(themedStroke);
         switch (Category)
         {

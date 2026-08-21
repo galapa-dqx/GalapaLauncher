@@ -49,9 +49,6 @@ public class SplitPageShell : ContentControl
     }
 }
 
-/// <summary>The settings spelling of the shared split-page shell.</summary>
-public sealed class SettingsPageShell : SplitPageShell;
-
 /// <summary>The single app-owned spelling of a compiled themed panel.</summary>
 public sealed class ThemedPanel : ThemePart;
 

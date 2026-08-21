@@ -18,18 +18,7 @@ public sealed class CompiledThemeReader
         if (!fileName.EndsWith(".compiled.json", StringComparison.OrdinalIgnoreCase))
             throw new ThemePackageException($"Compiled theme must use the '.compiled.json' suffix: {fileName}");
         var source = new LooseBuiltInThemeSource(path);
-        var id = ThemeId.TryParse(source.SourceId, out var parsed) ? parsed : (ThemeId?)null;
-        return await ValidateAsync(new DiscoveredTheme(source, id, source.FallbackDisplayName), cancellationToken);
-    }
-
-    public async Task<ValidatedTheme> ReadAsync(Stream stream, string id, string source,
-        CancellationToken cancellationToken = default)
-    {
-        await using var memory = new MemoryStream();
-        await stream.CopyToAsync(memory, cancellationToken);
-        var themeSource = new MemoryThemeSource(id, source, memory.ToArray());
-        var parsedId = ThemeId.TryParse(id, out var parsed) ? parsed : (ThemeId?)null;
-        return await ValidateAsync(new DiscoveredTheme(themeSource, parsedId, id), cancellationToken);
+        return await ValidateAsync(DiscoveredTheme.From(source), cancellationToken);
     }
 
     public async Task<ValidatedTheme> ValidateAsync(DiscoveredTheme discovery,
@@ -50,14 +39,7 @@ public sealed class CompiledThemeReader
         }
 
         var recoverableMetadata = discovery.Id is { } recoverableId && !string.IsNullOrWhiteSpace(theme.Label)
-            ? new ThemeManifest
-            {
-                Id = recoverableId.Value,
-                DisplayName = theme.Label,
-                Author = theme.Meta?.Maintainer ?? "Galapa Project",
-                PackageVersion = theme.Meta?.Version ?? "compiled",
-                BaseVariant = theme.Mode == "dark" ? ThemeBaseVariant.Dark : ThemeBaseVariant.Light
-            }
+            ? Manifest(theme, recoverableId)
             : null;
         try { Validate(theme); }
         catch (ThemePackageException exception)
@@ -66,17 +48,7 @@ public sealed class CompiledThemeReader
         }
         if (discovery.Id is not { } id)
             throw new ThemePackageException($"Compiled theme does not contain a safe ID: {discovery.Source.SourceId}");
-        foreach (var control in theme.Controls.Values)
-            AssignThemeId(control, id.Value);
-
-        var manifest = new ThemeManifest
-        {
-            Id = id.Value,
-            DisplayName = theme.Label,
-            Author = theme.Meta?.Maintainer ?? "Galapa Project",
-            PackageVersion = theme.Meta?.Version ?? "compiled",
-            BaseVariant = theme.Mode == "dark" ? ThemeBaseVariant.Dark : ThemeBaseVariant.Light,
-        };
+        var manifest = Manifest(theme, id);
         IReadOnlyDictionary<string, NormalizedCompiledControl> normalized;
         ValidatedThemeAssets assets;
         try
@@ -99,36 +71,40 @@ public sealed class CompiledThemeReader
         var slices = new Dictionary<string, NineSliceIr>(StringComparer.Ordinal);
         foreach (var (controlId, control) in theme.Controls)
         {
-            ParseControlAssets(controlId, control, control.Shape, parser, documents, slices);
-            if (control.States is null) continue;
-            foreach (var (stateId, state) in control.States)
-                ParseControlAssets($"{controlId}.{stateId}", state, control.Shape, parser, documents, slices);
+            foreach (var asset in CompiledThemeContract.EnumerateAssets(controlId, control))
+                ParseAsset(asset, parser, documents, slices);
         }
         return new ValidatedThemeAssets(documents, slices, parser.ParseCount);
     }
 
-    private static void ParseControlAssets(string path, CompiledControl control, string? inheritedShape,
+    private static void ParseAsset(CompiledControlAsset asset,
         ThemeSvgIrParser parser, IDictionary<string, SvgDocumentIr> documents, IDictionary<string, NineSliceIr> slices)
     {
         try
         {
-            if (control.Art is not null && !slices.ContainsKey(control.Art))
+            if (!asset.IsAllowed)
+                throw new InvalidDataException("Only Asset controls may contain nine-slice artwork.");
+            if (asset.Kind == ThemeControlAssetKind.NineSlice && !slices.ContainsKey(asset.Source))
             {
-                if (inheritedShape != "Asset")
-                    throw new InvalidDataException("Only Asset controls may contain nine-slice artwork.");
-                slices[control.Art] = parser.ParseNineSlice(control.Art);
+                slices[asset.Source] = parser.ParseNineSlice(asset.Source);
             }
-            if (control.Image is not null && !documents.ContainsKey(control.Image))
-                documents[control.Image] = parser.ParseDocument(control.Image);
-            if (control.Images is not null)
-                foreach (var image in control.Images.Values)
-                    if (!documents.ContainsKey(image)) documents[image] = parser.ParseDocument(image);
+            else if (asset.Kind == ThemeControlAssetKind.Document && !documents.ContainsKey(asset.Source))
+                documents[asset.Source] = parser.ParseDocument(asset.Source);
         }
         catch (Exception exception) when (exception is not ThemePackageException)
         {
-            throw new ThemePackageException($"SVG '{path}' cannot be rendered: {exception.Message}");
+            throw new ThemePackageException($"SVG '{asset.Path}' cannot be rendered: {exception.Message}");
         }
     }
+
+    private static ThemeManifest Manifest(CompiledTheme theme, ThemeId id) => new()
+    {
+        Id = id.Value,
+        DisplayName = theme.Label,
+        Author = theme.Meta?.Maintainer ?? "Galapa Project",
+        PackageVersion = theme.Meta?.Version ?? "compiled",
+        BaseVariant = theme.Mode == "dark" ? ThemeBaseVariant.Dark : ThemeBaseVariant.Light
+    };
 
     public static void Validate(CompiledTheme theme)
     {
@@ -282,15 +258,6 @@ public sealed class CompiledThemeReader
     }
 
     private static bool Finite(double value, double min, double max) => double.IsFinite(value) && value >= min && value <= max;
-    private static void AssignThemeId(CompiledControl control, string themeId)
-    {
-        control.ThemeId = themeId;
-        if (control.States is null)
-            return;
-        foreach (var state in control.States.Values)
-            AssignThemeId(state, themeId);
-    }
-
     private static void ValidateFieldsForShape(string id, CompiledControl control)
     {
         var invalid = control.Shape switch
@@ -313,24 +280,9 @@ public sealed class CompiledThemeReader
             throw new ThemePackageException($"Control '{id}' declares fields that are not valid for shape '{control.Shape}'.");
     }
 
-    private sealed class MemoryThemeSource(string id, string description, byte[] bytes) : IThemeSource
-    {
-        public string SourceId => id;
-        public string FallbackDisplayName => id;
-        public string Description => description;
-        public IReadOnlyList<ThemeFontSourceDescriptor> Fonts =>
-            ThemeId.TryParse(id, out var parsed)
-                ? [new ThemeFontSourceDescriptor(ThemeLocations.FontCollectionUri(parsed), ThemeLocations.BuiltInFontAssetsUri(parsed))]
-                : [];
-        public ValueTask<Stream> OpenCompiledJsonAsync(CancellationToken cancellationToken = default)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            return ValueTask.FromResult<Stream>(new MemoryStream(bytes, writable: false));
-        }
-    }
 }
 
-public static partial class ThemeMetrics
+public static class ThemeMetrics
 {
     public static bool HasValue(JsonElement value) =>
         value.ValueKind is not (JsonValueKind.Undefined or JsonValueKind.Null);

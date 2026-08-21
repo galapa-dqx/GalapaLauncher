@@ -2,7 +2,7 @@
              xmlns:vm="using:Galapa.Launcher.ViewModels.SettingsFrame" xmlns:ui="using:Galapa.UI.Controls"
              xmlns:local="using:Galapa.Launcher.Views.Controls"
              x:Class="Galapa.Launcher.Views.SettingsFrame.ComingSoonPage" x:DataType="vm:ComingSoonPageViewModel">
-    <local:SettingsPageShell>
+    <local:SplitPageShell Classes="settings">
         <StackPanel Spacing="10">
             <ui:ThemedTextBlock Classes="section" SourceText="{Binding Title}" Margin="0,0,0,1" />
             <local:ThemedPanel Height="146" FallbackPadding="24">
@@ -13,12 +13,12 @@
                 </StackPanel>
             </local:ThemedPanel>
         </StackPanel>
-        <local:SettingsPageShell.HelpContent>
+        <local:SplitPageShell.HelpContent>
             <StackPanel Spacing="10">
                 <ui:ThemedTextBlock Classes="section" SourceText="{Binding Title}" />
                 <TextBlock TextWrapping="Wrap"
                            Text="This section is ready for its future controls without showing options that do not work yet." />
             </StackPanel>
-        </local:SettingsPageShell.HelpContent>
-    </local:SettingsPageShell>
+        </local:SplitPageShell.HelpContent>
+    </local:SplitPageShell>
 </UserControl>

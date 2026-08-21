@@ -25,6 +25,89 @@ public sealed class ThemeLifecycleTests(SkiaHeadlessFixture skia)
         Assert.Throws<ArgumentException>(() => new ThemeId(value));
 
     [Fact]
+    public void ThemeIdDefaultAndBoundaryParsingHaveOnePolicy()
+    {
+        Assert.Equal(Settings.DefaultThemeId, ThemeId.Default.Value);
+        Assert.Equal(ThemeId.Default, ThemeId.ParseOrDefault("INVALID"));
+        Assert.Equal(new ThemeId("duston"), ThemeId.ParseOrDefault("duston"));
+    }
+
+    [Fact]
+    public async Task CatalogStatusComesOnlyFromTheLifecycleState()
+    {
+        var bytes = await File.ReadAllBytesAsync(TestPaths.BuiltInTheme("estella"));
+        var source = new ByteSource("estella", bytes, fonts: true);
+        var discovery = DiscoveredTheme.From(source);
+        var entry = new ThemeCatalogEntry(discovery);
+        Assert.Equal("Checking…", entry.StatusText);
+
+        entry.State = new ValidatingTheme(discovery);
+        Assert.Equal("Checking…", entry.StatusText);
+
+        var validated = await new CompiledThemeReader().ValidateAsync(discovery);
+        entry.State = validated;
+        Assert.Equal("Light", entry.StatusText);
+
+        entry.State = new InvalidTheme(discovery, null,
+            [new ThemeDiagnostic(ThemeDiagnosticStage.Validation, "test.invalid", "broken")]);
+        Assert.Equal("Error", entry.StatusText);
+        Assert.Equal("estella", entry.DisplayName);
+    }
+
+    [Fact]
+    public async Task DiscoveryIoFailureFallsBackToEmbeddedEntryInsteadOfTerminatingStartup()
+    {
+        var bytes = await File.ReadAllBytesAsync(TestPaths.BuiltInTheme("estella"));
+        var recovery = new ByteSource("estella", bytes, fonts: true);
+        var catalog = new ThemeCatalog(ThemeTestFactory.Pipeline(), NullLogger<ThemeCatalog>.Instance,
+            () => throw new IOException("theme directory unavailable"), recovery);
+
+        await catalog.InitializeAsync(ThemeId.Default);
+
+        var entry = Assert.Single(catalog.Themes);
+        Assert.Equal(ThemeId.Default, entry.Id);
+        Assert.IsType<ValidatedTheme>(entry.State);
+        Assert.Same(recovery, entry.State.Validation!.EffectiveSource);
+        Assert.Contains(entry.Diagnostics, diagnostic => diagnostic.Code == "theme.discovery.failed");
+    }
+
+    [Fact]
+    public async Task PreferredAndDefaultValidationStartConcurrently()
+    {
+        var bytes = await File.ReadAllBytesAsync(TestPaths.BuiltInTheme("estella"));
+        var preferred = new GatedSource("duston", bytes);
+        var fallback = new GatedSource("estella", bytes);
+        var recovery = new ByteSource("estella", bytes, fonts: true);
+        var catalog = new ThemeCatalog(ThemeTestFactory.Pipeline(), NullLogger<ThemeCatalog>.Instance,
+            () => [preferred, fallback], recovery);
+
+        var initialization = catalog.InitializeAsync(new ThemeId("duston"));
+        await Task.WhenAll(preferred.Opened.Task, fallback.Opened.Task).WaitAsync(TimeSpan.FromSeconds(5));
+        preferred.Release.TrySetResult();
+        fallback.Release.TrySetResult();
+        await initialization;
+
+        Assert.NotNull(catalog.Find(new ThemeId("duston"))!.State.Validation);
+        Assert.NotNull(catalog.Find(ThemeId.Default)!.State.Validation);
+    }
+
+    [Fact]
+    public async Task RecoveryPreparationDoesNotBlockSuccessfulCatalogInitialization()
+    {
+        var bytes = await File.ReadAllBytesAsync(TestPaths.BuiltInTheme("estella"));
+        var deployed = new ByteSource("estella", bytes);
+        var recovery = new GatedSource("estella", bytes);
+        var catalog = new ThemeCatalog(ThemeTestFactory.Pipeline(), NullLogger<ThemeCatalog>.Instance,
+            () => [deployed], recovery);
+
+        await catalog.InitializeAsync(ThemeId.Default).WaitAsync(TimeSpan.FromSeconds(5));
+        await recovery.Opened.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Same(deployed, catalog.Find(ThemeId.Default)!.State.Validation!.EffectiveSource);
+        recovery.Release.TrySetResult();
+    }
+
+    [Fact]
     public async Task ValidationParsesEveryUniqueSvgOnceWithoutAvaloniaObjects()
     {
         var parseEvents = 0;
@@ -58,14 +141,13 @@ public sealed class ThemeLifecycleTests(SkiaHeadlessFixture skia)
         var source = new GatedSource("estella", bytes);
         var discovery = Discovery(source);
         var entry = new ThemeCatalogEntry(discovery);
-        var pipeline = Pipeline(new ThemeLoader());
+        var pipeline = ThemeTestFactory.Pipeline();
 
         var validation = pipeline.ValidateAsync(entry);
         await source.Opened.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.IsType<ValidatingTheme>(entry.State);
         source.Release.TrySetResult();
         Assert.IsType<ValidatedTheme>(await validation);
-        Assert.Same(entry, entry);
         Assert.Same(discovery, entry.State.Discovery);
     }
 
@@ -74,14 +156,14 @@ public sealed class ThemeLifecycleTests(SkiaHeadlessFixture skia)
     {
         var invalidSource = new ByteSource("broken", "not json"u8.ToArray());
         var invalidEntry = new ThemeCatalogEntry(Discovery(invalidSource));
-        var pipeline = Pipeline(new ThemeLoader());
+        var pipeline = ThemeTestFactory.Pipeline();
         var invalid = Assert.IsType<InvalidTheme>(await pipeline.ValidateAsync(invalidEntry));
         Assert.Equal(ThemeDiagnosticStage.Validation, Assert.Single(invalid.Diagnostics).Stage);
         Assert.Equal("theme.validation.failed", invalid.Diagnostics[0].Code);
 
         var validated = await new CompiledThemeReader().ReadAsync(TestPaths.BuiltInTheme("estella"));
         var failedEntry = Entry(validated);
-        var failedPipeline = Pipeline(new ThrowingLoader());
+        var failedPipeline = ThemeTestFactory.Pipeline(new ThrowingLoader());
         await skia.DispatchAsync(async () =>
         {
             var failed = Assert.IsType<LoadFailedTheme>(await failedPipeline.LoadAsync(failedEntry));
@@ -103,7 +185,7 @@ public sealed class ThemeLifecycleTests(SkiaHeadlessFixture skia)
         };
 
         var loaded = await skia.DispatchAsync(async () =>
-            Assert.IsType<LoadedTheme>(await Pipeline(new ThemeLoader()).LoadAsync(entry)));
+            Assert.IsType<LoadedTheme>(await ThemeTestFactory.Pipeline().LoadAsync(entry)));
 
         Assert.Equal([typeof(LoadingTheme), typeof(LoadedTheme)], transitions);
         Assert.Same(loaded, entry.State);
@@ -116,7 +198,7 @@ public sealed class ThemeLifecycleTests(SkiaHeadlessFixture skia)
         var discovery = Discovery(source);
         var entry = new ThemeCatalogEntry(discovery);
         using var cancellation = new CancellationTokenSource();
-        var validation = Pipeline(new ThemeLoader()).ValidateAsync(entry, cancellation.Token);
+        var validation = ThemeTestFactory.Pipeline().ValidateAsync(entry, cancellation.Token);
         await source.Opened.Task.WaitAsync(TimeSpan.FromSeconds(5));
         cancellation.Cancel();
 
@@ -134,7 +216,7 @@ public sealed class ThemeLifecycleTests(SkiaHeadlessFixture skia)
             new ByteSource("zeta", bytes), new ByteSource("zeta", bytes), estella,
             new ByteSource("alpha", bytes)
         };
-        var pipeline = Pipeline(new ThemeLoader());
+        var pipeline = ThemeTestFactory.Pipeline();
         var catalog = new ThemeCatalog(pipeline, NullLogger<ThemeCatalog>.Instance, () => sources, estella);
 
         await catalog.InitializeAsync(new ThemeId("missing"));
@@ -159,7 +241,7 @@ public sealed class ThemeLifecycleTests(SkiaHeadlessFixture skia)
     {
         var bytes = await File.ReadAllBytesAsync(TestPaths.BuiltInTheme("estella"));
         var estellaSource = new ByteSource("estella", bytes, fonts: true);
-        var pipeline = Pipeline(new ThemeLoader());
+        var pipeline = ThemeTestFactory.Pipeline();
         var catalog = new ThemeCatalog(pipeline, NullLogger<ThemeCatalog>.Instance,
             () => [estellaSource], estellaSource);
         var settings = new Settings { ThemeId = "missing" };
@@ -168,26 +250,14 @@ public sealed class ThemeLifecycleTests(SkiaHeadlessFixture skia)
 
         await skia.DispatchAsync(async () =>
         {
-            var app = Application.Current!;
-            var initialVariant = app.RequestedThemeVariant;
-            var initialDictionaries = app.Resources.MergedDictionaries.ToHashSet();
-            try
-            {
-                await catalog.InitializeAsync(new ThemeId("missing"));
-                var result = await manager.ApplyInitialAsync(new ThemeId("missing"));
-                Assert.True(result.Succeeded);
-                Assert.Equal("estella", manager.ActiveTheme!.Manifest.Id);
-                Assert.Equal("missing", settings.ThemeId);
-                Assert.IsType<InvalidTheme>(catalog.Find(new ThemeId("missing"))!.State);
-                return true;
-            }
-            finally
-            {
-                foreach (var dictionary in app.Resources.MergedDictionaries
-                             .Where(item => !initialDictionaries.Contains(item)).ToArray())
-                    app.Resources.MergedDictionaries.Remove(dictionary);
-                app.RequestedThemeVariant = initialVariant;
-            }
+            using var appState = ApplicationStateScope.Capture();
+            await catalog.InitializeAsync(new ThemeId("missing"));
+            var result = await manager.ApplyInitialAsync(new ThemeId("missing"));
+            Assert.True(result.Succeeded);
+            Assert.Equal("estella", manager.ActiveTheme!.Manifest.Id);
+            Assert.Equal("missing", settings.ThemeId);
+            Assert.IsType<InvalidTheme>(catalog.Find(new ThemeId("missing"))!.State);
+            return true;
         });
     }
 
@@ -197,7 +267,7 @@ public sealed class ThemeLifecycleTests(SkiaHeadlessFixture skia)
         var estellaBytes = await File.ReadAllBytesAsync(TestPaths.BuiltInTheme("estella"));
         var estellaSource = new ByteSource("estella", estellaBytes, fonts: true);
         var brokenSource = new ByteSource("broken", "not json"u8.ToArray());
-        var pipeline = Pipeline(new ThemeLoader());
+        var pipeline = ThemeTestFactory.Pipeline();
         var catalog = new ThemeCatalog(pipeline, NullLogger<ThemeCatalog>.Instance,
             () => [brokenSource, estellaSource], estellaSource);
         var settings = new Settings { ThemeId = "broken" };
@@ -206,26 +276,14 @@ public sealed class ThemeLifecycleTests(SkiaHeadlessFixture skia)
 
         await skia.DispatchAsync(async () =>
         {
-            var app = Application.Current!;
-            var initialVariant = app.RequestedThemeVariant;
-            var initialDictionaries = app.Resources.MergedDictionaries.ToHashSet();
-            try
-            {
-                await catalog.InitializeAsync(new ThemeId("broken"));
-                var result = await manager.ApplyInitialAsync(new ThemeId("broken"));
-                Assert.True(result.Succeeded);
-                Assert.Equal("estella", manager.ActiveTheme!.Manifest.Id);
-                Assert.Equal("broken", settings.ThemeId);
-                Assert.IsType<InvalidTheme>(catalog.Find(new ThemeId("broken"))!.State);
-                return true;
-            }
-            finally
-            {
-                foreach (var dictionary in app.Resources.MergedDictionaries
-                             .Where(item => !initialDictionaries.Contains(item)).ToArray())
-                    app.Resources.MergedDictionaries.Remove(dictionary);
-                app.RequestedThemeVariant = initialVariant;
-            }
+            using var appState = ApplicationStateScope.Capture();
+            await catalog.InitializeAsync(new ThemeId("broken"));
+            var result = await manager.ApplyInitialAsync(new ThemeId("broken"));
+            Assert.True(result.Succeeded);
+            Assert.Equal("estella", manager.ActiveTheme!.Manifest.Id);
+            Assert.Equal("broken", settings.ThemeId);
+            Assert.IsType<InvalidTheme>(catalog.Find(new ThemeId("broken"))!.State);
+            return true;
         });
     }
 
@@ -253,7 +311,7 @@ public sealed class ThemeLifecycleTests(SkiaHeadlessFixture skia)
         var deployed = new ByteSource("estella", bytes, fonts: true);
         var recovery = new ByteSource("estella", bytes, fonts: true);
         var loader = new DeployedFailureLoader(deployed);
-        var pipeline = Pipeline(loader);
+        var pipeline = ThemeTestFactory.Pipeline(loader);
         var catalog = new ThemeCatalog(pipeline, NullLogger<ThemeCatalog>.Instance, () => [deployed], recovery);
         var settings = new Settings { ThemeId = "estella" };
         var manager = new ThemeManager(catalog, pipeline, settings, new RecordingSettingsPersistence(),
@@ -261,38 +319,22 @@ public sealed class ThemeLifecycleTests(SkiaHeadlessFixture skia)
 
         await skia.DispatchAsync(async () =>
         {
-            var app = Application.Current!;
-            var initialVariant = app.RequestedThemeVariant;
-            var initialDictionaries = app.Resources.MergedDictionaries.ToHashSet();
-            try
-            {
-                await catalog.InitializeAsync(new ThemeId("estella"));
-                var entry = Assert.Single(catalog.Themes);
-                Assert.Equal(1, recovery.OpenCount);
-                Assert.True(manager.ApplyInitialAsync(new ThemeId("estella")).GetAwaiter().GetResult().Succeeded);
-                Assert.Same(entry, catalog.Find(new ThemeId("estella")));
-                Assert.Same(recovery, manager.ActiveTheme!.Loaded.Validation.EffectiveSource);
-                Assert.Contains(manager.ActiveTheme.Diagnostics,
-                    diagnostic => diagnostic.Code == "theme.loading.failed");
-                Assert.Equal("estella", settings.ThemeId);
-                Assert.Equal(1, recovery.OpenCount);
-                return true;
-            }
-            finally
-            {
-                foreach (var dictionary in app.Resources.MergedDictionaries
-                             .Where(item => !initialDictionaries.Contains(item)).ToArray())
-                    app.Resources.MergedDictionaries.Remove(dictionary);
-                app.RequestedThemeVariant = initialVariant;
-            }
+            using var appState = ApplicationStateScope.Capture();
+            await catalog.InitializeAsync(new ThemeId("estella"));
+            var entry = Assert.Single(catalog.Themes);
+            Assert.Equal(1, recovery.OpenCount);
+            Assert.True(manager.ApplyInitialAsync(new ThemeId("estella")).GetAwaiter().GetResult().Succeeded);
+            Assert.Same(entry, catalog.Find(new ThemeId("estella")));
+            Assert.Same(recovery, manager.ActiveTheme!.Loaded.Validation.EffectiveSource);
+            Assert.Contains(manager.ActiveTheme.Diagnostics,
+                diagnostic => diagnostic.Code == "theme.loading.failed");
+            Assert.Equal("estella", settings.ThemeId);
+            Assert.Equal(1, recovery.OpenCount);
+            return true;
         });
     }
 
-    private static ThemePipeline Pipeline(IThemeLoader loader) => new(new CompiledThemeReader(), loader,
-        NullLogger<ThemePipeline>.Instance);
-
-    private static ThemeCatalogEntry Entry(ValidatedTheme validated) =>
-        new(validated.Discovery) { State = validated };
+    private static ThemeCatalogEntry Entry(ValidatedTheme validated) => ThemeTestFactory.Entry(validated);
 
     private static DiscoveredTheme Discovery(IThemeSource source) => new(source,
         ThemeId.TryParse(source.SourceId, out var id) ? id : null, source.FallbackDisplayName);

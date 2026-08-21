@@ -22,12 +22,30 @@ public sealed class ThemeLoader : IThemeLoader
             pair => pair.Key, pair => InlineSvgDocument.Load(pair.Value), StringComparer.Ordinal);
         var slices = theme.Assets.NineSlices.ToDictionary(
             pair => pair.Key, pair => NineSliceSvg.Load(pair.Value), StringComparer.Ordinal);
+        var themeId = new ThemeId(theme.Manifest.Id);
         var controls = theme.Controls.ToDictionary(
             pair => pair.Key,
-            pair => ThemePartPresentation.Load(pair.Value, slices, documents),
+            pair => ThemePartPresentation.Load(pair.Value, slices, documents,
+                MaterializeTypography(theme, themeId, pair.Key, pair.Value.Source.Text)),
             StringComparer.Ordinal);
         return new LoadedTheme(theme, FontManager.Current,
             new LoadedThemeResources(controls, documents, slices));
+    }
+
+    private static ThemeTypographyPresentation MaterializeTypography(ValidatedTheme theme, ThemeId themeId,
+        string controlId, CompiledTextStyle? text)
+    {
+        var defaults = CompiledThemeContract.Controls[controlId].Typography ??
+                       new TypographyDefaults("titlebar.wordmark", 16, 600);
+        var family = text?.Family ?? theme.Compiled.Controls[defaults.FamilySourceControlId].Text?.Family ?? "Inter";
+        return new ThemeTypographyPresentation(
+            new FontFamily(ThemeLocations.FontFamilyName(themeId, family)),
+            text?.Size ?? defaults.Size,
+            (FontWeight)(text?.Weight ?? defaults.Weight),
+            ThemeTypography.ToFontStyle(text?.Style),
+            text?.LetterSpacing ?? 0,
+            ThemeTypography.ToTransform(text?.Case),
+            text is not null);
     }
 }
 
@@ -45,14 +63,13 @@ public sealed class ThemePipeline(
         await gate.WaitAsync(cancellationToken);
         try
         {
-            if (ValidationFrom(entry.State) is { } cached) return cached;
+            if (entry.State.Validation is { } cached) return cached;
             if (entry.State is InvalidTheme) return entry.State;
             var discovery = entry.State.Discovery;
             await SetStateAsync(entry, new ValidatingTheme(discovery));
             try
             {
-                var validated = await Task.Run(() => reader.ValidateAsync(discovery, cancellationToken),
-                    cancellationToken);
+                var validated = await ValidateDetachedAsync(discovery, cancellationToken);
                 await SetStateAsync(entry, validated);
                 return validated;
             }
@@ -60,14 +77,6 @@ public sealed class ThemePipeline(
             {
                 await SetStateAsync(entry, discovery);
                 throw;
-            }
-            catch (Exception exception)
-            {
-                var invalid = new InvalidTheme(discovery, (exception as ThemePackageException)?.Metadata,
-                    [Diagnostic(ThemeDiagnosticStage.Validation, "theme.validation.failed", exception)]);
-                logger.LogError(exception, "Theme source {ThemeSource} failed validation", discovery.Source.Description);
-                await SetStateAsync(entry, invalid);
-                return invalid;
             }
         }
         finally { gate.Release(); }
@@ -78,15 +87,13 @@ public sealed class ThemePipeline(
     {
         var validatedState = await ValidateAsync(entry, cancellationToken);
         if (validatedState is InvalidTheme) return validatedState;
-        var validated = ValidationFrom(validatedState)!;
+        var validated = validatedState.Validation!;
         var gate = _transitionLocks.GetOrAdd(entry, static _ => new SemaphoreSlim(1, 1));
         await gate.WaitAsync(cancellationToken);
         try
         {
-            if (entry.State is LoadedTheme loaded && await BelongsToCurrentApplicationAsync(loaded))
+            if (entry.State.LoadedState is { } loaded && await BelongsToCurrentApplicationAsync(loaded))
                 return loaded;
-            if (entry.State is AppliedTheme applied && await BelongsToCurrentApplicationAsync(applied.Loaded))
-                return applied.Loaded;
             if (entry.State is LoadFailedTheme) return entry.State;
             await SetStateAsync(entry, new LoadingTheme(validated));
             try
@@ -130,21 +137,34 @@ public sealed class ThemePipeline(
         return recovered;
     }
 
+    /// <summary>
+    /// Validates without observing or mutating a catalog entry. This is safe to run as detached
+    /// recovery preparation because it never touches Avalonia or dispatches to the UI thread.
+    /// </summary>
+    internal async Task<ThemeState> ValidateDetachedAsync(DiscoveredTheme discovery,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await Task.Run(() => reader.ValidateAsync(discovery, cancellationToken), cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(exception, "Theme source {ThemeSource} failed validation", discovery.Source.Description);
+            return new InvalidTheme(discovery, (exception as ThemePackageException)?.Metadata,
+                [Diagnostic(ThemeDiagnosticStage.Validation, "theme.validation.failed", exception)]);
+        }
+    }
+
     internal static async Task SetStateAsync(ThemeCatalogEntry entry, ThemeState state)
     {
         if (Application.Current is null || Dispatcher.UIThread.CheckAccess()) entry.State = state;
         else await Dispatcher.UIThread.InvokeAsync(() => entry.State = state);
     }
-
-    private static ValidatedTheme? ValidationFrom(ThemeState state) => state switch
-    {
-        ValidatedTheme validated => validated,
-        LoadingTheme loading => loading.Validation,
-        LoadedTheme loaded => loaded.Validation,
-        LoadFailedTheme failed => failed.Validation,
-        AppliedTheme applied => applied.Loaded.Validation,
-        _ => null
-    };
 
     private static async Task<bool> BelongsToCurrentApplicationAsync(LoadedTheme theme) =>
         Dispatcher.UIThread.CheckAccess()

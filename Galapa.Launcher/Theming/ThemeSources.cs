@@ -22,7 +22,7 @@ internal sealed class LooseBuiltInThemeSource(string path) : IThemeSource
 internal sealed class EmbeddedRecoveryThemeSource : IThemeSource
 {
     private const string ResourceName = "Galapa.Launcher.Recovery.estella.compiled.json";
-    private static readonly ThemeId Estella = new("estella");
+    private static readonly ThemeId Estella = ThemeId.Default;
 
     public string SourceId => Estella.Value;
     public string FallbackDisplayName => "Estella";

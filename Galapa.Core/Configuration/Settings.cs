@@ -6,18 +6,22 @@ namespace Galapa.Core.Configuration;
 
 public partial class Settings : ObservableValidator
 {
+    private static readonly SemaphoreSlim SaveGate = new(1, 1);
     public const string DefaultThemeId = "estella";
     public static readonly string GameExecutableRelativePath = Path.Combine("Game", "DQXGame.exe");
-    public const string GameExecutableDisplayPath = @"Game\DQXGame.exe";
+    public static string GameExecutableDisplayPath =>
+        GameExecutableRelativePath.Replace(Path.DirectorySeparatorChar, '\\').Replace(Path.AltDirectorySeparatorChar, '\\');
 
-    [ObservableProperty] [Required] [CustomValidation(typeof(Settings), "ValidateGameFolderPath")]
+    [ObservableProperty]
+    [Required]
+    [CustomValidation(typeof(Settings), "ValidateGameFolderPath")]
     private string? _gameFolderPath;
 
-    [ObservableProperty] [Required] private string? _saveFolderPath;
+    [ObservableProperty][Required] private string? _saveFolderPath;
 
-    [ObservableProperty] [Required] private bool? _errorReporting;
+    [ObservableProperty][Required] private bool? _errorReporting;
 
-    [ObservableProperty] [Required] private string _themeId = DefaultThemeId;
+    [ObservableProperty][Required] private string _themeId = DefaultThemeId;
 
     private static Settings GetDefaults()
     {
@@ -51,18 +55,43 @@ public partial class Settings : ObservableValidator
         return GetDefaults();
     }
 
-    public void Save()
-    {
-        Directory.CreateDirectory(Paths.AppData);
-        File.WriteAllText(Paths.Settings, JsonSerializer.Serialize(this));
-    }
+    public void Save() => SaveCoreAsync(CancellationToken.None).GetAwaiter().GetResult();
 
     public async Task SaveAsync(CancellationToken cancellationToken = default)
+        => await SaveCoreAsync(cancellationToken);
+
+    private async Task SaveCoreAsync(CancellationToken cancellationToken)
     {
-        Directory.CreateDirectory(Paths.AppData);
-        // Capture a consistent snapshot before yielding to file I/O.
-        var json = JsonSerializer.Serialize(this);
-        await File.WriteAllTextAsync(Paths.Settings, json, cancellationToken);
+        await SaveGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        string? temporaryPath = null;
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var json = JsonSerializer.Serialize(this);
+            Directory.CreateDirectory(Paths.AppData);
+            temporaryPath = Path.Combine(Paths.AppData, $"settings.{Guid.NewGuid():N}.tmp");
+            await using (var stream = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write,
+                             FileShare.None, 16 * 1024, FileOptions.Asynchronous | FileOptions.WriteThrough))
+            await using (var writer = new StreamWriter(stream))
+            {
+                await writer.WriteAsync(json.AsMemory(), cancellationToken).ConfigureAwait(false);
+                await writer.FlushAsync(cancellationToken).ConfigureAwait(false);
+                await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+            File.Move(temporaryPath, Paths.Settings, true);
+            temporaryPath = null;
+        }
+        finally
+        {
+            if (temporaryPath is not null)
+            {
+                try { File.Delete(temporaryPath); }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+            }
+            SaveGate.Release();
+        }
     }
 
     public static bool IsValidGameFolder(string? gameFolderPath) =>

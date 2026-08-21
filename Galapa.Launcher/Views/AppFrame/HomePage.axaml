@@ -11,7 +11,7 @@
             <Setter Property="State" Value="Hover" />
         </Style>
         <Style Selector="Grid.news-row:pointerover local|NewsGem.news-gem">
-            <Setter Property="Stroke" Value="{DynamicResource Galapa.Part.news-item.hover.BorderBrush}" />
+            <Setter Property="State" Value="Hover" />
         </Style>
     </UserControl.Styles>
     <!-- The news viewport owns an 8-DIP left bleed. Other rows add that inset

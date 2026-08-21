@@ -2,7 +2,7 @@
              xmlns:vm="using:Galapa.Launcher.ViewModels.SettingsFrame" xmlns:ui="using:Galapa.UI.Controls"
              xmlns:local="using:Galapa.Launcher.Views.Controls"
              x:Class="Galapa.Launcher.Views.SettingsFrame.AboutPage" x:DataType="vm:AboutPageViewModel">
-    <local:SettingsPageShell>
+    <local:SplitPageShell Classes="settings">
         <StackPanel Spacing="10">
             <ui:ThemedTextBlock Classes="section" SourceText="Application" Margin="0,0,0,1" />
             <Button Classes="themed setting-row" Click="OnCopyVersionClick" AutomationProperties.Name="Copy version">
@@ -42,7 +42,7 @@
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
         </StackPanel>
-        <local:SettingsPageShell.HelpContent>
+        <local:SplitPageShell.HelpContent>
             <StackPanel Spacing="10">
                 <ui:ThemedTextBlock Classes="section" SourceText="About" />
                 <TextBlock TextWrapping="Wrap"
@@ -50,6 +50,6 @@
                 <TextBlock Classes="muted" TextWrapping="Wrap" Margin="0,6,0,0"
                            Text="Select a row to copy the version or open its destination." />
             </StackPanel>
-        </local:SettingsPageShell.HelpContent>
-    </local:SettingsPageShell>
+        </local:SplitPageShell.HelpContent>
+    </local:SplitPageShell>
 </UserControl>

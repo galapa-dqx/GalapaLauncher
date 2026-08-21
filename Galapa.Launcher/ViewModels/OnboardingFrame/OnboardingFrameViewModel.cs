@@ -1,17 +1,18 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Galapa.Core.Configuration;
+using Galapa.Launcher.Theming;
 
 namespace Galapa.Launcher.ViewModels.OnboardingFrame;
 
-public partial class OnboardingFrameViewModel(Settings settings) : ObservableObject
+public partial class OnboardingFrameViewModel(Settings settings, ISettingsPersistence persistence) : ObservableObject
 {
     [ObservableProperty] private string? _gameFolderPath = settings.GameFolderPath;
     [ObservableProperty] private string? _validationMessage;
     public event EventHandler? Completed;
 
     [RelayCommand]
-    private void Complete()
+    private async Task CompleteAsync()
     {
         if (!Settings.IsValidGameFolder(GameFolderPath))
         {
@@ -23,7 +24,7 @@ public partial class OnboardingFrameViewModel(Settings settings) : ObservableObj
         try
         {
             settings.GameFolderPath = GameFolderPath;
-            settings.Save();
+            await persistence.SaveAsync(settings);
             ValidationMessage = null;
             Completed?.Invoke(this, EventArgs.Empty);
         }

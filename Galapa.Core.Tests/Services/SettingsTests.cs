@@ -265,6 +265,52 @@ public class SettingsTests : IDisposable
     }
 
     [Fact]
+    public async Task SaveAsync_CancellationPreservesExistingFileAndRemovesTemporaryFile()
+    {
+        var settings = new Settings { ThemeId = "estella" };
+        await settings.SaveAsync();
+        var before = await File.ReadAllTextAsync(Paths.Settings);
+        settings.ThemeId = "duston";
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => settings.SaveAsync(cancellation.Token));
+
+        Assert.Equal(before, await File.ReadAllTextAsync(Paths.Settings));
+        Assert.Empty(Directory.EnumerateFiles(Paths.AppData, "settings.*.tmp"));
+    }
+
+    [Fact]
+    public async Task SaveAsync_FailedReplacePreservesExistingFileAndRemovesTemporaryFile()
+    {
+        var settings = new Settings { ThemeId = "estella" };
+        await settings.SaveAsync();
+        var before = await File.ReadAllTextAsync(Paths.Settings);
+        settings.ThemeId = "duston";
+        await using var held = new FileStream(Paths.Settings, FileMode.Open, FileAccess.Read, FileShare.Read);
+
+        var failure = await Assert.ThrowsAnyAsync<Exception>(() => settings.SaveAsync());
+        Assert.True(failure is IOException or UnauthorizedAccessException);
+
+        Assert.Equal(before, await File.ReadAllTextAsync(Paths.Settings));
+        Assert.Empty(Directory.EnumerateFiles(Paths.AppData, "settings.*.tmp"));
+    }
+
+    [Fact]
+    public async Task ConcurrentSavesAreSerializedAndAlwaysLeaveCompleteJson()
+    {
+        var saves = Enumerable.Range(0, 20).Select(index =>
+            new Settings { ThemeId = $"theme-{index}", GameFolderPath = index.ToString() }.SaveAsync()).ToArray();
+
+        await Task.WhenAll(saves);
+
+        var loaded = Settings.Load();
+        Assert.StartsWith("theme-", loaded.ThemeId, StringComparison.Ordinal);
+        Assert.True(int.TryParse(loaded.GameFolderPath, out _));
+        Assert.Empty(Directory.EnumerateFiles(Paths.AppData, "settings.*.tmp"));
+    }
+
+    [Fact]
     public void ValidateGameFolderPath_WithGameSubfolder_WorksCorrectly()
     {
         // Arrange

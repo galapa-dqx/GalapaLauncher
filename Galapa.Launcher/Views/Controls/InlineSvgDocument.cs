@@ -52,7 +52,7 @@ public sealed class InlineSvgDocument
         foreach (var shape in shapes)
         {
             using (context.PushTransform(shape.Transform * map))
-                context.DrawGeometry(shape.Fill.Resolve(currentColor), shape.ResolvePen(currentColor), shape.Geometry);
+                context.DrawGeometry(shape.ResolveFill(currentColor), shape.ResolvePen(currentColor), shape.Geometry);
         }
     }
 
@@ -60,14 +60,17 @@ public sealed class InlineSvgDocument
     {
         Geometry geometry = shape.Kind switch
         {
-            SvgGeometryKind.Path => StreamGeometry.Parse(shape.PathData!),
+            SvgGeometryKind.Path => StreamGeometry.Parse(
+                $"{(shape.FillRule == SvgFillRuleIr.NonZero ? "F1" : "F0")} {shape.PathData}"),
             SvgGeometryKind.Circle => new EllipseGeometry(ToRect(shape.Rect)),
             SvgGeometryKind.Rectangle => new RectangleGeometry(ToRect(shape.Rect), shape.RadiusX, shape.RadiusY),
             SvgGeometryKind.Line => Line(shape),
             _ => throw new InvalidDataException($"Unsupported SVG geometry kind '{shape.Kind}'.")
         };
-        return new SvgPaintShape(geometry, SvgPaint.Load(shape.Fill), SvgPaint.Load(shape.Stroke),
-            shape.StrokeWidth, ToMatrix(shape.Transform));
+        return new SvgPaintShape(geometry, SvgPaint.Load(shape.Fill, shape.FillOpacity),
+            SvgPaint.Load(shape.Stroke, shape.StrokeOpacity), shape.StrokeWidth,
+            shape.StrokeLineCap, shape.StrokeLineJoin, shape.StrokeMiterLimit,
+            shape.StrokeDashArray, shape.StrokeDashOffset, ToMatrix(shape.Transform));
     }
 
     private static Geometry Line(SvgShapeIr shape)
@@ -85,15 +88,23 @@ public sealed class InlineSvgDocument
         new(value.M11, value.M12, value.M21, value.M22, value.M31, value.M32);
 }
 
-internal readonly record struct SvgPaint(IBrush? Brush, bool UsesCurrentColor)
+internal readonly record struct SvgPaint(IBrush? Brush, bool UsesCurrentColor, double Opacity)
 {
-    public IBrush? Resolve(IBrush? currentColor) => UsesCurrentColor ? currentColor : Brush;
+    public IBrush? Resolve(IBrush? currentColor)
+    {
+        var result = UsesCurrentColor ? currentColor : Brush;
+        if (result is null || Opacity >= .9999 || !UsesCurrentColor) return result;
+        return result is ISolidColorBrush solid
+            ? new SolidColorBrush(solid.Color, solid.Opacity * Opacity)
+            : result;
+    }
 
-    public static SvgPaint Load(ThemePaintIr value) => value.Kind switch
+    public static SvgPaint Load(ThemePaintIr value, double opacity) => value.Kind switch
     {
         ThemePaintKind.None => default,
-        ThemePaintKind.CurrentColor => new SvgPaint(null, true),
-        ThemePaintKind.Color => new SvgPaint(ThemePaint.Brush(value.Color), false),
+        ThemePaintKind.CurrentColor => new SvgPaint(null, true, opacity),
+        ThemePaintKind.Color => new SvgPaint(
+            new SolidColorBrush(ThemePaint.Color(value.Color), opacity), false, opacity),
         _ => throw new ArgumentOutOfRangeException(nameof(value))
     };
 }
@@ -102,23 +113,45 @@ public sealed class SvgPaintShape
 {
     private readonly SvgPaint _stroke;
     private readonly double _strokeWidth;
+    private readonly IDashStyle? _dashStyle;
+    private readonly PenLineCap _lineCap;
+    private readonly PenLineJoin _lineJoin;
+    private readonly double _miterLimit;
     private readonly Pen? _fixedPen;
     private IBrush? _lastCurrentColor;
     private Pen? _lastCurrentColorPen;
+    private IBrush? _lastFillCurrentColor;
+    private IBrush? _lastCurrentFill;
 
-    internal SvgPaintShape(Geometry geometry, SvgPaint fill, SvgPaint stroke, double strokeWidth, Matrix transform)
+    internal SvgPaintShape(Geometry geometry, SvgPaint fill, SvgPaint stroke, double strokeWidth,
+        SvgLineCapIr lineCap, SvgLineJoinIr lineJoin, double miterLimit, IReadOnlyList<double> dashArray,
+        double dashOffset, Matrix transform)
     {
         Geometry = geometry;
         Fill = fill;
         _stroke = stroke;
         _strokeWidth = strokeWidth;
+        _lineCap = lineCap switch { SvgLineCapIr.Round => PenLineCap.Round, SvgLineCapIr.Square => PenLineCap.Square, _ => PenLineCap.Flat };
+        _lineJoin = lineJoin switch { SvgLineJoinIr.Round => PenLineJoin.Round, SvgLineJoinIr.Bevel => PenLineJoin.Bevel, _ => PenLineJoin.Miter };
+        _miterLimit = miterLimit;
+        _dashStyle = dashArray.Count > 0 && strokeWidth > 0
+            ? new DashStyle(dashArray.Select(value => value / strokeWidth), dashOffset / strokeWidth)
+            : null;
         Transform = transform;
-        _fixedPen = stroke.Brush is null ? null : new Pen(stroke.Brush, strokeWidth);
+        _fixedPen = stroke.Brush is null ? null : PenFor(stroke.Brush);
     }
 
     public Geometry Geometry { get; }
     internal SvgPaint Fill { get; }
     public Matrix Transform { get; }
+
+    public IBrush? ResolveFill(IBrush? currentColor)
+    {
+        if (!Fill.UsesCurrentColor) return Fill.Brush;
+        if (ReferenceEquals(currentColor, _lastFillCurrentColor)) return _lastCurrentFill;
+        _lastFillCurrentColor = currentColor;
+        return _lastCurrentFill = Fill.Resolve(currentColor);
+    }
 
     public Pen? ResolvePen(IBrush? currentColor)
     {
@@ -126,15 +159,18 @@ public sealed class SvgPaintShape
         if (currentColor is null) return null;
         if (ReferenceEquals(currentColor, _lastCurrentColor)) return _lastCurrentColorPen;
         _lastCurrentColor = currentColor;
-        return _lastCurrentColorPen = new Pen(currentColor, _strokeWidth);
+        return _lastCurrentColorPen = PenFor(_stroke.Resolve(currentColor)!);
     }
+
+    private Pen PenFor(IBrush brush) => new(brush, _strokeWidth, _dashStyle, _lineCap, _lineJoin, _miterLimit);
 }
 
 /// <summary>A UI-thread materialization of validated nine-slice data.</summary>
 public sealed class NineSliceSvg
 {
-    private Rect _lastHostBounds;
-    private IReadOnlyList<NineSliceDrawOperation>? _lastLayout;
+    private const int LayoutCacheCapacity = 8;
+    private readonly LinkedList<LayoutCacheEntry> _layoutCache = new();
+    internal int LayoutBuildCount { get; private set; }
     private readonly double _fixedWidth;
     private readonly double _fixedHeight;
 
@@ -161,10 +197,10 @@ public sealed class NineSliceSvg
         Dispatcher.UIThread.VerifyAccess();
         var cells = source.Cells.Select(cell => new NineSliceCell(
             cell.Column, cell.Row, cell.Width, cell.Height, InlineSvgDocument.ToRect(cell.ViewBox),
-            new AspectRatioAlignment(cell.AspectRatio.None, cell.AspectRatio.Slice, cell.AspectRatio.X, cell.AspectRatio.Y),
+            cell.AspectRatio,
             cell.Repeat, cell.Shapes.Select(LoadShape).ToArray())).ToArray();
-        return new NineSliceSvg(source.Columns, source.Rows, ToThickness(source.ContentPadding),
-            ToThickness(source.Outset), cells);
+        return new NineSliceSvg(source.Columns, source.Rows, source.ContentPadding.ToThickness(),
+            source.Outset.ToThickness(), cells);
     }
 
     /// <summary>Compatibility helper for focused renderer tests.</summary>
@@ -173,10 +209,7 @@ public sealed class NineSliceSvg
 
     public void Draw(DrawingContext context, Rect hostBounds, IBrush? currentColor)
     {
-        var layout = hostBounds == _lastHostBounds && _lastLayout is not null
-            ? _lastLayout
-            : _lastLayout = BuildLayout(hostBounds);
-        _lastHostBounds = hostBounds;
+        var layout = Layout(hostBounds);
         foreach (var operation in layout)
         {
             using (context.PushClip(operation.Clip))
@@ -184,6 +217,28 @@ public sealed class NineSliceSvg
                     operation.PreserveAspectRatio);
         }
     }
+
+    private IReadOnlyList<NineSliceDrawOperation> Layout(Rect hostBounds)
+    {
+        var node = _layoutCache.First;
+        while (node is not null)
+        {
+            if (node.Value.Bounds == hostBounds)
+            {
+                _layoutCache.Remove(node);
+                _layoutCache.AddFirst(node);
+                return node.Value.Operations;
+            }
+            node = node.Next;
+        }
+        var operations = BuildLayout(hostBounds);
+        LayoutBuildCount++;
+        _layoutCache.AddFirst(new LayoutCacheEntry(hostBounds, operations));
+        if (_layoutCache.Count > LayoutCacheCapacity) _layoutCache.RemoveLast();
+        return operations;
+    }
+
+    internal IReadOnlyList<NineSliceDrawOperation> LayoutForTesting(Rect hostBounds) => Layout(hostBounds);
 
     private IReadOnlyList<NineSliceDrawOperation> BuildLayout(Rect hostBounds)
     {
@@ -210,9 +265,9 @@ public sealed class NineSliceSvg
                 var vertical = TileSegments(destination.Y, destination.Height,
                     tileY ? cell.Height * factor : destination.Height, tileY ? cell.Repeat : "stretch");
                 foreach (var x in horizontal)
-                foreach (var y in vertical)
-                    operations.Add(new NineSliceDrawOperation(cell, destination,
-                        new Rect(x.Start, y.Start, x.Length, y.Length), false));
+                    foreach (var y in vertical)
+                        operations.Add(new NineSliceDrawOperation(cell, destination,
+                            new Rect(x.Start, y.Start, x.Length, y.Length), false));
             }
             else operations.Add(new NineSliceDrawOperation(cell, destination, destination, true));
         }
@@ -273,11 +328,7 @@ public sealed class NineSliceSvg
             flexible / Math.Max(1, flexibleCount)).ToArray();
     }
 
-    internal static AspectRatioAlignment ParseAspectRatio(string? source)
-    {
-        var value = ThemeSvgIrParser.ParseAspectRatio(source);
-        return new AspectRatioAlignment(value.None, value.Slice, value.X, value.Y);
-    }
+    internal static AspectRatioIr ParseAspectRatio(string? source) => ThemeSvgIrParser.ParseAspectRatio(source);
 
     private static SvgPaintShape LoadShape(SvgShapeIr shape)
     {
@@ -293,13 +344,11 @@ public sealed class NineSliceSvg
         return result;
     }
 
-    private static Thickness ToThickness(ThemeThickness value) =>
-        new(value.Left, value.Top, value.Right, value.Bottom);
 }
 
 public sealed record NineSliceCell(int Column, int Row, double Width, double Height, Rect ViewBox,
-    AspectRatioAlignment AspectRatio, string Repeat, IReadOnlyList<SvgPaintShape> Shapes);
+    AspectRatioIr AspectRatio, string Repeat, IReadOnlyList<SvgPaintShape> Shapes);
 internal sealed record NineSliceDrawOperation(NineSliceCell Cell, Rect Clip, Rect Destination,
     bool PreserveAspectRatio);
 internal readonly record struct TileSegment(double Start, double Length);
-public readonly record struct AspectRatioAlignment(bool None, bool Slice, double X, double Y);
+internal sealed record LayoutCacheEntry(Rect Bounds, IReadOnlyList<NineSliceDrawOperation> Operations);

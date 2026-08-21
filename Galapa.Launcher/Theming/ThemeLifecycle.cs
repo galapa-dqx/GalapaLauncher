@@ -2,12 +2,14 @@ using System.ComponentModel;
 using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Styling;
+using Galapa.Core.Configuration;
 using Galapa.Launcher.Views.Controls;
 
 namespace Galapa.Launcher.Theming;
 
 public readonly record struct ThemeId
 {
+    public static ThemeId Default { get; } = new(Settings.DefaultThemeId);
     public string Value { get; }
 
     public ThemeId(string value)
@@ -30,6 +32,9 @@ public readonly record struct ThemeId
         id = default;
         return false;
     }
+
+    public static ThemeId ParseOrDefault(string? value) =>
+        TryParse(value, out var parsed) ? parsed : Default;
 
     public override string ToString() => Value ?? string.Empty;
 }
@@ -60,6 +65,8 @@ public interface IThemeSource
 public abstract record ThemeState
 {
     public abstract DiscoveredTheme Discovery { get; }
+    public virtual ValidatedTheme? Validation => null;
+    public virtual LoadedTheme? LoadedState => null;
     public virtual IReadOnlyList<ThemeDiagnostic> Diagnostics => [];
 }
 
@@ -67,6 +74,11 @@ public sealed record DiscoveredTheme(IThemeSource Source, ThemeId? Id, string Fa
     : ThemeState
 {
     public override DiscoveredTheme Discovery => this;
+
+    public static DiscoveredTheme From(IThemeSource source) => new(
+        source,
+        ThemeId.TryParse(source.SourceId, out var id) ? id : null,
+        source.FallbackDisplayName);
 }
 
 public sealed record ValidatingTheme(DiscoveredTheme Previous) : ThemeState
@@ -85,6 +97,7 @@ public sealed record ValidatedTheme(
     IReadOnlyList<ThemeDiagnostic> Warnings) : ThemeState
 {
     public override DiscoveredTheme Discovery => Previous;
+    public override ValidatedTheme Validation => this;
     public override IReadOnlyList<ThemeDiagnostic> Diagnostics => Warnings;
 }
 
@@ -100,7 +113,7 @@ public sealed record InvalidTheme(
 public sealed record LoadingTheme(ValidatedTheme Previous) : ThemeState
 {
     public override DiscoveredTheme Discovery => Previous.Discovery;
-    public ValidatedTheme Validation => Previous;
+    public override ValidatedTheme Validation => Previous;
 }
 
 public sealed record LoadedTheme(
@@ -109,7 +122,8 @@ public sealed record LoadedTheme(
     LoadedThemeResources Resources) : ThemeState
 {
     public override DiscoveredTheme Discovery => Previous.Discovery;
-    public ValidatedTheme Validation => Previous;
+    public override ValidatedTheme Validation => Previous;
+    public override LoadedTheme LoadedState => this;
     public ThemeManifest Manifest => Previous.Manifest;
     public CompiledTheme Compiled => Previous.Compiled;
     public override IReadOnlyList<ThemeDiagnostic> Diagnostics => Previous.Diagnostics;
@@ -120,7 +134,7 @@ public sealed record LoadFailedTheme(
     IReadOnlyList<ThemeDiagnostic> Errors) : ThemeState
 {
     public override DiscoveredTheme Discovery => Previous.Discovery;
-    public ValidatedTheme Validation => Previous;
+    public override ValidatedTheme Validation => Previous;
     public override IReadOnlyList<ThemeDiagnostic> Diagnostics => Errors;
 }
 
@@ -130,6 +144,8 @@ public sealed record AppliedTheme(
     ThemeVariant BaseVariant) : ThemeState
 {
     public override DiscoveredTheme Discovery => Previous.Discovery;
+    public override ValidatedTheme Validation => Previous.Validation;
+    public override LoadedTheme LoadedState => Previous;
     public LoadedTheme Loaded => Previous;
     public ThemeManifest Manifest => Previous.Manifest;
     public override IReadOnlyList<ThemeDiagnostic> Diagnostics => Previous.Diagnostics;
@@ -159,25 +175,14 @@ public sealed class ThemeCatalogEntry : INotifyPropertyChanged
     }
 
     public ThemeId? Id => State.Discovery.Id;
-    public string DisplayName => State switch
-    {
-        ValidatedTheme validated => validated.Manifest.DisplayName,
-        LoadingTheme loading => loading.Validation.Manifest.DisplayName,
-        LoadedTheme loaded => loaded.Manifest.DisplayName,
-        LoadFailedTheme failed => failed.Validation.Manifest.DisplayName,
-        AppliedTheme applied => applied.Manifest.DisplayName,
-        InvalidTheme { Metadata: not null } invalid => invalid.Metadata.DisplayName,
-        _ => State.Discovery.FallbackDisplayName
-    };
+    public string DisplayName => State.Validation?.Manifest.DisplayName ??
+                                 (State as InvalidTheme)?.Metadata?.DisplayName ??
+                                 State.Discovery.FallbackDisplayName;
     public string StatusText => State switch
     {
         DiscoveredTheme or ValidatingTheme => "Checking…",
-        ValidatedTheme validated => validated.Manifest.BaseVariant.ToString(),
-        LoadingTheme loading => loading.Validation.Manifest.BaseVariant.ToString(),
-        LoadedTheme loaded => loaded.Manifest.BaseVariant.ToString(),
-        AppliedTheme applied => applied.Manifest.BaseVariant.ToString(),
         InvalidTheme or LoadFailedTheme => "Error",
-        _ => string.Empty
+        _ => State.Validation?.Manifest.BaseVariant.ToString() ?? string.Empty
     };
     public bool HasError => State is InvalidTheme or LoadFailedTheme;
     public bool IsActive

@@ -1,6 +1,8 @@
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Media;
 using Galapa.Launcher.Theming;
 using Microsoft.Extensions.Logging.Abstractions;
-using SkiaSharp;
 
 namespace Galapa.Launcher.Tests.Theming;
 
@@ -10,6 +12,7 @@ public sealed class ThemeAssetRegistrationTests(SkiaHeadlessFixture skia)
     [Fact]
     public async Task EveryBuiltInOwnsResolvableFontsAndPreparableRenderAssets()
     {
+        Assert.Null(typeof(CompiledControl).GetProperty("ThemeId"));
         var reader = new CompiledThemeReader();
         var packages = new List<ValidatedTheme>();
         foreach (var path in Directory.EnumerateFiles(TestPaths.BuiltInThemeRoot, "*.compiled.json"))
@@ -39,14 +42,13 @@ public sealed class ThemeAssetRegistrationTests(SkiaHeadlessFixture skia)
     [Fact]
     public async Task CatalogDiscoversAllThemesBeforeBackgroundValidation()
     {
-        var pipeline = new ThemePipeline(new CompiledThemeReader(), new ThemeLoader(),
-            NullLogger<ThemePipeline>.Instance);
+        var pipeline = ThemeTestFactory.Pipeline();
         var catalog = new ThemeCatalog(pipeline, NullLogger<ThemeCatalog>.Instance);
 
-        await Task.Run(() => catalog.InitializeAsync(new ThemeId(Galapa.Core.Configuration.Settings.DefaultThemeId)));
+        await Task.Run(() => catalog.InitializeAsync(ThemeId.Default));
         Assert.Equal(13, catalog.Themes.Count);
         Assert.Equal("estella", catalog.Themes[0].Id?.Value);
-        Assert.NotNull(catalog.Find(new ThemeId(Galapa.Core.Configuration.Settings.DefaultThemeId)));
+        Assert.NotNull(catalog.Find(ThemeId.Default));
         Assert.Contains(catalog.Themes, entry => entry.State is DiscoveredTheme);
 
         await Task.Run(() => catalog.ValidateRemainingAsync());
@@ -59,11 +61,36 @@ public sealed class ThemeAssetRegistrationTests(SkiaHeadlessFixture skia)
     {
         var package = await new CompiledThemeReader().ReadAsync(TestPaths.BuiltInTheme("estella"));
         var png = await skia.ValidateAndRenderThemeTextAsync(package);
-        using var bitmap = SKBitmap.Decode(png);
+        using var bitmap = BitmapTestSupport.Decode(png, "registered theme font render");
         Assert.Contains(Enumerable.Range(0, bitmap.Width * bitmap.Height), index =>
         {
             var pixel = bitmap.GetPixel(index % bitmap.Width, index / bitmap.Width);
             return pixel.Alpha > 0 && pixel.Red > 0;
         });
     }
+}
+
+internal static class ThemeAssetRegistrationScenarios
+{
+    public static Task<byte[]> ValidateAndRenderThemeTextAsync(this SkiaHeadlessFixture skia,
+        ValidatedTheme package) => skia.DispatchAsync(() =>
+    {
+        ThemeFontRegistrar.Validate(package);
+        var loaded = new ThemeLoader().Load(package);
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        var text = package.Compiled.Controls["titlebar.wordmark"].Text!;
+        return SkiaHeadlessFixture.Render(new TextBlock
+        {
+            Text = "Galapa",
+            FontFamily = loaded.Resources.Controls["titlebar.wordmark"].Typography.Family,
+            FontStyle = ThemeTypography.ToFontStyle(text.Style),
+            FontWeight = (FontWeight)(text.Weight ?? 400),
+            FontSize = 24,
+            Foreground = Brushes.White,
+            Width = 140,
+            Height = 44
+        }, new PixelSize(140, 44));
+    });
 }

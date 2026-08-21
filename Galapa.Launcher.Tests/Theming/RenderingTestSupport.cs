@@ -1,6 +1,10 @@
 using Galapa.Core.Configuration;
 using Galapa.Launcher.Theming;
 using SkiaSharp;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Styling;
+using Avalonia.Threading;
 using System.Runtime.CompilerServices;
 using Xunit.Sdk;
 
@@ -9,6 +13,7 @@ namespace Galapa.Launcher.Tests.Theming;
 internal static class TestPaths
 {
     internal static readonly string ProjectRoot = Path.GetFullPath(Path.Combine(SourceDirectory(), ".."));
+    internal static readonly string LauncherProjectRoot = Path.GetFullPath(Path.Combine(ProjectRoot, "..", "Galapa.Launcher"));
     internal static readonly string FixtureRoot = Path.Combine(ProjectRoot, "Fixtures");
     internal static readonly string ResultRoot = Path.Combine(ProjectRoot, "TestResults");
     internal static readonly string BuiltInThemeRoot = Path.GetFullPath(Path.Combine(
@@ -17,9 +22,59 @@ internal static class TestPaths
     internal static string Fixtures(string suite) => Path.Combine(FixtureRoot, suite);
     internal static string Results(string suite) => Path.Combine(ResultRoot, suite);
     internal static string BuiltInTheme(string id) => Path.Combine(BuiltInThemeRoot, $"{id}.compiled.json");
+    internal static IEnumerable<string> BuiltInThemes() =>
+        Directory.EnumerateFiles(BuiltInThemeRoot, $"*{ThemeLocations.CompiledSuffix}")
+            .OrderBy(path => path, StringComparer.Ordinal);
 
     private static string SourceDirectory([CallerFilePath] string sourcePath = "") =>
         Path.GetDirectoryName(sourcePath)!;
+}
+
+internal sealed class ApplicationStateScope : IDisposable
+{
+    private readonly Application _application;
+    private readonly ThemeVariant? _variant;
+    private readonly IReadOnlyList<IResourceProvider> _mergedDictionaries;
+    private readonly IReadOnlyDictionary<object, object?> _localResources;
+
+    private ApplicationStateScope(Application application)
+    {
+        Dispatcher.UIThread.VerifyAccess();
+        _application = application;
+        _variant = application.RequestedThemeVariant;
+        _mergedDictionaries = application.Resources.MergedDictionaries.ToArray();
+        _localResources = application.Resources.ToDictionary(pair => pair.Key, pair => pair.Value);
+    }
+
+    public static ApplicationStateScope Capture() => new(
+        Application.Current ?? throw new InvalidOperationException("The test application is not running."));
+
+    public void Dispose()
+    {
+        Dispatcher.UIThread.VerifyAccess();
+        foreach (var key in _application.Resources.Keys.ToArray()) _application.Resources.Remove(key);
+        foreach (var (key, value) in _localResources) _application.Resources[key] = value;
+        _application.Resources.MergedDictionaries.Clear();
+        foreach (var dictionary in _mergedDictionaries)
+            _application.Resources.MergedDictionaries.Add(dictionary);
+        _application.RequestedThemeVariant = _variant;
+    }
+}
+
+internal static class ThemeTestFactory
+{
+    public static ThemePipeline Pipeline(IThemeLoader? loader = null) => new(
+        new CompiledThemeReader(), loader ?? new ThemeLoader(),
+        Microsoft.Extensions.Logging.Abstractions.NullLogger<ThemePipeline>.Instance);
+
+    public static ThemeCatalogEntry Entry(ValidatedTheme validated) =>
+        new(validated.Discovery) { State = validated };
+}
+
+internal static class BitmapTestSupport
+{
+    public static SKBitmap Decode(byte[] png, string description) =>
+        SKBitmap.Decode(png) ?? throw new Xunit.Sdk.XunitException($"Could not decode {description}.");
 }
 
 internal static class GoldenImage
@@ -61,28 +116,28 @@ internal static class GoldenImage
         var diffHeight = Math.Max(expected.Height, actual.Height);
         using var diff = new SKBitmap(diffWidth, diffHeight, SKColorType.Rgba8888, SKAlphaType.Opaque);
         for (var y = 0; y < diffHeight; y++)
-        for (var x = 0; x < diffWidth; x++)
-        {
-            if (x >= expected.Width || y >= expected.Height || x >= actual.Width || y >= actual.Height)
+            for (var x = 0; x < diffWidth; x++)
             {
-                mismatchCount++;
-                maximumDelta = 255;
-                diff.SetPixel(x, y, new SKColor(255, 0, 255, 255));
-                continue;
+                if (x >= expected.Width || y >= expected.Height || x >= actual.Width || y >= actual.Height)
+                {
+                    mismatchCount++;
+                    maximumDelta = 255;
+                    diff.SetPixel(x, y, new SKColor(255, 0, 255, 255));
+                    continue;
+                }
+                var wanted = expected.GetPixel(x, y);
+                var rendered = actual.GetPixel(x, y);
+                var delta = MaxChannelDelta(wanted, rendered);
+                maximumDelta = Math.Max(maximumDelta, delta);
+                if (delta == 0)
+                    diff.SetPixel(x, y, new SKColor((byte)(wanted.Red / 3), (byte)(wanted.Green / 3),
+                        (byte)(wanted.Blue / 3), 255));
+                else
+                {
+                    mismatchCount++;
+                    diff.SetPixel(x, y, new SKColor(255, 0, 255, 255));
+                }
             }
-            var wanted = expected.GetPixel(x, y);
-            var rendered = actual.GetPixel(x, y);
-            var delta = MaxChannelDelta(wanted, rendered);
-            maximumDelta = Math.Max(maximumDelta, delta);
-            if (delta == 0)
-                diff.SetPixel(x, y, new SKColor((byte)(wanted.Red / 3), (byte)(wanted.Green / 3),
-                    (byte)(wanted.Blue / 3), 255));
-            else
-            {
-                mismatchCount++;
-                diff.SetPixel(x, y, new SKColor(255, 0, 255, 255));
-            }
-        }
         if (mismatchCount == 0) return;
         var artifactRoot = TestPaths.Results(artifactGroup);
         Directory.CreateDirectory(artifactRoot);

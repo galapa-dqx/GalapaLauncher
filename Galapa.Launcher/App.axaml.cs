@@ -25,9 +25,7 @@ public partial class App : Application
     {
         var catalog = Program.Services.Resolve<IThemeCatalog>();
         var settings = Program.Services.Resolve<Settings>();
-        var preferredThemeId = ThemeId.TryParse(settings.ThemeId, out var parsedThemeId)
-            ? parsedThemeId
-            : new ThemeId(Settings.DefaultThemeId);
+        var preferredThemeId = ThemeId.ParseOrDefault(settings.ThemeId);
         var manager = Program.Services.Resolve<IThemeManager>();
         if (!manager.ApplyInitialAsync(preferredThemeId).GetAwaiter().GetResult().Succeeded)
             throw new ThemePackageException("The embedded Estella recovery theme could not be applied.");

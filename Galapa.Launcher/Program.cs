@@ -136,9 +136,7 @@ internal sealed class Program
         Services = CreateServiceProvider();
         var settings = Services.Resolve<Settings>();
         ConfigFile.RootDirectory = settings.SaveFolderPath;
-        var preferredThemeId = ThemeId.TryParse(settings.ThemeId, out var parsedThemeId)
-            ? parsedThemeId
-            : new ThemeId(Settings.DefaultThemeId);
+        var preferredThemeId = ThemeId.ParseOrDefault(settings.ThemeId);
         // Validation is renderer-independent and happens before Avalonia owns a
         // UI thread. This avoids blocking the dispatcher while still ensuring
         // the selected and recovery entries exist before first paint.

@@ -43,6 +43,11 @@
     </Style>
     <Style Selector="Button.themed TextBlock">
         <Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+        <Setter Property="FontFamily" Value="{DynamicResource Galapa.Type.Control.button.Family}" />
+        <Setter Property="FontSize" Value="{DynamicResource Galapa.Type.Control.button.Size}" />
+        <Setter Property="FontWeight" Value="{DynamicResource Galapa.Type.Control.button.Weight}" />
+        <Setter Property="FontStyle" Value="{DynamicResource Galapa.Type.Control.button.Style}" />
+        <Setter Property="LetterSpacing" Value="{DynamicResource Galapa.Type.Control.button.LetterSpacing}" />
     </Style>
     <Style Selector="Button.themed TextBlock.muted">
         <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.setting-help.body.ContentBrush}" />
@@ -69,6 +74,12 @@
     <Style Selector="Button.themed:disabled /template/ local|ThemePart#PART_ThemeFrame">
         <Setter Property="State" Value="Disabled" />
     </Style>
+    <Style Selector="Button.themed:focus-visible /template/ local|ThemePart#PART_ThemeFrame">
+        <Setter Property="State" Value="Focused" />
+    </Style>
+    <Style Selector="Button.themed:disabled /template/ local|ThemePart#PART_ThemeFrame">
+        <Setter Property="State" Value="Disabled" />
+    </Style>
     <Style Selector="Button.themed:focus-visible /template/ local|ThemeFocusRing#PART_FocusRing">
         <Setter Property="BorderBrush" Value="{DynamicResource Galapa.Focus.Brush}" />
     </Style>
@@ -87,6 +98,12 @@
     </Style>
     <Style Selector="Button.themed.setting-row.active /template/ local|ThemePart#PART_ThemeFrame">
         <Setter Property="State" Value="Selected" />
+    </Style>
+    <Style Selector="Button.themed.setting-row:focus-visible /template/ local|ThemePart#PART_ThemeFrame">
+        <Setter Property="State" Value="Focused" />
+    </Style>
+    <Style Selector="Button.themed.setting-row:disabled /template/ local|ThemePart#PART_ThemeFrame">
+        <Setter Property="State" Value="Disabled" />
     </Style>
     <Style Selector="Button.themed.setting-row.active">
         <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.setting-row.selected.ContentBrush}" />
@@ -135,6 +152,15 @@
     <Style Selector="TabStripItem:pointerover /template/ local|ThemePart#PART_TabFrame">
         <Setter Property="State" Value="Hover" />
     </Style>
+    <Style Selector="TabStripItem:pointerover">
+        <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.tab.hover.ContentBrush}" />
+    </Style>
+    <Style Selector="TabStripItem:pointerover ui|ThemedTextBlock.navigation">
+        <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.tab.hover.ContentBrush}" />
+    </Style>
+    <Style Selector="TabStripItem:pressed /template/ local|ThemePart#PART_TabFrame">
+        <Setter Property="State" Value="Pressed" />
+    </Style>
     <Style Selector="TabStripItem:selected /template/ local|ThemePart#PART_TabFrame">
         <Setter Property="State" Value="Selected" />
     </Style>
@@ -148,6 +174,12 @@
     <Style Selector="TabStripItem:focus-visible /template/ local|ThemeFocusRing#PART_FocusRing">
         <Setter Property="BorderBrush" Value="{DynamicResource Galapa.Focus.Brush}" />
     </Style>
+    <Style Selector="TabStripItem:focus-visible /template/ local|ThemePart#PART_TabFrame">
+        <Setter Property="State" Value="Focused" />
+    </Style>
+    <Style Selector="TabStripItem:disabled /template/ local|ThemePart#PART_TabFrame">
+        <Setter Property="State" Value="Disabled" />
+    </Style>
     <Style Selector="TabStrip.top-tabs TabStripItem">
         <Setter Property="MinWidth" Value="87" />
         <Setter Property="MinHeight" Value="{DynamicResource Galapa.TitleBarHeight}" />
@@ -155,6 +187,13 @@
         <Setter Property="Height" Value="{DynamicResource Galapa.TitleBarHeight}" />
         <Setter Property="HorizontalContentAlignment" Value="Center" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="TabStrip.top-tabs, TabStrip.sub-tabs">
+        <Setter Property="ItemsPanel">
+            <ItemsPanelTemplate>
+                <StackPanel Orientation="Horizontal" />
+            </ItemsPanelTemplate>
+        </Setter>
     </Style>
     <Style Selector="TabStrip.sub-tabs TabStripItem">
         <Setter Property="MinHeight" Value="{DynamicResource Galapa.TitleBarHeight}" />
@@ -234,11 +273,35 @@
             </ControlTemplate>
         </Setter>
     </Style>
+    <Style Selector="ToggleButton.themed-switch:checked /template/ local|ThemePart#PART_SwitchTrack">
+        <Setter Property="State" Value="Checked" />
+    </Style>
     <Style Selector="ToggleButton.themed-switch:checked /template/ local|SwitchThumbPart#PART_SwitchThumb">
         <Setter Property="Position" Value="1" />
         <Setter Property="State" Value="Checked" />
     </Style>
+    <Style Selector="ToggleButton.themed-switch:pointerover /template/ local|ThemePart#PART_SwitchTrack">
+        <Setter Property="State" Value="Hover" />
+    </Style>
+    <Style Selector="ToggleButton.themed-switch:pointerover /template/ local|SwitchThumbPart#PART_SwitchThumb">
+        <Setter Property="State" Value="Hover" />
+    </Style>
+    <Style Selector="ToggleButton.themed-switch:pressed /template/ local|ThemePart#PART_SwitchTrack">
+        <Setter Property="State" Value="Pressed" />
+    </Style>
+    <Style Selector="ToggleButton.themed-switch:pressed /template/ local|SwitchThumbPart#PART_SwitchThumb">
+        <Setter Property="State" Value="Pressed" />
+    </Style>
+    <Style Selector="ToggleButton.themed-switch:focus-visible /template/ local|ThemePart#PART_SwitchTrack">
+        <Setter Property="State" Value="Focused" />
+    </Style>
+    <Style Selector="ToggleButton.themed-switch:focus-visible /template/ local|SwitchThumbPart#PART_SwitchThumb">
+        <Setter Property="State" Value="Focused" />
+    </Style>
     <Style Selector="ToggleButton.themed-switch:disabled /template/ local|ThemePart#PART_SwitchTrack">
+        <Setter Property="State" Value="Disabled" />
+    </Style>
+    <Style Selector="ToggleButton.themed-switch:disabled /template/ local|SwitchThumbPart#PART_SwitchThumb">
         <Setter Property="State" Value="Disabled" />
     </Style>
     <Style Selector="ToggleButton.themed-switch:focus-visible /template/ local|ThemeFocusRing#PART_FocusRing">
@@ -253,7 +316,7 @@
         <Setter Property="Template">
             <ControlTemplate>
                 <Grid>
-                    <local:ThemePart PartStyle="{DynamicResource Galapa.Part.scrollbar.track}"
+                    <local:ThemePart Name="PART_ScrollTrack" PartStyle="{DynamicResource Galapa.Part.scrollbar.track}"
                                      HorizontalContentAlignment="Stretch"
                                      VerticalContentAlignment="Stretch">
                         <Track Name="PART_Track"
@@ -281,7 +344,7 @@
                                 <Thumb MinHeight="12">
                                     <Thumb.Template>
                                         <ControlTemplate>
-                                            <local:ThemePart PartStyle="{DynamicResource Galapa.Part.scrollbar.thumb}" />
+                                            <local:ThemePart Name="PART_ScrollThumb" PartStyle="{DynamicResource Galapa.Part.scrollbar.thumb}" />
                                         </ControlTemplate>
                                     </Thumb.Template>
                                 </Thumb>
@@ -297,6 +360,24 @@
     <Style Selector="local|ThemedScrollbar:disabled">
         <Setter Property="Opacity" Value="0.45" />
     </Style>
+    <Style Selector="local|ThemedScrollbar:pointerover /template/ local|ThemePart#PART_ScrollTrack">
+        <Setter Property="State" Value="Hover" />
+    </Style>
+    <Style Selector="local|ThemedScrollbar /template/ Thumb:pointerover /template/ local|ThemePart#PART_ScrollThumb">
+        <Setter Property="State" Value="Hover" />
+    </Style>
+    <Style Selector="local|ThemedScrollbar /template/ Thumb:pressed /template/ local|ThemePart#PART_ScrollThumb">
+        <Setter Property="State" Value="Pressed" />
+    </Style>
+    <Style Selector="local|ThemedScrollbar:focus-visible /template/ local|ThemePart#PART_ScrollTrack">
+        <Setter Property="State" Value="Focused" />
+    </Style>
+    <Style Selector="local|ThemedScrollbar:disabled /template/ local|ThemePart#PART_ScrollTrack">
+        <Setter Property="State" Value="Disabled" />
+    </Style>
+    <Style Selector="local|ThemedScrollbar:disabled /template/ local|ThemePart#PART_ScrollThumb">
+        <Setter Property="State" Value="Disabled" />
+    </Style>
     <Style Selector="local|ThemedScrollbar:focus-visible /template/ local|ThemeFocusRing#PART_FocusRing">
         <Setter Property="BorderBrush" Value="{DynamicResource Galapa.Focus.Brush}" />
     </Style>
@@ -306,10 +387,7 @@
         <Setter Property="FallbackPadding" Value="15" />
     </Style>
 
-    <!-- :is is intentional: SettingsPageShell derives from the shared shell
-         and must receive the same template. A bare type selector is exact in
-         Avalonia and left derived settings pages completely untemplated. -->
-    <Style Selector=":is(local|SplitPageShell)">
+    <Style Selector="local|SplitPageShell">
         <Setter Property="Template">
             <ControlTemplate>
                 <Grid Margin="{TemplateBinding ShellMargin}" ColumnDefinitions="*,35,Auto">
@@ -333,7 +411,7 @@
             </ControlTemplate>
         </Setter>
     </Style>
-    <Style Selector="local|SettingsPageShell">
+    <Style Selector="local|SplitPageShell.settings">
         <Setter Property="ShellMargin" Value="34,26,34,34" />
     </Style>
     <Style Selector="ItemsControl.stretch-items ContentPresenter">

@@ -1,6 +1,4 @@
 using Avalonia.Controls;
-using Avalonia.Input;
-using Avalonia.Interactivity;
 using Galapa.Launcher.Services;
 using Galapa.Launcher.ViewModels;
 
@@ -38,8 +36,6 @@ public partial class MainWindow : Window
         this._activeControllerService = activeControllerService;
 
         InitializeComponent();
-        PART_TitleBar.AddHandler(PointerPressedEvent, TitleBar_PointerPressed, RoutingStrategies.Bubble);
-
         // Start controller services
         this._pollingService.Start();
         this._actionSource.Start();
@@ -57,18 +53,4 @@ public partial class MainWindow : Window
         this._pollingService.Stop();
     }
 
-    private void TitleBar_PointerPressed(object? sender, PointerPressedEventArgs e)
-    {
-        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
-            return;
-
-        if (e.ClickCount == 2)
-        {
-            WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
-            return;
-        }
-
-        e.Handled = true;
-        BeginMoveDrag(e);
-    }
 }

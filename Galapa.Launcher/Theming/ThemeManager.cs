@@ -16,7 +16,6 @@ public sealed class ThemeManager(
     ISettingsPersistence persistence,
     ILogger<ThemeManager> logger) : IThemeManager
 {
-    private static readonly ThemeId DefaultId = new(Settings.DefaultThemeId);
     private readonly SemaphoreSlim _applyLock = new(1, 1);
 
     public AppliedTheme? ActiveTheme { get; private set; }
@@ -48,18 +47,16 @@ public sealed class ThemeManager(
                 return new ThemeApplyResult(ThemeApplyStatus.Invalid, entry);
             if (loadedState is LoadFailedTheme)
                 return new ThemeApplyResult(ThemeApplyStatus.LoadFailed, entry);
-            var loaded = loadedState as LoadedTheme ?? (loadedState as AppliedTheme)?.Loaded;
+            var loaded = loadedState.LoadedState;
             if (loaded is null)
                 return new ThemeApplyResult(ThemeApplyStatus.LoadFailed, entry, loadedState.Diagnostics);
 
-            var previous = ActiveTheme;
-            var previousThemeId = settings.ThemeId;
-            AppliedTheme applied;
+            InstalledTheme installed;
             try
             {
-                applied = Dispatcher.UIThread.CheckAccess()
-                    ? Install(entry, loaded, previous)
-                    : await Dispatcher.UIThread.InvokeAsync(() => Install(entry, loaded, previous));
+                installed = Dispatcher.UIThread.CheckAccess()
+                    ? Install(entry, loaded)
+                    : await Dispatcher.UIThread.InvokeAsync(() => Install(entry, loaded));
             }
             catch (Exception exception)
             {
@@ -79,19 +76,16 @@ public sealed class ThemeManager(
                     await persistence.SaveAsync(settings, cancellationToken);
                     cancellationToken.ThrowIfCancellationRequested();
                 }
-                ActiveTheme = applied;
                 return new ThemeApplyResult(ThemeApplyStatus.Applied, entry);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                settings.ThemeId = previousThemeId;
-                await RollBackAsync(entry, applied, previous);
+                await RestoreAsync(installed.Snapshot);
                 throw;
             }
             catch (Exception exception)
             {
-                settings.ThemeId = previousThemeId;
-                await RollBackAsync(entry, applied, previous);
+                await RestoreAsync(installed.Snapshot);
                 logger.LogError(exception, "Theme {ThemeId} was rolled back because settings could not be saved",
                     loaded.Manifest.Id);
                 return new ThemeApplyResult(ThemeApplyStatus.PersistenceFailed, entry,
@@ -106,8 +100,8 @@ public sealed class ThemeManager(
     {
         var selected = await ApplyAsync(themeId, persist: false, cancellationToken);
         if (selected.Succeeded) return selected;
-        if (themeId == DefaultId) return await RecoverDefaultForStartupAsync(selected, cancellationToken);
-        var fallback = await ApplyAsync(DefaultId, persist: false, cancellationToken);
+        if (themeId == ThemeId.Default) return await RecoverDefaultForStartupAsync(selected, cancellationToken);
+        var fallback = await ApplyAsync(ThemeId.Default, persist: false, cancellationToken);
         return fallback.Succeeded ? fallback : await RecoverDefaultForStartupAsync(fallback, cancellationToken);
     }
 
@@ -121,80 +115,78 @@ public sealed class ThemeManager(
         return await ApplyAsync(failed.Entry, persist: false, cancellationToken);
     }
 
-    private AppliedTheme Install(ThemeCatalogEntry entry, LoadedTheme loaded, AppliedTheme? previous)
+    private InstalledTheme Install(ThemeCatalogEntry entry, LoadedTheme loaded)
     {
         Dispatcher.UIThread.VerifyAccess();
         var app = Application.Current ?? throw new InvalidOperationException("Avalonia application is not initialized.");
+        var snapshot = Capture(app);
         var dictionary = BuildResources(loaded);
         var variant = loaded.Manifest.BaseVariant == ThemeBaseVariant.Dark ? ThemeVariant.Dark : ThemeVariant.Light;
-        var oldVariant = app.RequestedThemeVariant;
-        var entryState = entry.State;
-        var entries = catalog.Themes;
-        var activeStates = entries.Select(catalogEntry => catalogEntry.IsActive).ToArray();
-        var previousEntry = previous is null ? null : catalog.Find(new ThemeId(previous.Manifest.Id));
-        var previousEntryState = previousEntry?.State;
         app.Resources.MergedDictionaries.Add(dictionary);
         try
         {
             app.RequestedThemeVariant = variant;
-            if (previous is not null) app.Resources.MergedDictionaries.Remove(previous.Dictionary);
-            if (previous is not null && !ReferenceEquals(previous.Discovery, entry.State.Discovery))
+            if (snapshot.ActiveTheme is not null) app.Resources.MergedDictionaries.Remove(snapshot.ActiveTheme.Dictionary);
+            if (snapshot.ActiveTheme is not null && !ReferenceEquals(snapshot.ActiveTheme.Discovery, entry.State.Discovery))
             {
-                if (previousEntry is not null) previousEntry.State = previous.Loaded;
+                var previousEntry = catalog.Find(new ThemeId(snapshot.ActiveTheme.Manifest.Id));
+                if (previousEntry is not null) previousEntry.State = snapshot.ActiveTheme.Loaded;
             }
             var applied = new AppliedTheme(loaded, dictionary, variant);
             entry.State = applied;
             foreach (var catalogEntry in catalog.Themes) catalogEntry.IsActive = ReferenceEquals(catalogEntry, entry);
             ActiveTheme = applied;
-            return applied;
+            return new InstalledTheme(snapshot);
         }
         catch
         {
-            app.Resources.MergedDictionaries.Remove(dictionary);
-            if (previous is not null && !app.Resources.MergedDictionaries.Contains(previous.Dictionary))
-                app.Resources.MergedDictionaries.Add(previous.Dictionary);
-            app.RequestedThemeVariant = oldVariant;
-            entry.State = entryState;
-            if (previousEntry is not null && previousEntryState is not null)
-                previousEntry.State = previousEntryState;
-            for (var index = 0; index < entries.Count; index++) entries[index].IsActive = activeStates[index];
-            ActiveTheme = previous;
+            Restore(snapshot);
             throw;
         }
     }
 
-    private async Task RollBackAsync(ThemeCatalogEntry entry, AppliedTheme installed, AppliedTheme? previous)
+    private InstallSnapshot Capture(Application app) => new(
+        app.Resources.MergedDictionaries.ToArray(),
+        app.RequestedThemeVariant,
+        catalog.Themes.Select(entry => new CatalogEntrySnapshot(entry, entry.State, entry.IsActive)).ToArray(),
+        ActiveTheme,
+        settings.ThemeId);
+
+    private async Task RestoreAsync(InstallSnapshot snapshot)
     {
-        void RollBack()
-        {
-            var app = Application.Current ?? throw new InvalidOperationException("Avalonia application is not initialized.");
-            app.Resources.MergedDictionaries.Remove(installed.Dictionary);
-            if (previous is not null && !app.Resources.MergedDictionaries.Contains(previous.Dictionary))
-                app.Resources.MergedDictionaries.Add(previous.Dictionary);
-            app.RequestedThemeVariant = previous?.BaseVariant ?? ThemeVariant.Default;
-            entry.State = installed.Loaded;
-            if (previous is not null)
-            {
-                var previousEntry = catalog.Find(new ThemeId(previous.Manifest.Id));
-                if (previousEntry is not null) previousEntry.State = previous;
-            }
-            foreach (var catalogEntry in catalog.Themes)
-                catalogEntry.IsActive = previous is not null && catalogEntry.Id?.Value == previous.Manifest.Id;
-            ActiveTheme = previous;
-        }
-        if (Dispatcher.UIThread.CheckAccess()) RollBack();
-        else await Dispatcher.UIThread.InvokeAsync(RollBack);
+        if (Dispatcher.UIThread.CheckAccess()) Restore(snapshot);
+        else await Dispatcher.UIThread.InvokeAsync(() => Restore(snapshot));
     }
+
+    private void Restore(InstallSnapshot snapshot)
+    {
+        Dispatcher.UIThread.VerifyAccess();
+        var app = Application.Current ?? throw new InvalidOperationException("Avalonia application is not initialized.");
+        app.Resources.MergedDictionaries.Clear();
+        foreach (var dictionary in snapshot.Dictionaries) app.Resources.MergedDictionaries.Add(dictionary);
+        app.RequestedThemeVariant = snapshot.Variant;
+        foreach (var item in snapshot.Entries)
+        {
+            item.Entry.State = item.State;
+            item.Entry.IsActive = item.IsActive;
+        }
+        ActiveTheme = snapshot.ActiveTheme;
+        settings.ThemeId = snapshot.SettingsId;
+    }
+
+    private sealed record InstalledTheme(InstallSnapshot Snapshot);
+    private sealed record InstallSnapshot(IReadOnlyList<IResourceProvider> Dictionaries, ThemeVariant? Variant,
+        IReadOnlyList<CatalogEntrySnapshot> Entries, AppliedTheme? ActiveTheme, string SettingsId);
+    private sealed record CatalogEntrySnapshot(ThemeCatalogEntry Entry, ThemeState State, bool IsActive);
 
     internal static ResourceDictionary BuildResources(LoadedTheme loaded)
     {
         Dispatcher.UIThread.VerifyAccess();
         var theme = loaded.Compiled;
-        var id = new ThemeId(loaded.Manifest.Id);
         var inheritedContent = loaded.Resources.Controls["window"].Visual(ThemePartState.Normal).Content ?? Brushes.Black;
         var dictionary = new ResourceDictionary
         {
-            ["Galapa.Theme.Id"] = id.Value,
+            ["Galapa.Theme.Id"] = loaded.Manifest.Id,
             ["Galapa.Theme.DisplayName"] = theme.Label
         };
 
@@ -207,16 +199,14 @@ public sealed class ThemeManager(
             dictionary[$"Galapa.Part.{controlId}.ShowFocusRing"] =
                 control.States?.GetValueOrDefault("focused")?.ShowRing != false;
             AddVisualResources(dictionary, $"Galapa.Part.{controlId}", normal, inheritedContent);
-            if (control.States is not null)
-                foreach (var stateName in control.States.Keys)
-                {
-                    var state = CompiledThemeContract.PartState(stateName);
-                    var visual = presentation.Visual(state);
-                    AddVisualResources(dictionary, $"Galapa.Part.{controlId}.{stateName}", visual, inheritedContent);
-                    var source = control.States[stateName].Image ?? control.Image;
-                    if (source is not null && loaded.Resources.Documents.TryGetValue(source, out var stateImage))
-                        dictionary[$"Galapa.Image.{controlId}.{stateName}"] = stateImage;
-                }
+            foreach (var (stateName, state) in CompiledThemeContract.StateNames)
+            {
+                var visual = presentation.Visual(state);
+                AddVisualResources(dictionary, $"Galapa.Part.{controlId}.{stateName}", visual, inheritedContent);
+                var source = control.States?.GetValueOrDefault(stateName)?.Image ?? control.Image;
+                if (source is not null && loaded.Resources.Documents.TryGetValue(source, out var stateImage))
+                    dictionary[$"Galapa.Image.{controlId}.{stateName}"] = stateImage;
+            }
             if (control.Image is not null && loaded.Resources.Documents.TryGetValue(control.Image, out var image))
                 dictionary[$"Galapa.Image.{controlId}"] = image;
             if (control.Images is not null)
@@ -225,10 +215,9 @@ public sealed class ThemeManager(
             if (control.Size?.Width is { } width) dictionary[$"Galapa.Metric.{controlId}.Width"] = width;
             if (control.Size?.Height is { } height) dictionary[$"Galapa.Metric.{controlId}.Height"] = height;
             if (ThemeMetrics.HasValue(control.Padding))
-                dictionary[$"Galapa.Metric.{controlId}.Padding"] = new Thickness(
-                    normalized.Padding.Left, normalized.Padding.Top, normalized.Padding.Right, normalized.Padding.Bottom);
-            AddControlTypography(dictionary, theme, controlId, control.Text, id);
-            if (control.LeftInset is { } leftInset)
+                dictionary[$"Galapa.Metric.{controlId}.Padding"] = normalized.Padding.ToThickness();
+            AddControlTypography(dictionary, controlId, presentation.Typography);
+            if ((control.LeftInset ?? CompiledThemeContract.Controls[controlId].DefaultLeftInset) is { } leftInset)
                 dictionary[$"Galapa.Metric.{controlId}.LeftInset"] = leftInset;
         }
 
@@ -248,23 +237,18 @@ public sealed class ThemeManager(
         dictionary[$"{prefix}.BorderBrush"] = visual.Border ?? Brushes.Transparent;
         dictionary[$"{prefix}.BorderThickness"] = new Thickness(
             visual.BorderEdges[3], visual.BorderEdges[0], visual.BorderEdges[1], visual.BorderEdges[2]);
+        dictionary[$"{prefix}.Opacity"] = visual.Opacity;
     }
 
-    private static void AddControlTypography(ResourceDictionary dictionary, CompiledTheme theme,
-        string controlId, CompiledTextStyle? text, ThemeId themeId)
+    private static void AddControlTypography(ResourceDictionary dictionary, string controlId,
+        ThemeTypographyPresentation typography)
     {
-        var defaults = CompiledThemeContract.Controls[controlId].Typography ??
-                       new TypographyDefaults("titlebar.wordmark", 16, 600);
-        var family = text?.Family ?? theme.Controls[defaults.FamilySourceControlId].Text?.Family ?? "Inter";
         var prefix = $"Galapa.Type.Control.{controlId}";
-        dictionary[$"{prefix}.Family"] = FontFamilyFor(themeId, family);
-        dictionary[$"{prefix}.Size"] = text?.Size ?? defaults.Size;
-        dictionary[$"{prefix}.Weight"] = (FontWeight)(text?.Weight ?? defaults.Weight);
-        dictionary[$"{prefix}.Style"] = ThemeTypography.ToFontStyle(text?.Style);
-        dictionary[$"{prefix}.LetterSpacing"] = text?.LetterSpacing ?? 0d;
-        dictionary[$"{prefix}.Transform"] = ThemeTypography.ToTransform(text?.Case);
+        dictionary[$"{prefix}.Family"] = typography.Family;
+        dictionary[$"{prefix}.Size"] = typography.Size;
+        dictionary[$"{prefix}.Weight"] = typography.Weight;
+        dictionary[$"{prefix}.Style"] = typography.Style;
+        dictionary[$"{prefix}.LetterSpacing"] = typography.LetterSpacing;
+        dictionary[$"{prefix}.Transform"] = typography.Transform;
     }
-
-    internal static FontFamily FontFamilyFor(ThemeId themeId, string family) =>
-        new(ThemeLocations.FontFamilyName(themeId, family));
 }

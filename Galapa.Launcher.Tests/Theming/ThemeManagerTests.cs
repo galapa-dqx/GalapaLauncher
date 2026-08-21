@@ -29,57 +29,64 @@ public sealed class ThemeManagerTests(SkiaHeadlessFixture skia)
         var catalog = new TestCatalog(estellaEntry, dustonEntry, invalidEntry);
         var persistence = new FailingSettingsPersistence(new IOException("blocked"));
         var settings = new Settings { ThemeId = Settings.DefaultThemeId };
-        var pipeline = Pipeline(new ThemeLoader());
+        var pipeline = ThemeTestFactory.Pipeline();
         var manager = new ThemeManager(catalog, pipeline, settings, persistence,
             NullLogger<ThemeManager>.Instance);
 
         await skia.DispatchAsync(async () =>
         {
+            using var appState = ApplicationStateScope.Capture();
             var app = Application.Current!;
-            var initialVariant = app.RequestedThemeVariant;
-            var initialDictionaries = app.Resources.MergedDictionaries.ToHashSet();
-            try
-            {
-                Assert.True((await manager.ApplyAsync(new ThemeId("estella"), persist: false)).Succeeded);
-                var estellaDictionary = Assert.IsType<ResourceDictionary>(app.Resources.MergedDictionaries.Last());
-                var panel = Assert.IsType<Galapa.Launcher.Views.Controls.ThemePartPresentation>(
-                    estellaDictionary["Galapa.Part.panel"]);
-                Assert.Same(estella.Compiled.Controls["panel"], panel.Control);
-                Assert.Equal(20, Assert.IsType<double>(estellaDictionary["Galapa.Type.Control.titlebar.wordmark.Size"]));
-                Assert.Equal(16, Assert.IsType<double>(estellaDictionary["Galapa.Type.Control.button.Size"]));
-                Assert.Equal(0.3, Assert.IsType<double>(estellaDictionary["Galapa.Type.Control.tab.LetterSpacing"]));
-                Assert.DoesNotContain(estellaDictionary.Keys.Cast<object>(), key =>
-                    key is string text && text.StartsWith("Galapa.Type.", StringComparison.Ordinal) &&
-                    !text.StartsWith("Galapa.Type.Control.", StringComparison.Ordinal));
-                Assert.False(estellaDictionary.ContainsKey("Galapa.Font.Body"));
-                Assert.False(Assert.IsType<bool>(estellaDictionary["Galapa.Part.input.ShowFocusRing"]));
-                Assert.Equal("estella", settings.ThemeId);
-                Assert.Equal(ThemeVariant.Light, app.RequestedThemeVariant);
+            Assert.True((await manager.ApplyAsync(new ThemeId("estella"), persist: false)).Succeeded);
+            var estellaDictionary = Assert.IsType<ResourceDictionary>(app.Resources.MergedDictionaries.Last());
+            var panel = Assert.IsType<Galapa.Launcher.Views.Controls.ThemePartPresentation>(
+                estellaDictionary["Galapa.Part.panel"]);
+            Assert.Same(estella.Compiled.Controls["panel"], panel.Control);
+            Assert.Equal(20, Assert.IsType<double>(estellaDictionary["Galapa.Type.Control.titlebar.wordmark.Size"]));
+            Assert.Equal(16, Assert.IsType<double>(estellaDictionary["Galapa.Type.Control.button.Size"]));
+            Assert.Equal(0.3, Assert.IsType<double>(estellaDictionary["Galapa.Type.Control.tab.LetterSpacing"]));
+            Assert.DoesNotContain(estellaDictionary.Keys.Cast<object>(), key =>
+                key is string text && text.StartsWith("Galapa.Type.", StringComparison.Ordinal) &&
+                !text.StartsWith("Galapa.Type.Control.", StringComparison.Ordinal));
+            Assert.False(estellaDictionary.ContainsKey("Galapa.Font.Body"));
+            Assert.False(Assert.IsType<bool>(estellaDictionary["Galapa.Part.input.ShowFocusRing"]));
+            Assert.Equal(10d, Assert.IsType<double>(estellaDictionary["Galapa.Metric.input.label.LeftInset"]));
+            foreach (var controlId in CompiledThemeContract.Controls.Keys)
+                foreach (var state in CompiledThemeContract.StateNames.Keys)
+                {
+                    Assert.True(estellaDictionary.ContainsKey($"Galapa.Part.{controlId}.{state}.ContentBrush"));
+                    Assert.True(estellaDictionary.ContainsKey($"Galapa.Part.{controlId}.{state}.FillBrush"));
+                    Assert.True(estellaDictionary.ContainsKey($"Galapa.Part.{controlId}.{state}.BorderBrush"));
+                    Assert.True(estellaDictionary.ContainsKey($"Galapa.Part.{controlId}.{state}.BorderThickness"));
+                    Assert.True(estellaDictionary.ContainsKey($"Galapa.Part.{controlId}.{state}.Opacity"));
+                }
+            Assert.Equal("estella", settings.ThemeId);
+            Assert.Equal(ThemeVariant.Light, app.RequestedThemeVariant);
 
-                var invalidResult = await manager.ApplyAsync(invalidEntry, persist: false);
-                Assert.Equal(ThemeApplyStatus.Invalid, invalidResult.Status);
-                Assert.Equal("estella", manager.ActiveTheme!.Manifest.Id);
-                Assert.Contains(estellaDictionary, app.Resources.MergedDictionaries);
+            var invalidResult = await manager.ApplyAsync(invalidEntry, persist: false);
+            Assert.Equal(ThemeApplyStatus.Invalid, invalidResult.Status);
+            Assert.Equal("estella", manager.ActiveTheme!.Manifest.Id);
+            Assert.Contains(estellaDictionary, app.Resources.MergedDictionaries);
 
-                var failed = await manager.ApplyAsync(new ThemeId("duston"));
-                Assert.Equal(ThemeApplyStatus.PersistenceFailed, failed.Status);
-                Assert.Equal("estella", settings.ThemeId);
-                Assert.Equal("estella", manager.ActiveTheme!.Manifest.Id);
-                Assert.Equal(ThemeVariant.Light, app.RequestedThemeVariant);
-                Assert.Contains(estellaDictionary, app.Resources.MergedDictionaries);
+            _ = await pipeline.LoadAsync(dustonEntry);
+            var dictionariesBeforeFailure = app.Resources.MergedDictionaries.ToArray();
+            var statesBeforeFailure = catalog.Themes.Select(item => item.State).ToArray();
+            var activeBeforeFailure = catalog.Themes.Select(item => item.IsActive).ToArray();
+            var failed = await manager.ApplyAsync(new ThemeId("duston"));
+            Assert.Equal(ThemeApplyStatus.PersistenceFailed, failed.Status);
+            Assert.Equal("estella", settings.ThemeId);
+            Assert.Equal("estella", manager.ActiveTheme!.Manifest.Id);
+            Assert.Equal(ThemeVariant.Light, app.RequestedThemeVariant);
+            Assert.Contains(estellaDictionary, app.Resources.MergedDictionaries);
+            Assert.Equal(dictionariesBeforeFailure, app.Resources.MergedDictionaries);
+            Assert.Equal(activeBeforeFailure, catalog.Themes.Select(item => item.IsActive));
+            Assert.All(statesBeforeFailure.Zip(catalog.Themes.Select(item => item.State)), pair =>
+                Assert.Same(pair.First, pair.Second));
 
-                Assert.True((await manager.ApplyAsync(new ThemeId("duston"), persist: false)).Succeeded);
-                Assert.Equal("duston", manager.ActiveTheme!.Manifest.Id);
-                Assert.Equal(ThemeVariant.Dark, app.RequestedThemeVariant);
-                return true;
-            }
-            finally
-            {
-                foreach (var dictionary in app.Resources.MergedDictionaries
-                             .Where(item => !initialDictionaries.Contains(item)).ToArray())
-                    app.Resources.MergedDictionaries.Remove(dictionary);
-                app.RequestedThemeVariant = initialVariant;
-            }
+            Assert.True((await manager.ApplyAsync(new ThemeId("duston"), persist: false)).Succeeded);
+            Assert.Equal("duston", manager.ActiveTheme!.Manifest.Id);
+            Assert.Equal(ThemeVariant.Dark, app.RequestedThemeVariant);
+            return true;
         });
     }
 
@@ -92,31 +99,19 @@ public sealed class ThemeManagerTests(SkiaHeadlessFixture skia)
         var entry = Entry(validated);
         var catalog = new TestCatalog(entry);
         var loader = new UiAssertingLoader();
-        var pipeline = Pipeline(loader);
+        var pipeline = ThemeTestFactory.Pipeline(loader);
         var manager = new ThemeManager(catalog, pipeline, new Settings(), new RecordingSettingsPersistence(),
             NullLogger<ThemeManager>.Instance);
 
         await skia.DispatchAsync(async () =>
         {
-            var app = Application.Current!;
-            var initialVariant = app.RequestedThemeVariant;
-            var initialDictionaries = app.Resources.MergedDictionaries.ToHashSet();
-            try
-            {
-                var applied = initialApply
-                    ? await manager.ApplyInitialAsync(new ThemeId("kyururu"))
-                    : await manager.ApplyAsync(new ThemeId("kyururu"), persist: false);
-                Assert.True(applied.Succeeded);
-                Assert.True(loader.WasCalledOnUiThread);
-                return true;
-            }
-            finally
-            {
-                foreach (var dictionary in app.Resources.MergedDictionaries
-                             .Where(item => !initialDictionaries.Contains(item)).ToArray())
-                    app.Resources.MergedDictionaries.Remove(dictionary);
-                app.RequestedThemeVariant = initialVariant;
-            }
+            using var appState = ApplicationStateScope.Capture();
+            var applied = initialApply
+                ? await manager.ApplyInitialAsync(new ThemeId("kyururu"))
+                : await manager.ApplyAsync(new ThemeId("kyururu"), persist: false);
+            Assert.True(applied.Succeeded);
+            Assert.True(loader.WasCalledOnUiThread);
+            return true;
         });
     }
 
@@ -127,7 +122,7 @@ public sealed class ThemeManagerTests(SkiaHeadlessFixture skia)
         var estella = await reader.ReadAsync(TestPaths.BuiltInTheme("estella"));
         var duston = await reader.ReadAsync(TestPaths.BuiltInTheme("duston"));
         var catalog = new TestCatalog(Entry(estella), Entry(duston));
-        var pipeline = Pipeline(new ThemeLoader());
+        var pipeline = ThemeTestFactory.Pipeline();
         var persistence = new BlockingPersistence();
         var settings = new Settings { ThemeId = "estella" };
         var manager = new ThemeManager(catalog, pipeline, settings, persistence,
@@ -135,30 +130,19 @@ public sealed class ThemeManagerTests(SkiaHeadlessFixture skia)
 
         await skia.DispatchAsync(async () =>
         {
+            using var appState = ApplicationStateScope.Capture();
             var app = Application.Current!;
-            var initialVariant = app.RequestedThemeVariant;
-            var initialDictionaries = app.Resources.MergedDictionaries.ToHashSet();
-            try
-            {
-                Assert.True((await manager.ApplyAsync(new ThemeId("estella"), persist: false)).Succeeded);
-                using var cancellation = new CancellationTokenSource();
-                var applying = manager.ApplyAsync(new ThemeId("duston"), persist: true, cancellation.Token);
-                await persistence.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
-                Assert.Equal(ThemeVariant.Dark, app.RequestedThemeVariant);
-                cancellation.Cancel();
-                await Assert.ThrowsAnyAsync<OperationCanceledException>(() => applying);
-                Assert.Equal("estella", settings.ThemeId);
-                Assert.Equal("estella", manager.ActiveTheme!.Manifest.Id);
-                Assert.Equal(ThemeVariant.Light, app.RequestedThemeVariant);
-                return true;
-            }
-            finally
-            {
-                foreach (var dictionary in app.Resources.MergedDictionaries
-                             .Where(item => !initialDictionaries.Contains(item)).ToArray())
-                    app.Resources.MergedDictionaries.Remove(dictionary);
-                app.RequestedThemeVariant = initialVariant;
-            }
+            Assert.True((await manager.ApplyAsync(new ThemeId("estella"), persist: false)).Succeeded);
+            using var cancellation = new CancellationTokenSource();
+            var applying = manager.ApplyAsync(new ThemeId("duston"), persist: true, cancellation.Token);
+            await persistence.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(ThemeVariant.Dark, app.RequestedThemeVariant);
+            cancellation.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => applying);
+            Assert.Equal("estella", settings.ThemeId);
+            Assert.Equal("estella", manager.ActiveTheme!.Manifest.Id);
+            Assert.Equal(ThemeVariant.Light, app.RequestedThemeVariant);
+            return true;
         });
     }
 
@@ -169,27 +153,15 @@ public sealed class ThemeManagerTests(SkiaHeadlessFixture skia)
         var estella = await reader.ReadAsync(TestPaths.BuiltInTheme("estella"));
         var duston = await reader.ReadAsync(TestPaths.BuiltInTheme("duston"));
         var loader = new RecordingLoader();
-        var manager = new ThemeManager(new TestCatalog(Entry(estella), Entry(duston)), Pipeline(loader),
+        var manager = new ThemeManager(new TestCatalog(Entry(estella), Entry(duston)), ThemeTestFactory.Pipeline(loader),
             new Settings(), new RecordingSettingsPersistence(), NullLogger<ThemeManager>.Instance);
 
         await skia.DispatchAsync(async () =>
         {
-            var app = Application.Current!;
-            var initialVariant = app.RequestedThemeVariant;
-            var initialDictionaries = app.Resources.MergedDictionaries.ToHashSet();
-            try
-            {
-                Assert.True((await manager.ApplyAsync(new ThemeId("estella"), persist: false)).Succeeded);
-                Assert.Equal(["estella"], loader.ThemeIds);
-                return true;
-            }
-            finally
-            {
-                foreach (var dictionary in app.Resources.MergedDictionaries
-                             .Where(item => !initialDictionaries.Contains(item)).ToArray())
-                    app.Resources.MergedDictionaries.Remove(dictionary);
-                app.RequestedThemeVariant = initialVariant;
-            }
+            using var appState = ApplicationStateScope.Capture();
+            Assert.True((await manager.ApplyAsync(new ThemeId("estella"), persist: false)).Succeeded);
+            Assert.Equal(["estella"], loader.ThemeIds);
+            return true;
         });
     }
 
@@ -200,45 +172,27 @@ public sealed class ThemeManagerTests(SkiaHeadlessFixture skia)
         var estella = await reader.ReadAsync(TestPaths.BuiltInTheme("estella"));
         var duston = await reader.ReadAsync(TestPaths.BuiltInTheme("duston"));
         var catalog = new TestCatalog(Entry(estella), Entry(duston));
-        var manager = new ThemeManager(catalog, Pipeline(new BrokenDustonLoader()), new Settings(),
+        var manager = new ThemeManager(catalog, ThemeTestFactory.Pipeline(new BrokenDustonLoader()), new Settings(),
             new RecordingSettingsPersistence(), NullLogger<ThemeManager>.Instance);
 
         await skia.DispatchAsync(async () =>
         {
+            using var appState = ApplicationStateScope.Capture();
             var app = Application.Current!;
-            var initialVariant = app.RequestedThemeVariant;
-            var initialDictionaries = app.Resources.MergedDictionaries.ToHashSet();
-            try
-            {
-                Assert.True((await manager.ApplyAsync(new ThemeId("estella"), persist: false)).Succeeded);
-                var currentDictionary = manager.ActiveTheme!.Dictionary;
+            Assert.True((await manager.ApplyAsync(new ThemeId("estella"), persist: false)).Succeeded);
+            var currentDictionary = manager.ActiveTheme!.Dictionary;
 
-                var failed = await manager.ApplyAsync(new ThemeId("duston"), persist: false);
+            var failed = await manager.ApplyAsync(new ThemeId("duston"), persist: false);
 
-                Assert.Equal(ThemeApplyStatus.ApplyFailed, failed.Status);
-                Assert.Equal("estella", manager.ActiveTheme!.Manifest.Id);
-                Assert.Contains(currentDictionary, app.Resources.MergedDictionaries);
-                Assert.Equal(ThemeVariant.Light, app.RequestedThemeVariant);
-                return true;
-            }
-            finally
-            {
-                foreach (var dictionary in app.Resources.MergedDictionaries
-                             .Where(item => !initialDictionaries.Contains(item)).ToArray())
-                    app.Resources.MergedDictionaries.Remove(dictionary);
-                app.RequestedThemeVariant = initialVariant;
-            }
+            Assert.Equal(ThemeApplyStatus.ApplyFailed, failed.Status);
+            Assert.Equal("estella", manager.ActiveTheme!.Manifest.Id);
+            Assert.Contains(currentDictionary, app.Resources.MergedDictionaries);
+            Assert.Equal(ThemeVariant.Light, app.RequestedThemeVariant);
+            return true;
         });
     }
 
-    private static ThemePipeline Pipeline(IThemeLoader loader) => new(new CompiledThemeReader(), loader,
-        NullLogger<ThemePipeline>.Instance);
-
-    private static ThemeCatalogEntry Entry(ValidatedTheme theme)
-    {
-        var entry = new ThemeCatalogEntry(theme.Discovery) { State = theme };
-        return entry;
-    }
+    private static ThemeCatalogEntry Entry(ValidatedTheme theme) => ThemeTestFactory.Entry(theme);
 
     private sealed class TestCatalog(params ThemeCatalogEntry[] themes) : IThemeCatalog
     {

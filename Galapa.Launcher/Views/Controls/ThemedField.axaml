@@ -44,6 +44,12 @@
         <Style Selector="local|ThemedField:focus-within local|ThemeFocusRing#PART_FocusRing">
             <Setter Property="BorderBrush" Value="{DynamicResource Galapa.Focus.Brush}" />
         </Style>
+        <Style Selector="local|ThemedField:disabled :is(local|ThemePart)#PART_FieldFrame">
+            <Setter Property="State" Value="Disabled" />
+        </Style>
+        <Style Selector="local|ThemedField:disabled TextBox.field-editor">
+            <Setter Property="Foreground" Value="{DynamicResource Galapa.Part.input.disabled.ContentBrush}" />
+        </Style>
     </UserControl.Styles>
     <Grid Background="Transparent">
         <local:NotchedThemePart Name="PART_FieldFrame" PartStyle="{DynamicResource Galapa.Part.input}"
