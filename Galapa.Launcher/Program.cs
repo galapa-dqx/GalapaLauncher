@@ -7,6 +7,7 @@ using Galapa.Core.Configuration;
 using Galapa.Core.Game;
 using Galapa.Core.Models;
 using Galapa.Launcher.Services;
+using Galapa.Launcher.Theming;
 using Galapa.Launcher.ViewModels;
 using Galapa.Launcher.ViewModels.AppFrame;
 using Galapa.Launcher.ViewModels.LoginFrame;
@@ -65,6 +66,7 @@ internal sealed class Program
         container.Register<LoginNavigationService>(Reuse.Singleton);
         container.Register<IPlayerCredentialFactory, WindowsCredentialManagerFactory>(Reuse.Singleton);
         container.Register<PlayerList>(Reuse.Singleton);
+        container.Register<ISettingsPersistence, SettingsPersistence>(Reuse.Singleton);
 
         // Controller input services
         container.Register<ControllerListService>(Reuse.Singleton);

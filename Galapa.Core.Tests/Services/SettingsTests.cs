@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json;
 using Galapa.Core.Configuration;
 using Galapa.TestUtilities;
 
@@ -258,6 +259,98 @@ public class SettingsTests : IDisposable
     }
 
     [Fact]
+    public async Task SaveAsync_RoundTrip_PreservesAllValues()
+    {
+        var original = new Settings
+        {
+            GameFolderPath = "C:\\AsyncRoundTripGame",
+            SaveFolderPath = "C:\\AsyncRoundTripSave",
+            ErrorReporting = true
+        };
+
+        await original.SaveAsync();
+        var loaded = Settings.Load();
+
+        Assert.Equal(original.GameFolderPath, loaded.GameFolderPath);
+        Assert.Equal(original.SaveFolderPath, loaded.SaveFolderPath);
+        Assert.Equal(original.ErrorReporting, loaded.ErrorReporting);
+        Assert.Empty(GetTemporaryFiles());
+    }
+
+    [Fact]
+    public async Task SaveAsync_CancellationPreservesExistingFileAndRemovesTemporaryFile()
+    {
+        var settings = new Settings
+        {
+            GameFolderPath = "C:\\OriginalGame",
+            SaveFolderPath = "C:\\OriginalSave",
+            ErrorReporting = false
+        };
+        await settings.SaveAsync();
+        var before = await File.ReadAllTextAsync(Paths.Settings);
+
+        settings.GameFolderPath = "C:\\ReplacementGame";
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => settings.SaveAsync(cancellation.Token));
+
+        Assert.Equal(before, await File.ReadAllTextAsync(Paths.Settings));
+        Assert.Empty(GetTemporaryFiles());
+    }
+
+    [Fact]
+    public async Task SaveAsync_FailedReplacementPreservesExistingFileAndRemovesTemporaryFile()
+    {
+        var settings = new Settings
+        {
+            GameFolderPath = "C:\\OriginalGame",
+            SaveFolderPath = "C:\\OriginalSave",
+            ErrorReporting = false
+        };
+        await settings.SaveAsync();
+        var before = await File.ReadAllTextAsync(Paths.Settings);
+
+        settings.GameFolderPath = "C:\\ReplacementGame";
+        await using var held = new FileStream(Paths.Settings, FileMode.Open, FileAccess.Read, FileShare.Read);
+
+        var failure = await Assert.ThrowsAnyAsync<Exception>(() => settings.SaveAsync());
+
+        Assert.True(failure is IOException or UnauthorizedAccessException);
+        Assert.Equal(before, await File.ReadAllTextAsync(Paths.Settings));
+        Assert.Empty(GetTemporaryFiles());
+    }
+
+    [Fact]
+    public async Task ConcurrentSyncAndAsyncSavesLeaveOneCompleteSettingsDocument()
+    {
+        var settings = Enumerable.Range(0, 20)
+            .Select(index => new Settings
+            {
+                GameFolderPath = $"game-{index}",
+                SaveFolderPath = $"save-{index}",
+                ErrorReporting = index % 2 == 0
+            })
+            .ToArray();
+
+        var saves = settings.Select((value, index) => index % 2 == 0
+            ? Task.Run(value.Save)
+            : value.SaveAsync());
+
+        await Task.WhenAll(saves);
+
+        var json = await File.ReadAllTextAsync(Paths.Settings);
+        var loaded = JsonSerializer.Deserialize<Settings>(json);
+        Assert.NotNull(loaded);
+        var index = Assert.Single(
+            Enumerable.Range(0, settings.Length)
+                .Where(candidate => loaded.GameFolderPath == $"game-{candidate}"));
+        Assert.Equal($"save-{index}", loaded.SaveFolderPath);
+        Assert.Equal(index % 2 == 0, loaded.ErrorReporting);
+        Assert.Empty(GetTemporaryFiles());
+    }
+
+    [Fact]
     public void ValidateGameFolderPath_WithGameSubfolder_WorksCorrectly()
     {
         // Arrange
@@ -291,4 +384,9 @@ public class SettingsTests : IDisposable
         Assert.Equal("C:\\Test2", settings.SaveFolderPath);
         Assert.True(settings.ErrorReporting);
     }
+
+    private static IEnumerable<string> GetTemporaryFiles() =>
+        Directory.Exists(Paths.AppData)
+            ? Directory.EnumerateFiles(Paths.AppData, "Settings.json.*.tmp")
+            : [];
 }
