@@ -6,6 +6,8 @@ namespace Galapa.Core.Configuration;
 
 public partial class Settings : ObservableValidator
 {
+    private static readonly SemaphoreSlim SaveGate = new(1, 1);
+
     [ObservableProperty] [Required] [CustomValidation(typeof(Settings), "ValidateGameFolderPath")]
     private string? _gameFolderPath;
 
@@ -42,10 +44,68 @@ public partial class Settings : ObservableValidator
         return GetDefaults();
     }
 
-    public void Save()
+    public void Save() => SaveCoreAsync(CancellationToken.None).GetAwaiter().GetResult();
+
+    public Task SaveAsync(CancellationToken cancellationToken = default) => SaveCoreAsync(cancellationToken);
+
+    private async Task SaveCoreAsync(CancellationToken cancellationToken)
     {
-        Directory.CreateDirectory(Paths.AppData);
-        File.WriteAllText(Paths.Settings, JsonSerializer.Serialize(this));
+        await SaveGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        string? temporaryPath = null;
+
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // Capture one complete snapshot while this process owns the settings writer.
+            var json = JsonSerializer.Serialize(this);
+            var destinationPath = Paths.Settings;
+            var destinationDirectory = Path.GetDirectoryName(destinationPath)
+                                       ?? throw new InvalidOperationException("The settings path has no directory.");
+
+            Directory.CreateDirectory(destinationDirectory);
+            temporaryPath = Path.Combine(
+                destinationDirectory,
+                $"{Path.GetFileName(destinationPath)}.{Guid.NewGuid():N}.tmp");
+
+            await using (var stream = new FileStream(
+                             temporaryPath,
+                             FileMode.CreateNew,
+                             FileAccess.Write,
+                             FileShare.None,
+                             16 * 1024,
+                             FileOptions.Asynchronous | FileOptions.WriteThrough))
+            await using (var writer = new StreamWriter(stream))
+            {
+                await writer.WriteAsync(json.AsMemory(), cancellationToken).ConfigureAwait(false);
+                await writer.FlushAsync(cancellationToken).ConfigureAwait(false);
+                await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            File.Move(temporaryPath, destinationPath, true);
+            temporaryPath = null;
+        }
+        catch (Exception saveException) when (temporaryPath is not null)
+        {
+            try
+            {
+                File.Delete(temporaryPath);
+            }
+            catch (Exception cleanupException) when (cleanupException is IOException or UnauthorizedAccessException)
+            {
+                throw new AggregateException(
+                    "The settings save failed and its temporary file could not be removed.",
+                    saveException,
+                    cleanupException);
+            }
+
+            throw;
+        }
+        finally
+        {
+            SaveGate.Release();
+        }
     }
 
     public static ValidationResult ValidateGameFolderPath(string gameFolderPath, ValidationContext context)
