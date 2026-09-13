@@ -6,10 +6,12 @@ using DryIoc;
 using Galapa.Core.Configuration;
 using Galapa.Core.Game;
 using Galapa.Core.Models;
+using Galapa.Launcher.Input;
 using Galapa.Launcher.Services;
 using Galapa.Launcher.ViewModels;
 using Galapa.Launcher.ViewModels.AppFrame;
 using Galapa.Launcher.ViewModels.LoginFrame;
+using Galapa.Launcher.ViewModels.OnboardingFrame;
 using Galapa.Launcher.ViewModels.SettingsFrame;
 using Galapa.Launcher.Views;
 using Microsoft.Extensions.Logging;
@@ -47,7 +49,7 @@ internal sealed class Program
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
 
-    private static IContainer CreateServiceProvider()
+    internal static IContainer CreateServiceProvider()
     {
         var container = new Container();
 
@@ -61,6 +63,7 @@ internal sealed class Program
         container.Register<GeneralSettingsPageViewModel>(Reuse.Singleton);
         container.Register<GameSettingsPageViewModel>(Reuse.Singleton);
         container.Register<AboutPageViewModel>(Reuse.Singleton);
+        container.Register<OnboardingFrameViewModel>(Reuse.Singleton);
         container.Register<LoginFlowState>(Reuse.Singleton);
         container.Register<LoginNavigationService>(Reuse.Singleton);
         container.Register<IPlayerCredentialFactory, WindowsCredentialManagerFactory>(Reuse.Singleton);
@@ -71,6 +74,8 @@ internal sealed class Program
         container.Register<ControllerPollingService>(Reuse.Singleton);
         container.Register<ControllerConfigService>(Reuse.Singleton);
         container.Register<ControllerActionSource>(Reuse.Singleton);
+        container.RegisterMapping<IControllerActionSource, ControllerActionSource>();
+        container.Register<NavigationContextService>(Reuse.Singleton);
         container.Register<ControllerInputRouter>(Reuse.Singleton);
         container.Register<ActiveControllerService>(Reuse.Singleton);
 
