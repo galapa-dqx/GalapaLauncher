@@ -44,12 +44,24 @@ public partial class Settings : ObservableValidator
         return GetDefaults();
     }
 
+    /// <summary>
+    /// Synchronously writes the current settings to disk. See <see cref="SaveAsync"/>.
+    /// </summary>
     public void Save() => SaveCoreAsync(CancellationToken.None).GetAwaiter().GetResult();
 
+    /// <summary>
+    /// Writes a snapshot of the current settings to disk, taken when this method is called.
+    /// The file is written to a temporary path and atomically moved over the existing file, and
+    /// saves from this process are serialized, so readers only ever see a complete document.
+    /// </summary>
     public Task SaveAsync(CancellationToken cancellationToken = default) => SaveCoreAsync(cancellationToken);
 
     private async Task SaveCoreAsync(CancellationToken cancellationToken)
     {
+        // Snapshot on the caller's thread, before any await, so a save queued behind another
+        // never serializes on a pool thread while the UI thread is still mutating properties.
+        var json = JsonSerializer.Serialize(this);
+
         await SaveGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         string? temporaryPath = null;
 
@@ -57,8 +69,6 @@ public partial class Settings : ObservableValidator
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            // Capture one complete snapshot while this process owns the settings writer.
-            var json = JsonSerializer.Serialize(this);
             var destinationPath = Paths.Settings;
             var destinationDirectory = Path.GetDirectoryName(destinationPath)
                                        ?? throw new InvalidOperationException("The settings path has no directory.");
