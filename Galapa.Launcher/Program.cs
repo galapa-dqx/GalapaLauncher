@@ -24,7 +24,8 @@ namespace Galapa.Launcher;
 
 internal sealed class Program
 {
-    public static IContainer Services;
+    // Assigned in BuildAvaloniaApp, before anything resolves services.
+    public static IContainer Services = null!;
 
     public static ConsoleVelopackLogger Log { get; } = new();
 
@@ -127,7 +128,8 @@ internal sealed class Program
         // TODO: move Paths.AppData into the launcher itself (it's not core-related)
         Services = CreateServiceProvider();
         var settings = Services.Resolve<Settings>();
-        ConfigFile.RootDirectory = settings.SaveFolderPath;
+        if (settings.SaveFolderPath is { } saveFolderPath)
+            ConfigFile.RootDirectory = saveFolderPath;
 
         return AppBuilder.Configure<App>()
             .UsePlatformDetect()
