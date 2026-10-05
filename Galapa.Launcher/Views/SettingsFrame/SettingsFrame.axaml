@@ -3,16 +3,17 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:Galapa.Launcher.ViewModels.SettingsFrame"
+             xmlns:input="using:Galapa.Launcher.Input"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
              x:Class="Galapa.Launcher.Views.SettingsFrame.SettingsFrame"
-             x:DataType="vm:SettingsFrameViewModel">
+             x:DataType="vm:SettingsFrameViewModel"
+             input:NavigationScope.Context="{Binding NavigationContext}">
 
     <Grid ColumnDefinitions="*" RowDefinitions="Auto,*">
         <!-- Settings Navigation Tab Bar -->
         <TabStrip HorizontalAlignment="Center"
                   ItemsSource="{Binding Pages}"
-                  SelectedItem="{Binding SelectedPage}"
-                  SelectedIndex="0">
+                  SelectedItem="{Binding SelectedPage}">
             <TabStrip.ItemTemplate>
                 <DataTemplate x:DataType="vm:SettingsFrameTab">
                     <StackPanel Orientation="Horizontal" Spacing="8">

@@ -58,6 +58,18 @@ Players sync across three data sources:
 - `Settings.cs`: User settings (JSON in AppData)
 - `Paths.cs`: Static path constants (%APPDATA%\GalapaLauncher)
 
+### Controller Input Routing
+`ControllerInputRouter` routes each semantic `ControllerAction` in three stages:
+1. Control-local `IControllerInputHandler`s on the focused element and its visual ancestors.
+2. The active `NavigationContext` (`Galapa.Launcher/Input/`) and its ancestors. Contexts form a
+   logical tree owned by `NavigationContextService` (root → App → Settings, with Onboarding as a
+   sibling of App). ViewModels own their contexts and handlers (`AppFrameViewModel` handles L1/R1,
+   `SettingsFrameViewModel` handles L2/R2). Views declare membership with the
+   `NavigationScope.Context` attached property so controls outside a frame's visual tree (the
+   title-bar tabs) still route into it. Onboarding disables the App context.
+3. Default behaviour (XY focus for the d-pad, Enter/Escape for Confirm/Decline).
+Do not add bumper handling to views or `MainWindow`; add a context or extend an existing handler.
+
 ## Key Conventions
 
 - C# 14, nullable enabled, implicit usings

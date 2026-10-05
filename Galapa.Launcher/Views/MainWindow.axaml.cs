@@ -37,6 +37,24 @@ public partial class MainWindow : Window
         Closed += this.OnClosed;
     }
 
+    /// <summary>
+    ///     Test-only constructor: loads the compiled window XAML and attaches the input router
+    ///     without starting DirectInput polling or the controller service graph.
+    /// </summary>
+    internal MainWindow(MainWindowViewModel mainWindowViewModel, ControllerInputRouter inputRouter)
+    {
+        DataContext = mainWindowViewModel;
+        this._pollingService = null!;
+        this._actionSource = null!;
+        this._activeControllerService = null!;
+        this._inputRouter = inputRouter;
+
+        InitializeComponent();
+        this._inputRouter.Attach(this);
+
+        Closed += (_, _) => this._inputRouter.Detach();
+    }
+
     private void OnClosed(object? sender, EventArgs e)
     {
         this._inputRouter.Detach();

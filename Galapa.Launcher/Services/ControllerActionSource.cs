@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Galapa.Launcher.Input;
 using Galapa.Launcher.Models;
 using Microsoft.Extensions.Logging;
 
@@ -9,7 +10,7 @@ namespace Galapa.Launcher.Services;
 /// Translates button events from controllers into semantic action events
 /// using the configured button mappings.
 /// </summary>
-public class ControllerActionSource : IDisposable
+public class ControllerActionSource : IControllerActionSource, IDisposable
 {
     private readonly ILogger<ControllerActionSource> _logger;
     private readonly ControllerListService _controllerListService;

@@ -1,7 +1,9 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Galapa.Launcher.ViewModels"
+        xmlns:appvm="using:Galapa.Launcher.ViewModels.AppFrame"
         xmlns:appframe="using:Galapa.Launcher.Views.AppFrame"
+        xmlns:input="using:Galapa.Launcher.Input"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
@@ -22,5 +24,27 @@
         <vm:MainWindowViewModel />
     </Design.DataContext>
 
-    <appframe:AppFrame DataContext="{Binding AppFrameViewModel}" />
+    <Grid ColumnDefinitions="*" RowDefinitions="Auto,*">
+        <!-- Title-bar navigation. This lives outside the AppFrame's visual tree, so it declares
+             the app shell's navigation context explicitly to route L1/R1 while focused. -->
+        <TabStrip HorizontalAlignment="Center"
+                  input:NavigationScope.Context="{Binding AppFrameViewModel.NavigationContext}"
+                  IsVisible="{Binding !AppFrameViewModel.IsOnboarding}"
+                  ItemsSource="{Binding AppFrameViewModel.Pages}"
+                  SelectedItem="{Binding AppFrameViewModel.SelectedPage}">
+            <TabStrip.Styles>
+                <Style Selector="TabStripItem" x:DataType="appvm:AppFrameTab">
+                    <Setter Property="AutomationProperties.Name" Value="{Binding Title}" />
+                    <Setter Property="ToolTip.Tip" Value="{Binding Title}" />
+                </Style>
+            </TabStrip.Styles>
+            <TabStrip.ItemTemplate>
+                <DataTemplate x:DataType="appvm:AppFrameTab">
+                    <Svg Path="{Binding Icon}" Width="30" Height="30" />
+                </DataTemplate>
+            </TabStrip.ItemTemplate>
+        </TabStrip>
+
+        <appframe:AppFrame Grid.Row="1" DataContext="{Binding AppFrameViewModel}" />
+    </Grid>
 </Window>
