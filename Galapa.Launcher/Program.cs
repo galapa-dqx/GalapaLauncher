@@ -7,7 +7,6 @@ using Galapa.Core.Configuration;
 using Galapa.Core.Game;
 using Galapa.Core.Models;
 using Galapa.Launcher.Services;
-using Galapa.Launcher.Theming;
 using Galapa.Launcher.ViewModels;
 using Galapa.Launcher.ViewModels.AppFrame;
 using Galapa.Launcher.ViewModels.LoginFrame;
@@ -68,6 +67,7 @@ internal sealed class Program
         container.Register<IPlayerCredentialFactory, WindowsCredentialManagerFactory>(Reuse.Singleton);
         container.Register<PlayerList>(Reuse.Singleton);
         container.Register<ISettingsPersistence, SettingsPersistence>(Reuse.Singleton);
+        container.Register<IFolderPicker, AvaloniaFolderPicker>(Reuse.Singleton);
 
         // Controller input services
         container.Register<ControllerListService>(Reuse.Singleton);
@@ -127,8 +127,6 @@ internal sealed class Program
         // We can't create our service provider until the Paths are configured to allow the Settings to be loaded
         // TODO: move Paths.AppData into the launcher itself (it's not core-related)
         Services = CreateServiceProvider();
-        var settings = Services.Resolve<Settings>();
-        ConfigFile.RootDirectory = settings.SaveFolderPath;
 
         return AppBuilder.Configure<App>()
             .UsePlatformDetect()

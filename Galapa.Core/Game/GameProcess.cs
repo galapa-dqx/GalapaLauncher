@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using System.ComponentModel.DataAnnotations;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
@@ -30,14 +31,12 @@ public partial class GameProcess(Settings settings)
     public void Start()
     {
         if (this.SessionId is null) throw new InvalidOperationException("SessionId is null");
-        if (settings.GameFolderPath is null) throw new InvalidOperationException("GameFolderPath is null");
-
-        var gamePath = Path.Combine(settings.GameFolderPath, "game", "DQXGame.exe");
+        var installRoot = this.GetInstallRoot();
 
         this._process = new Process();
-        this._process.StartInfo.WorkingDirectory = Path.Combine(settings.GameFolderPath, "game");
+        this._process.StartInfo.WorkingDirectory = installRoot.GameDirectory;
         this._process.StartInfo.UseShellExecute = false;
-        this._process.StartInfo.FileName = gamePath;
+        this._process.StartInfo.FileName = installRoot.ExecutablePath;
         this._process.StartInfo.Arguments = this.GetArguments();
         this._process.EnableRaisingEvents = true;
         this._process.Exited += this.OnProcessExited;
@@ -45,16 +44,9 @@ public partial class GameProcess(Settings settings)
     }
 
     /// <summary>
-    ///     Working directory for the game process (the <c>game</c> subfolder of the install).
+    ///     Working directory for the game process (the <c>Game</c> subfolder of the install).
     /// </summary>
-    public string WorkingDirectory
-    {
-        get
-        {
-            if (settings.GameFolderPath is null) throw new InvalidOperationException("GameFolderPath is null");
-            return Path.Combine(settings.GameFolderPath, "game");
-        }
-    }
+    public string WorkingDirectory => this.GetInstallRoot().GameDirectory;
 
     /// <summary>
     ///     Builds the full command line (<c>"exe path" arguments</c>) that <see cref="Start" /> and
@@ -64,10 +56,21 @@ public partial class GameProcess(Settings settings)
     public string BuildCommandLine()
     {
         if (this.SessionId is null) throw new InvalidOperationException("SessionId is null");
-        if (settings.GameFolderPath is null) throw new InvalidOperationException("GameFolderPath is null");
-
-        var gamePath = Path.Combine(settings.GameFolderPath, "game", "DQXGame.exe");
+        var gamePath = this.GetInstallRoot().ExecutablePath;
         return $"\"{gamePath}\" {this.GetArguments()}";
+    }
+
+    /// <summary>
+    ///     The install root to launch from. Checked against the disk at launch time, so an invalid or stale folder (for
+    ///     example one loaded from an old settings file) can never be used to start the game.
+    /// </summary>
+    private InstallRoot GetInstallRoot()
+    {
+        var validation = InstallRoot.Validate(settings.GameFolderPath);
+        if (validation != ValidationResult.Success)
+            throw new InvalidOperationException($"The game folder is not valid: {validation.ErrorMessage}");
+
+        return settings.InstallRoot!;
     }
 
     /// <summary>
