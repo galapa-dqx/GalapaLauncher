@@ -3,6 +3,8 @@ using Galapa.TestUtilities;
 
 namespace Galapa.Core.Tests.Game.ConfigFile;
 
+// Shares the static ConfigFile.RootDirectory with PlayerListTests.
+[Collection("Sequential")]
 public class PlayerListXmlTests
 {
     [Fact]

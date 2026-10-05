@@ -167,6 +167,18 @@ public class PlayerList
     public List<SavedPlayer> Players { get; private set; } = new();
 
     /// <summary>
+    ///     Whether <see cref="LoadAsync" /> deletes stored credentials for players that are no longer in
+    ///     dqxPlayerList.xml. This is how removing a player in the official launcher cleans up our credentials.
+    /// </summary>
+    /// <remarks>
+    ///     Credentials are keyed only by token and shared by every app on the machine, not scoped to
+    ///     <see cref="ConfigFile.RootDirectory" />. Anything loading a player list from somewhere other than the user's
+    ///     real save folder (Toolbox, dev setups) must disable this, or it will delete the launcher's saved passwords and
+    ///     TOTP keys, which cannot be recovered.
+    /// </remarks>
+    public bool PruneOrphanedCredentials { get; init; } = true;
+
+    /// <summary>
     ///     Add a new player to the list by their token. This will add the player to the XML, JSON, and credential in memory
     ///     but
     ///     NOT save them to disk/credential store until you call <see cref="SaveAsync" />.
@@ -280,11 +292,14 @@ public class PlayerList
         Contract.Assert(this._credentialTokens is not null);
 
         // Delete credentials for any players removed from the XML file
-        var xmlTokens = this._xml.Players.Keys.ToHashSet();
-        foreach (var token in this._credentialTokens.Except(xmlTokens))
+        if (this.PruneOrphanedCredentials)
         {
-            var cred = await this._credentialFactory.LoadAsync(token);
-            cred.Remove();
+            var xmlTokens = this._xml.Players.Keys.ToHashSet();
+            foreach (var token in this._credentialTokens.Except(xmlTokens))
+            {
+                var cred = await this._credentialFactory.LoadAsync(token);
+                cred.Remove();
+            }
         }
 
         // Recreate JSON player list from XML file

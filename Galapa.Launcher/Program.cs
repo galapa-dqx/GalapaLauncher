@@ -7,6 +7,7 @@ using Galapa.Core.Configuration;
 using Galapa.Core.Game;
 using Galapa.Core.Models;
 using Galapa.Launcher.Services;
+using Galapa.Launcher.Theming;
 using Galapa.Launcher.ViewModels;
 using Galapa.Launcher.ViewModels.AppFrame;
 using Galapa.Launcher.ViewModels.LoginFrame;
@@ -23,7 +24,8 @@ namespace Galapa.Launcher;
 
 internal sealed class Program
 {
-    public static IContainer Services;
+    // Assigned in BuildAvaloniaApp, before anything resolves services.
+    public static IContainer Services = null!;
 
     public static ConsoleVelopackLogger Log { get; } = new();
 
@@ -65,6 +67,7 @@ internal sealed class Program
         container.Register<LoginNavigationService>(Reuse.Singleton);
         container.Register<IPlayerCredentialFactory, WindowsCredentialManagerFactory>(Reuse.Singleton);
         container.Register<PlayerList>(Reuse.Singleton);
+        container.Register<ISettingsPersistence, SettingsPersistence>(Reuse.Singleton);
 
         // Controller input services
         container.Register<ControllerListService>(Reuse.Singleton);
