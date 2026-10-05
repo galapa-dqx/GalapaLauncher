@@ -167,6 +167,14 @@ public class PlayerList
     public List<SavedPlayer> Players { get; private set; } = new();
 
     /// <summary>
+    ///     Whether <see cref="LoadAsync" /> deletes stored credentials for players that are no longer in
+    ///     dqxPlayerList.xml. This is how removing a player in the official launcher cleans up our credentials, but the
+    ///     deleted passwords and TOTP keys cannot be recovered, so tools that only inspect the player list should disable
+    ///     it. Even when enabled, nothing is deleted if dqxPlayerList.xml had to be created during load.
+    /// </summary>
+    public bool PruneOrphanedCredentials { get; init; } = true;
+
+    /// <summary>
     ///     Add a new player to the list by their token. This will add the player to the XML, JSON, and credential in memory
     ///     but
     ///     NOT save them to disk/credential store until you call <see cref="SaveAsync" />.
@@ -279,12 +287,16 @@ public class PlayerList
         Contract.Assert(this._json is not null);
         Contract.Assert(this._credentialTokens is not null);
 
-        // Delete credentials for any players removed from the XML file
-        var xmlTokens = this._xml.Players.Keys.ToHashSet();
-        foreach (var token in this._credentialTokens.Except(xmlTokens))
+        // Delete credentials for any players removed from the XML file. A freshly created XML file means we found no
+        // player list at all (wrong folder, fresh install), not that the user removed everyone, so it never prunes.
+        if (this.PruneOrphanedCredentials && !this._xml.WasCreated)
         {
-            var cred = await this._credentialFactory.LoadAsync(token);
-            cred.Remove();
+            var xmlTokens = this._xml.Players.Keys.ToHashSet();
+            foreach (var token in this._credentialTokens.Except(xmlTokens))
+            {
+                var cred = await this._credentialFactory.LoadAsync(token);
+                cred.Remove();
+            }
         }
 
         // Recreate JSON player list from XML file

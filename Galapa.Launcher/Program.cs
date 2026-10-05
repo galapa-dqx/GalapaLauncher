@@ -128,8 +128,7 @@ internal sealed class Program
         // TODO: move Paths.AppData into the launcher itself (it's not core-related)
         Services = CreateServiceProvider();
         var settings = Services.Resolve<Settings>();
-        if (settings.SaveFolderPath is { } saveFolderPath)
-            ConfigFile.RootDirectory = saveFolderPath;
+        ConfigFile.RootDirectory = settings.SaveFolderPath;
 
         return AppBuilder.Configure<App>()
             .UsePlatformDetect()

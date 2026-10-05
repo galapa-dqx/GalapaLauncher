@@ -33,7 +33,16 @@ public partial class Settings : ObservableValidator
             try
             {
                 var json = File.ReadAllText(Paths.Settings);
-                return JsonSerializer.Deserialize<Settings>(json) ?? GetDefaults();
+                var settings = JsonSerializer.Deserialize<Settings>(json);
+                if (settings is null) return GetDefaults();
+
+                // A file missing a key (or holding null) deserializes to null; fall back to the default per field so
+                // nothing downstream, like ConfigFile.RootDirectory, sees an unset value.
+                var defaults = GetDefaults();
+                settings.GameFolderPath ??= defaults.GameFolderPath;
+                settings.SaveFolderPath ??= defaults.SaveFolderPath;
+                settings.ErrorReporting ??= defaults.ErrorReporting;
+                return settings;
             }
             catch (JsonException)
             {

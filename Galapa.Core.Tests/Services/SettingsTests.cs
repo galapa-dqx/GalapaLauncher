@@ -238,6 +238,21 @@ public class SettingsTests : IDisposable
     }
 
     [Fact]
+    public void Load_FillsMissingAndNullFieldsWithDefaults()
+    {
+        Directory.CreateDirectory(Paths.AppData);
+        File.WriteAllText(Paths.Settings, """{ "GameFolderPath": "C:\\Game", "SaveFolderPath": null }""");
+
+        var settings = Settings.Load();
+
+        Assert.Equal("C:\\Game", settings.GameFolderPath);
+        Assert.Equal(
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "My Games", "Dragon Quest X"),
+            settings.SaveFolderPath);
+        Assert.False(settings.ErrorReporting);
+    }
+
+    [Fact]
     public void SaveAndLoad_RoundTrip_PreservesAllValues()
     {
         // Arrange

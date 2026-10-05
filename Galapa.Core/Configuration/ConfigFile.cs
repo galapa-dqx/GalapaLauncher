@@ -18,8 +18,10 @@ public abstract class ConfigFile
 
     protected ConfigFile(string filename, int seed, Func<Stream, Stream> obfuscatorFactory)
     {
+        var rootDirectory = RootDirectory ?? throw new InvalidOperationException(
+            $"{nameof(ConfigFile)}.{nameof(RootDirectory)} must be set to the DQX save folder before loading config files.");
         var obfuscatedName = FilenameObfuscator.Obfuscate(filename, seed);
-        this.Filename = Path.Combine(RootDirectory, obfuscatedName);
+        this.Filename = Path.Combine(rootDirectory, obfuscatedName);
 
         if (Path.GetDirectoryName(this.Filename) is { } dir) Directory.CreateDirectory(dir);
 
@@ -27,7 +29,18 @@ public abstract class ConfigFile
     }
 
     protected virtual string DefaultContents => string.Empty;
-    public static string RootDirectory { get; set; } = Environment.CurrentDirectory;
+
+    /// <summary>
+    ///     The DQX save folder that config files are read from and written to. There is deliberately no default: loading
+    ///     from an unintended folder (such as the working directory) can make <see cref="Models.PlayerList" /> reconcile
+    ///     against an empty player list, so every app must set this explicitly.
+    /// </summary>
+    public static string? RootDirectory { get; set; }
+
+    /// <summary>
+    ///     True when the file did not exist and was created with <see cref="DefaultContents" /> during load.
+    /// </summary>
+    public bool WasCreated { get; private set; }
 
     protected virtual async Task _LoadAsync()
     {
@@ -82,6 +95,7 @@ public abstract class ConfigFile
 
             await writer.WriteAsync(this.DefaultContents);
             await writer.FlushAsync();
+            this.WasCreated = true;
         }
     }
 
