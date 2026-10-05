@@ -1,0 +1,22 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <!-- net8.0-windows to match Galapa.Core, which it references. Patch
+             installation runs on the target OS (Windows / Proton). -->
+        <TargetFramework>net8.0-windows</TargetFramework>
+        <!-- Once C# 14.0 is released, this can be changed to 14.0 -->
+        <LangVersion>preview</LangVersion>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <RootNamespace>Galapa.PatchInstaller</RootNamespace>
+        <AssemblyName>Galapa.PatchInstaller</AssemblyName>
+        <Product>Galapa Patch Installer</Product>
+        <Description>Applies Dragon Quest X ZiPatch (.patch) files to a game installation.</Description>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Galapa.Core\Galapa.Core.csproj"/>
+    </ItemGroup>
+
+</Project>
