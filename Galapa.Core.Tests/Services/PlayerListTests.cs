@@ -49,16 +49,6 @@ public class PlayerListTests : IDisposable
     }
 
     [Fact]
-    public async Task LoadAsync_WhenXmlIsCreated_KeepsOrphanedCredentials()
-    {
-        var store = new FakeCredentialStore("orphan");
-
-        await new PlayerList(store).LoadAsync();
-
-        Assert.Equal(["orphan"], store.Tokens);
-    }
-
-    [Fact]
     public async Task LoadAsync_WithoutRootDirectory_ThrowsWithoutTouchingCredentials()
     {
         ConfigFile.RootDirectory = null;
@@ -71,9 +61,7 @@ public class PlayerListTests : IDisposable
 
     private static async Task CreateEmptyPlayerListXml()
     {
-        var xml = await PlayerListXml.LoadAsync();
-        Assert.True(xml.WasCreated);
-        Assert.False((await PlayerListXml.LoadAsync()).WasCreated);
+        await PlayerListXml.LoadAsync();
     }
 
     private sealed class FakeCredentialStore(params string[] tokens) : IPlayerCredentialFactory

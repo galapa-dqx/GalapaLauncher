@@ -37,11 +37,6 @@ public abstract class ConfigFile
     /// </summary>
     public static string? RootDirectory { get; set; }
 
-    /// <summary>
-    ///     True when the file did not exist and was created with <see cref="DefaultContents" /> during load.
-    /// </summary>
-    public bool WasCreated { get; private set; }
-
     protected virtual async Task _LoadAsync()
     {
         await this.EnsureCreated();
@@ -95,7 +90,6 @@ public abstract class ConfigFile
 
             await writer.WriteAsync(this.DefaultContents);
             await writer.FlushAsync();
-            this.WasCreated = true;
         }
     }
 
