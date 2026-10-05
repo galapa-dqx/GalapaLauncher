@@ -3,15 +3,20 @@ using Galapa.TestUtilities;
 
 namespace Galapa.Core.Tests.Game.ConfigFile;
 
-// Shares the static ConfigFile.RootDirectory with PlayerListTests.
+// Shares the static SaveRoot.Location with PlayerListTests.
 [Collection("Sequential")]
-public class PlayerListXmlTests
+public class PlayerListXmlTests : IDisposable
 {
+    public void Dispose()
+    {
+        SaveRoot.Location = null;
+    }
+
     [Fact]
     public async Task Load_DefaultFile_CreatesDefaultStructure()
     {
         using var tempDir = new TempDirectory();
-        Configuration.ConfigFile.RootDirectory = tempDir.Path;
+        SaveRoot.Location = tempDir.Path;
 
         var playerList = await PlayerListXml.LoadAsync();
 
@@ -24,7 +29,7 @@ public class PlayerListXmlTests
     public async Task AddPlayer_SavedPlayer_PersistsToFile()
     {
         using var tempDir = new TempDirectory();
-        Configuration.ConfigFile.RootDirectory = tempDir.Path;
+        SaveRoot.Location = tempDir.Path;
 
         var playerList = await PlayerListXml.LoadAsync();
         playerList.Add(new PlayerListXml.SavedPlayer
@@ -45,7 +50,7 @@ public class PlayerListXmlTests
     public async Task Trial_Set_PersistsToFile()
     {
         using var tempDir = new TempDirectory();
-        Configuration.ConfigFile.RootDirectory = tempDir.Path;
+        SaveRoot.Location = tempDir.Path;
 
         var playerList = await PlayerListXml.LoadAsync();
         playerList.Trial = new PlayerListXml.TrialPlayer
@@ -67,7 +72,7 @@ public class PlayerListXmlTests
     public async Task Filename_HasExpectedValue()
     {
         using var tempDir = new TempDirectory();
-        Configuration.ConfigFile.RootDirectory = tempDir.Path;
+        SaveRoot.Location = tempDir.Path;
 
         var playerList = await PlayerListXml.LoadAsync();
         var expectedFilename = Path.Combine(tempDir.Path, "cxjYxsgheGzie!iyx");

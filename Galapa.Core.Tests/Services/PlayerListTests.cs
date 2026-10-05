@@ -15,13 +15,13 @@ public class PlayerListTests : IDisposable
     public PlayerListTests()
     {
         Paths.AppData = this._appData.Path;
-        ConfigFile.RootDirectory = this._saveFolder.Path;
+        SaveRoot.Location = this._saveFolder.Path;
     }
 
     public void Dispose()
     {
         Paths.AppData = null;
-        ConfigFile.RootDirectory = null;
+        SaveRoot.Location = null;
         this._appData.Dispose();
         this._saveFolder.Dispose();
     }
@@ -44,17 +44,6 @@ public class PlayerListTests : IDisposable
         var store = new FakeCredentialStore("orphan");
 
         await new PlayerList(store) { PruneOrphanedCredentials = false }.LoadAsync();
-
-        Assert.Equal(["orphan"], store.Tokens);
-    }
-
-    [Fact]
-    public async Task LoadAsync_WithoutRootDirectory_ThrowsWithoutTouchingCredentials()
-    {
-        ConfigFile.RootDirectory = null;
-        var store = new FakeCredentialStore("orphan");
-
-        await Assert.ThrowsAsync<InvalidOperationException>(() => new PlayerList(store).LoadAsync());
 
         Assert.Equal(["orphan"], store.Tokens);
     }

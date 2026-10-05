@@ -172,7 +172,7 @@ public class PlayerList
     /// </summary>
     /// <remarks>
     ///     Credentials are keyed only by token and shared by every app on the machine, not scoped to
-    ///     <see cref="ConfigFile.RootDirectory" />. Anything loading a player list from somewhere other than the user's
+    ///     <see cref="SaveRoot" />. Anything loading a player list with <see cref="SaveRoot.Location" /> overridden away from the user's
     ///     real save folder (Toolbox, dev setups) must disable this, or it will delete the launcher's saved passwords and
     ///     TOTP keys, which cannot be recovered.
     /// </remarks>

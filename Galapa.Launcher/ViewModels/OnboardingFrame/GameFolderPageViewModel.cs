@@ -1,25 +1,22 @@
-﻿using System.ComponentModel.DataAnnotations;
-using CommunityToolkit.Mvvm.ComponentModel;
+using System.ComponentModel.DataAnnotations;
 using Galapa.Core.Configuration;
+using Galapa.Launcher.Services;
+using Galapa.Launcher.ViewModels.Editing;
 
 namespace Galapa.Launcher.ViewModels.OnboardingFrame;
 
-public partial class GameFolderPageViewModel : OnboardingPageViewModel
+public class GameFolderPageViewModel(
+    Settings settings,
+    ISettingsPersistence persistence,
+    IFolderPicker folderPicker) : OnboardingPageViewModel
 {
-    [ObservableProperty] private Settings _settings;
-
-    public GameFolderPageViewModel(Settings settings)
-    {
-        this.Settings = settings;
-    }
-
     public override string Title { get; } = "Game Location";
 
-    [Required]
-    [CustomValidation(typeof(GameFolderPageViewModel), "ValidateGameFolderPath")]
-    public string? GameFolderPath
-    {
-        get => this.Settings.GameFolderPath;
-        set => this.Settings.GameFolderPath = value;
-    }
+    /// <summary>
+    ///     The game's install folder, edited the same way as on the Game settings page.
+    /// </summary>
+    public InstallFolderEditor InstallFolder { get; } = new(settings, persistence, folderPicker);
+
+    public override bool CanContinue =>
+        InstallRoot.Validate(settings.GameFolderPath) == ValidationResult.Success;
 }

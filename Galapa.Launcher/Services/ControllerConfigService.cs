@@ -15,13 +15,11 @@ namespace Galapa.Launcher.Services;
 public class ControllerConfigService
 {
     private readonly ILogger<ControllerConfigService> _logger;
-    private readonly Settings _settings;
     private readonly Dictionary<Guid, ControllerConfig> _configs = new();
 
-    public ControllerConfigService(ILogger<ControllerConfigService> logger, Settings settings)
+    public ControllerConfigService(ILogger<ControllerConfigService> logger)
     {
         this._logger = logger;
-        this._settings = settings;
     }
 
     /// <summary>
@@ -63,7 +61,7 @@ public class ControllerConfigService
     {
         try
         {
-            var padConfigPath = Path.Combine(this._settings.SaveFolderPath, "PAD_CONFIG.xml");
+            var padConfigPath = Path.Combine(SaveRoot.Location, "PAD_CONFIG.xml");
 
             if (!File.Exists(padConfigPath))
             {

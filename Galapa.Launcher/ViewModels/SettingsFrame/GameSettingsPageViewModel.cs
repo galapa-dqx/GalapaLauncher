@@ -1,15 +1,22 @@
-using CommunityToolkit.Mvvm.ComponentModel;
 using Galapa.Core.Configuration;
+using Galapa.Launcher.Services;
+using Galapa.Launcher.ViewModels.Editing;
 
 namespace Galapa.Launcher.ViewModels.SettingsFrame;
 
 /// <summary>
-/// ViewModel for the game-related settings page.
+/// ViewModel for the game-related settings page. Edits apply live; there is no Save button.
 /// </summary>
-public partial class GameSettingsPageViewModel(Settings settings) : SettingsFramePageViewModel
+public class GameSettingsPageViewModel(
+    Settings settings,
+    ISettingsPersistence persistence,
+    IFolderPicker folderPicker) : SettingsFramePageViewModel
 {
     public override string Title => "Game";
     public override string Icon => "/Assets/Icons/solar--rocket-bold-duotone.svg";
 
-    [ObservableProperty] private Settings _settings = settings;
+    /// <summary>
+    /// The game's install folder.
+    /// </summary>
+    public InstallFolderEditor InstallFolder { get; } = new(settings, persistence, folderPicker);
 }
